@@ -48,10 +48,11 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth && !!user?.id;
   const role = user?.role;
 
-  // Public: auth routes, login page, box API (has its own token auth)
+  // Public: auth routes, login page, box API (has its own token auth), version endpoint
   const isPublic =
     pathname.startsWith("/api/auth") ||
     pathname === "/login" ||
+    pathname === "/api/version" ||
     pathname.startsWith("/api/box/");
 
   const isAdminRoute = pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
