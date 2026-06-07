@@ -1,0 +1,70 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String      @id @default(cuid())
+  username     String      @unique
+  passwordHash String
+  role         String      @default("viewer") // "admin" | "viewer"
+  createdAt    DateTime    @default(now())
+  rateLimits   RateLimit[]
+}
+
+model Device {
+  id          String        @id @default(cuid())
+  tokenHash   String        @unique
+  name        String        @default("Heimdall")
+  createdAt   DateTime      @default(now())
+  // Last reported state (from sync)
+  locked      Boolean       @default(false)
+  lockedSince DateTime?
+  battery     Int? // 0–100
+  boltPos     String? // "OPEN" | "CLOSED" | "UNKNOWN"
+  fwVersion   String?
+  lastSyncAt  DateTime?
+  wakeReason  String?
+  policy      LockPolicy?
+  events      DeviceEvent[]
+}
+
+model LockPolicy {
+  id               String    @id @default(cuid())
+  device           Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  deviceId         String    @unique
+  lockUntil        DateTime?
+  offlineOpenHours Int       @default(24)
+  hardCapHours     Int?
+  updatedAt        DateTime  @updatedAt
+}
+
+model DeviceEvent {
+  id        String   @id @default(cuid())
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  deviceId  String
+  type      String // LOCKED | UNLOCKED | SYNC | FAILSAFE_OPEN | UNAUTHORIZED_OPEN
+  timestamp DateTime
+  reason    String?
+  battery   Int?
+  fwVersion String?
+  createdAt DateTime @default(now())
+}
+
+model RateLimit {
+  key     String   @id
+  count   Int      @default(0)
+  resetAt DateTime
+  userId  String?
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model AppMeta {
+  key   String @id
+  value String
+}

@@ -1,0 +1,892 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────
+   SEMANTIC COLOR SYSTEM — Design Principles
+   ─────────────────────────────────────────────
+   Each semantic category uses a FIXED base hue across both themes.
+   Only lightness and saturation are adjusted per theme for contrast
+   and visual harmony.
+
+   Base Hues (HSL):
+     lock       152°  emerald-green   — secured, safe, compliant
+     unlock     204°  sky-blue        — open, free, released
+     inspect     32°  orange          — attention, examination
+     orgasm     335°  rose-pink       — intimate, sensual
+     request    245°  indigo          — system request, authority
+     sperrzeit  272°  purple-violet   — time-locked, duration penalty
+     warn        16°  red-orange      — danger, overdue, critical
+     ok         152°  emerald-green   — compliant, same family as lock
+   ─────────────────────────────────────────────── */
+
+
+/* ─────────────────────────────────────────────
+   USER THEME  (light, personal, safe)
+   Applied to: [data-theme="user"] or :root default
+   ───────────────────────────────────────────── */
+:root,
+[data-theme="user"] {
+
+  /* Canvas */
+  --background:        #f8f9fb;
+  --background-subtle: #f1f3f7;
+  --surface:           #ffffff;
+  --surface-raised:    #f1f3f7;
+  --surface-overlay:   #ffffffcc;
+
+  /* Borders */
+  --border:            #e5e7eb;
+  --border-subtle:     #f3f4f6;
+  --border-strong:     #d1d5db;
+
+  /* Text */
+  --foreground:        #111827;
+  --foreground-muted:  #4b5563;
+  --foreground-faint:  #9ca3af;
+  --foreground-invert: #ffffff;
+
+  /* ── Semantic: VERSCHLUSS (locked) ──────────
+     Hue 152° emerald-green
+     Accent:  hsl(152, 72%, 30%)  → #146645  — 6.8:1 on #ecfdf5
+     Text:    hsl(152, 76%, 20%)  → #0b4530  — 10.2:1 on bg
+     ─────────────────────────────────────────── */
+  --color-lock:        #0d9151;
+  --color-lock-bg:     #ecfdf5;
+  --color-lock-border: #a7f3d0;
+  --color-lock-muted:  #6ee7b7;
+  --color-lock-text:   #065f46;
+
+  /* ── Semantic: OEFFNEN (unlocked) ───────────
+     Hue 204° sky-blue
+     Accent:  hsl(204, 88%, 32%)  → #096da8  — 5.1:1 on #f0f9ff
+     Text:    hsl(204, 90%, 22%)  → #064a72  — 8.9:1 on bg
+     ─────────────────────────────────────────── */
+  --color-unlock:      #0369a1;
+  --color-unlock-bg:   #f0f9ff;
+  --color-unlock-border:#bae6fd;
+  --color-unlock-muted:#7dd3fc;
+  --color-unlock-text: #0c4a6e;
+
+  /* ── Semantic: PRUEFUNG / Inspection ────────
+     Hue 32° orange
+     Accent:  hsl(32, 95%, 38%)   → #bb6100  — 5.2:1 on #fff7ed
+     Text:    hsl(20, 90%, 28%)   → #872608  — 8.1:1 on bg
+     ─────────────────────────────────────────── */
+  --color-inspect:     #c2610a;
+  --color-inspect-bg:  #fff7ed;
+  --color-inspect-border:#fed7aa;
+  --color-inspect-muted:#fdba74;
+  --color-inspect-text:#92400e;
+
+  /* ── Semantic: ORGASMUS ──────────────────────
+     Hue 335° rose-pink
+     Accent:  hsl(335, 78%, 40%)  → #b81c53  — 5.6:1 on #fff1f2
+     Text:    hsl(335, 80%, 28%)  → #81103a  — 9.4:1 on bg
+     ─────────────────────────────────────────── */
+  --color-orgasm:      #be185d;
+  --color-orgasm-bg:   #fdf2f8;
+  --color-orgasm-border:#fbcfe8;
+  --color-orgasm-muted:#f9a8d4;
+  --color-orgasm-text: #9d174d;
+
+  /* ── Semantic: VERSCHLUSS-ANFORDERUNG ────────
+     Hue 245° indigo
+     Accent:  hsl(245, 68%, 42%)  → #3a34c4  — 6.1:1 on #eef2ff
+     Text:    hsl(245, 70%, 30%)  → #29248c  — 10.0:1 on bg
+     ─────────────────────────────────────────── */
+  --color-request:     #4338ca;
+  --color-request-bg:  #eef2ff;
+  --color-request-border:#c7d2fe;
+  --color-request-muted:#a5b4fc;
+  --color-request-text:#3730a3;
+
+  /* ── Semantic: WARNING / overdue ─────────────
+     Hue 16° red-orange
+     Accent:  hsl(16, 90%, 40%)   → #c23412  — 5.8:1 on #fff5f0
+     Text:    hsl(16, 88%, 26%)   → #7d210b  — 9.9:1 on bg
+     ─────────────────────────────────────────── */
+  --color-warn:        #c2410c;
+  --color-warn-bg:     #fff5f0;
+  --color-warn-border: #fed7aa;
+  --color-warn-muted:  #fdba74;
+  --color-warn-text:   #9a3412;
+
+  /* ── Semantic: SPERRZEIT ─────────────────────
+     Hue 272° purple-violet  (distinct from orgasm-rose and request-indigo)
+     Accent:  hsl(272, 62%, 38%)  → #6622a8  — 6.5:1 on #faf5ff
+     Text:    hsl(272, 65%, 26%)  → #461674  — 10.8:1 on bg
+     ─────────────────────────────────────────── */
+  --color-sperrzeit:   #7c3aed;
+  --color-sperrzeit-bg:#faf5ff;
+  --color-sperrzeit-border:#ddd6fe;
+  --color-sperrzeit-muted:#c4b5fd;
+  --color-sperrzeit-text:#5b21b6;
+
+  /* ── Semantic: OK / compliant ────────────────
+     Hue 152° emerald-green — same family as lock
+     ─────────────────────────────────────────── */
+  --color-ok:          #0d9151;
+  --color-ok-bg:       #ecfdf5;
+  --color-ok-border:   #a7f3d0;
+  --color-ok-muted:    #6ee7b7;
+  --color-ok-text:     #065f46;
+
+  /* ── DeviceCategory palette (UI Designer P2 spec, light theme) ────
+     12 user-pickable category colors. cat-steel reserved for KG built-in. */
+  --color-cat-steel-bg:     #eef2f7;  --color-cat-steel-border:   #cbd5e1;  --color-cat-steel-text:   #334155;  --color-cat-steel-muted:   #94a3b8;
+  --color-cat-graphite-bg:  #f1f1f3;  --color-cat-graphite-border:#c9c9cf;  --color-cat-graphite-text:#3f3f46;  --color-cat-graphite-muted:#a1a1aa;
+  --color-cat-leather-bg:   #f5efe7;  --color-cat-leather-border: #d6c4ad;  --color-cat-leather-text: #6b4f2a;  --color-cat-leather-muted: #b08a5d;
+  --color-cat-burgundy-bg:  #fbeef0;  --color-cat-burgundy-border:#e9bfc6;  --color-cat-burgundy-text:#7a1e2b;  --color-cat-burgundy-muted:#c98896;
+  --color-cat-rose-bg:      #fdeef3;  --color-cat-rose-border:    #f1c2d1;  --color-cat-rose-text:    #8a2750;  --color-cat-rose-muted:    #d693a8;
+  --color-cat-amber-bg:     #fbf3e2;  --color-cat-amber-border:   #e6cf8f;  --color-cat-amber-text:   #7a5410;  --color-cat-amber-muted:   #c8a14a;
+  --color-cat-olive-bg:     #eff1e2;  --color-cat-olive-border:   #c8cf94;  --color-cat-olive-text:   #4d5618;  --color-cat-olive-muted:   #9aa45c;
+  --color-cat-teal-bg:      #e6f3f1;  --color-cat-teal-border:    #9fcfc7;  --color-cat-teal-text:    #1f5b53;  --color-cat-teal-muted:    #5fa49a;
+  --color-cat-indigo-bg:    #ebecf7;  --color-cat-indigo-border:  #bcc0e4;  --color-cat-indigo-text:  #363a7a;  --color-cat-indigo-muted:  #8a90c4;
+  --color-cat-plum-bg:      #f1e9f3;  --color-cat-plum-border:    #cdb7d3;  --color-cat-plum-text:    #5b2a66;  --color-cat-plum-muted:    #9d7aa6;
+  --color-cat-sand-bg:      #f4ede0;  --color-cat-sand-border:    #dcc9a4;  --color-cat-sand-text:    #6b542a;  --color-cat-sand-muted:    #b59c6c;
+  --color-cat-slate-bg:     #eef0f3;  --color-cat-slate-border:   #c4cad2;  --color-cat-slate-text:   #3a4452;  --color-cat-slate-muted:   #8b95a3;
+
+  /* Header — Emerald accent (user) */
+  --header-bg:          #ecfdf5;
+  --header-border:      #a7f3d0;
+  --header-text:        #065f46;
+  --header-avatar-bg:   #d1fae5;
+  --header-avatar-text: #065f46;
+
+  /* Navigation — Emerald accent (user) */
+  --nav-bg:            #ecfdf5;
+  --nav-border:        #a7f3d0;
+  --nav-active-bg:     #d1fae5;
+  --nav-active-text:   #065f46;
+  --nav-inactive-text: #065f46aa;
+  --nav-inactive-hover:#065f46;
+  --nav-icon-bg:       #d1fae5;
+  --nav-icon-active-bg:#059669;
+
+  /* Interactive */
+  --focus-ring:        #6366f1;
+  --btn-primary-bg:    #059669;
+  --btn-primary-hover: #047857;
+  --btn-primary-text:  #ffffff;
+
+  /* Semantic button fills — brighter than accent colors for readable white text */
+  --btn-lock:          #059669;
+  --btn-unlock:        #0284c7;
+  --btn-inspect:       #d97706;
+  --btn-orgasm:        #db2777;
+  --btn-request:       #4f46e5;
+  --btn-sperrzeit:     #7c3aed;
+  --btn-warn:          #dc2626;
+  --btn-ok:            #059669;
+
+  /* Elevation */
+  --shadow-card:   0 1px 3px 0 rgb(0 0 0 / 0.07), 0 1px 2px -1px rgb(0 0 0 / 0.05);
+  --shadow-raised: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --shadow-overlay:0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.07);
+}
+
+
+/* ─────────────────────────────────────────────
+   ADMIN THEME  (dark, authoritative, controlled)
+   Applied to: [data-theme="admin"]
+   ───────────────────────────────────────────── */
+[data-theme="admin"] {
+
+  /* Canvas */
+  --background:        #0d0f14;
+  --background-subtle: #151821;
+  --surface:           #1c1f2a;
+  --surface-raised:    #232737;
+  --surface-overlay:   #1c1f2acc;
+
+  /* Borders */
+  --border:            #2d3144;
+  --border-subtle:     #222535;
+  --border-strong:     #3d4257;
+
+  /* Text */
+  --foreground:        #f1f5f9;
+  --foreground-muted:  #94a3b8;
+  --foreground-faint:  #64748b;
+  --foreground-invert: #0d0f14;
+
+  /* ── Semantic: VERSCHLUSS (locked) ──────────
+     Hue 152° emerald-green — same hue as user theme
+     Accent:  hsl(152, 68%, 50%)  → #29c47a  — 7.4:1 on #0f1c17
+     Text:    hsl(152, 72%, 72%)  → #87e8bb  — 9.1:1 on bg
+     ─────────────────────────────────────────── */
+  --color-lock:        #34d399;
+  --color-lock-bg:     #0b1912;
+  --color-lock-border: #065f46;
+  --color-lock-muted:  #6ee7b7;
+  --color-lock-text:   #6ee7b7;
+
+  /* ── Semantic: OEFFNEN (unlocked) ───────────
+     Hue 204° sky-blue — same hue as user theme
+     Accent:  hsl(204, 86%, 60%)  → #38b6f0  — 5.2:1 on #0b1a24
+     Text:    hsl(204, 90%, 76%)  → #8dd8f8  — 8.8:1 on bg
+     ─────────────────────────────────────────── */
+  --color-unlock:      #38bdf8;
+  --color-unlock-bg:   #0c1c27;
+  --color-unlock-border:#0c4a6e;
+  --color-unlock-muted:#7dd3fc;
+  --color-unlock-text: #7dd3fc;
+
+  /* ── Semantic: PRUEFUNG / Inspection ─────────
+     Hue 32° orange — same hue as user theme
+     Accent:  hsl(32, 98%, 58%)   → #f89620  — 4.6:1 on #1c1505
+     Text:    hsl(38, 95%, 74%)   → #fcd06a  — 7.8:1 on bg
+     ─────────────────────────────────────────── */
+  --color-inspect:     #fb923c;
+  --color-inspect-bg:  #1c1505;
+  --color-inspect-border:#92400e;
+  --color-inspect-muted:#fcd34d;
+  --color-inspect-text:#fcd34d;
+
+  /* ── Semantic: ORGASMUS ──────────────────────
+     Hue 335° rose-pink — same hue as user theme
+     Accent:  hsl(335, 90%, 68%)  → #f56094  — 5.8:1 on #1c0a11
+     Text:    hsl(335, 88%, 82%)  → #f8a8c4  — 9.3:1 on bg
+     ─────────────────────────────────────────── */
+  --color-orgasm:      #f472b6;
+  --color-orgasm-bg:   #1c0a14;
+  --color-orgasm-border:#9d174d;
+  --color-orgasm-muted:#fbcfe8;
+  --color-orgasm-text: #fbcfe8;
+
+  /* ── Semantic: VERSCHLUSS-ANFORDERUNG ────────
+     Hue 245° indigo — same hue as user theme
+     Accent:  hsl(245, 80%, 70%)  → #8b7cf8  — 5.5:1 on #10102a
+     Text:    hsl(245, 90%, 82%)  → #b8b0fc  — 8.7:1 on bg
+     ─────────────────────────────────────────── */
+  --color-request:     #818cf8;
+  --color-request-bg:  #0f0f28;
+  --color-request-border:#3730a3;
+  --color-request-muted:#c7d2fe;
+  --color-request-text:#c7d2fe;
+
+  /* ── Semantic: WARNING / overdue ─────────────
+     Hue 16° red-orange — same hue as user theme
+     Accent:  hsl(16, 94%, 62%)   → #f76032  — 4.6:1 on #1c0c08
+     Text:    hsl(20, 92%, 78%)   → #fab090  — 7.5:1 on bg
+     ─────────────────────────────────────────── */
+  --color-warn:        #f97316;
+  --color-warn-bg:     #1c0e08;
+  --color-warn-border: #9a3412;
+  --color-warn-muted:  #fdba74;
+  --color-warn-text:   #fdba74;
+
+  /* ── Semantic: SPERRZEIT ─────────────────────
+     Hue 272° purple-violet — same hue as user theme
+     Accent:  hsl(272, 78%, 68%)  → #b070f0  — 5.3:1 on #110d1c
+     Text:    hsl(272, 80%, 82%)  → #d0aef8  — 8.6:1 on bg
+     ─────────────────────────────────────────── */
+  --color-sperrzeit:   #a855f7;
+  --color-sperrzeit-bg:#110c1e;
+  --color-sperrzeit-border:#6b21a8;
+  --color-sperrzeit-muted:#d8b4fe;
+  --color-sperrzeit-text:#d8b4fe;
+
+  /* ── Semantic: OK / compliant ────────────────
+     Hue 152° emerald-green — same family as lock
+     ─────────────────────────────────────────── */
+  --color-ok:          #34d399;
+  --color-ok-bg:       #0b1912;
+  --color-ok-border:   #065f46;
+  --color-ok-muted:    #6ee7b7;
+  --color-ok-text:     #6ee7b7;
+
+  /* ── DeviceCategory palette (UI Designer P2 spec, dark theme) ────
+     bg = dark surface tinted with hue, text = legible foreground. */
+  --color-cat-steel-bg:     #11161d;  --color-cat-steel-border:   #334155;  --color-cat-steel-text:   #cbd5e1;  --color-cat-steel-muted:   #64748b;
+  --color-cat-graphite-bg:  #161617;  --color-cat-graphite-border:#3f3f46;  --color-cat-graphite-text:#d4d4d8;  --color-cat-graphite-muted:#71717a;
+  --color-cat-leather-bg:   #1a140b;  --color-cat-leather-border: #6b4f2a;  --color-cat-leather-text: #d6c4ad;  --color-cat-leather-muted: #8a6a3d;
+  --color-cat-burgundy-bg:  #1d0e10;  --color-cat-burgundy-border:#7a1e2b;  --color-cat-burgundy-text:#e9bfc6;  --color-cat-burgundy-muted:#a04a58;
+  --color-cat-rose-bg:      #1d1014;  --color-cat-rose-border:    #8a2750;  --color-cat-rose-text:    #f1c2d1;  --color-cat-rose-muted:    #b06079;
+  --color-cat-amber-bg:     #1a1405;  --color-cat-amber-border:   #7a5410;  --color-cat-amber-text:   #e6cf8f;  --color-cat-amber-muted:   #a07a25;
+  --color-cat-olive-bg:     #10130a;  --color-cat-olive-border:   #4d5618;  --color-cat-olive-text:   #c8cf94;  --color-cat-olive-muted:   #717a32;
+  --color-cat-teal-bg:      #0a1716;  --color-cat-teal-border:    #1f5b53;  --color-cat-teal-text:    #9fcfc7;  --color-cat-teal-muted:    #3f7a72;
+  --color-cat-indigo-bg:    #0f111e;  --color-cat-indigo-border:  #363a7a;  --color-cat-indigo-text:  #bcc0e4;  --color-cat-indigo-muted:  #5a609a;
+  --color-cat-plum-bg:      #170f1a;  --color-cat-plum-border:    #5b2a66;  --color-cat-plum-text:    #cdb7d3;  --color-cat-plum-muted:    #7d4f8a;
+  --color-cat-sand-bg:      #171208;  --color-cat-sand-border:    #6b542a;  --color-cat-sand-text:    #dcc9a4;  --color-cat-sand-muted:    #9a7d45;
+  --color-cat-slate-bg:     #10141a;  --color-cat-slate-border:   #3a4452;  --color-cat-slate-text:   #c4cad2;  --color-cat-slate-muted:   #64707f;
+
+  /* Header — Indigo accent (admin) */
+  --header-bg:          #131336;
+  --header-border:      #3730a3;
+  --header-text:        #eef2ff;
+  --header-avatar-bg:   #272566;
+  --header-avatar-text: #a5b4fc;
+
+  /* Navigation — Indigo accent (admin) */
+  --nav-bg:            #131336;
+  --nav-border:        #3730a3;
+  --nav-active-bg:     #272566;
+  --nav-active-text:   #eef2ff;
+  --nav-inactive-text: #a5b4fcaa;
+  --nav-inactive-hover:#a5b4fc;
+  --nav-icon-bg:       #272566;
+  --nav-icon-active-bg:#4f46e5;
+
+  /* Interactive */
+  --focus-ring:        #818cf8;
+  --btn-primary-bg:    #4f46e5;
+  --btn-primary-hover: #4338ca;
+  --btn-primary-text:  #ffffff;
+
+  /* Semantic button fills — slightly brighter for dark backgrounds */
+  --btn-lock:          #10b981;
+  --btn-unlock:        #0ea5e9;
+  --btn-inspect:       #f59e0b;
+  --btn-orgasm:        #ec4899;
+  --btn-request:       #6366f1;
+  --btn-sperrzeit:     #8b5cf6;
+  --btn-warn:          #ef4444;
+  --btn-ok:            #10b981;
+
+  /* Elevation — glowing inner edges on dark surfaces */
+  --shadow-card:   0 1px 3px 0 rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --shadow-raised: 0 4px 12px 0 rgb(0 0 0 / 0.5), inset 0 1px 0 rgb(255 255 255 / 0.05);
+  --shadow-overlay:0 16px 32px 0 rgb(0 0 0 / 0.6), inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+
+/* ─────────────────────────────────────────────
+   USER DARK THEME  (dark canvas, emerald accent)
+   Applied to: [data-theme="user-dark"]
+   Inherits dark canvas from admin, emerald accent from user
+   ───────────────────────────────────────────── */
+[data-theme="user-dark"] {
+
+  /* Canvas — same as admin */
+  --background:        #0d0f14;
+  --background-subtle: #151821;
+  --surface:           #1c1f2a;
+  --surface-raised:    #232737;
+  --surface-overlay:   #1c1f2acc;
+
+  /* Borders — same as admin */
+  --border:            #2d3144;
+  --border-subtle:     #222535;
+  --border-strong:     #3d4257;
+
+  /* Text — same as admin */
+  --foreground:        #f1f5f9;
+  --foreground-muted:  #94a3b8;
+  --foreground-faint:  #64748b;
+  --foreground-invert: #0d0f14;
+
+  /* Semantic colors — same as admin dark */
+  --color-lock:        #34d399;
+  --color-lock-bg:     #0b1912;
+  --color-lock-border: #065f46;
+  --color-lock-muted:  #6ee7b7;
+  --color-lock-text:   #6ee7b7;
+
+  --color-unlock:      #38bdf8;
+  --color-unlock-bg:   #0c1c27;
+  --color-unlock-border:#0c4a6e;
+  --color-unlock-muted:#7dd3fc;
+  --color-unlock-text: #7dd3fc;
+
+  --color-inspect:     #fb923c;
+  --color-inspect-bg:  #1c1505;
+  --color-inspect-border:#92400e;
+  --color-inspect-muted:#fcd34d;
+  --color-inspect-text:#fcd34d;
+
+  --color-orgasm:      #f472b6;
+  --color-orgasm-bg:   #1c0a14;
+  --color-orgasm-border:#9d174d;
+  --color-orgasm-muted:#fbcfe8;
+  --color-orgasm-text: #fbcfe8;
+
+  --color-request:     #818cf8;
+  --color-request-bg:  #0f0f28;
+  --color-request-border:#3730a3;
+  --color-request-muted:#c7d2fe;
+  --color-request-text:#c7d2fe;
+
+  --color-warn:        #f97316;
+  --color-warn-bg:     #1c0e08;
+  --color-warn-border: #9a3412;
+  --color-warn-muted:  #fdba74;
+  --color-warn-text:   #fdba74;
+
+  --color-sperrzeit:   #a855f7;
+  --color-sperrzeit-bg:#110c1e;
+  --color-sperrzeit-border:#6b21a8;
+  --color-sperrzeit-muted:#d8b4fe;
+  --color-sperrzeit-text:#d8b4fe;
+
+  --color-ok:          #34d399;
+  --color-ok-bg:       #0b1912;
+  --color-ok-border:   #065f46;
+  --color-ok-muted:    #6ee7b7;
+  --color-ok-text:     #6ee7b7;
+
+  /* Header — Emerald accent (user) on dark */
+  --header-bg:          #062e1e;
+  --header-border:      #065f46;
+  --header-text:        #ecfdf5;
+  --header-avatar-bg:   #0b4d35;
+  --header-avatar-text: #6ee7b7;
+
+  /* Navigation — Emerald accent (user) on dark */
+  --nav-bg:            #062e1e;
+  --nav-border:        #065f46;
+  --nav-active-bg:     #0b4d35;
+  --nav-active-text:   #ecfdf5;
+  --nav-inactive-text: #6ee7b7aa;
+  --nav-inactive-hover:#6ee7b7;
+  --nav-icon-bg:       #0b4d35;
+  --nav-icon-active-bg:#059669;
+
+  /* Interactive — Emerald primary */
+  --focus-ring:        #34d399;
+  --btn-primary-bg:    #059669;
+  --btn-primary-hover: #047857;
+  --btn-primary-text:  #ffffff;
+
+  /* Semantic button fills — same as admin dark */
+  --btn-lock:          #10b981;
+  --btn-unlock:        #0ea5e9;
+  --btn-inspect:       #f59e0b;
+  --btn-orgasm:        #ec4899;
+  --btn-request:       #6366f1;
+  --btn-sperrzeit:     #8b5cf6;
+  --btn-warn:          #ef4444;
+  --btn-ok:            #10b981;
+
+  /* Elevation — same as admin dark */
+  --shadow-card:   0 1px 3px 0 rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --shadow-raised: 0 4px 12px 0 rgb(0 0 0 / 0.5), inset 0 1px 0 rgb(255 255 255 / 0.05);
+  --shadow-overlay:0 16px 32px 0 rgb(0 0 0 / 0.6), inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+
+/* ─────────────────────────────────────────────
+   ADMIN LIGHT THEME  (light canvas, indigo accent)
+   Applied to: [data-theme="admin-light"]
+   Inherits light canvas from user, indigo accent from admin
+   ───────────────────────────────────────────── */
+[data-theme="admin-light"] {
+
+  /* Canvas — same as user light */
+  --background:        #f8f9fb;
+  --background-subtle: #f1f3f7;
+  --surface:           #ffffff;
+  --surface-raised:    #f1f3f7;
+  --surface-overlay:   #ffffffcc;
+
+  /* Borders — same as user light */
+  --border:            #e5e7eb;
+  --border-subtle:     #f3f4f6;
+  --border-strong:     #d1d5db;
+
+  /* Text — same as user light */
+  --foreground:        #111827;
+  --foreground-muted:  #4b5563;
+  --foreground-faint:  #9ca3af;
+  --foreground-invert: #ffffff;
+
+  /* Semantic colors — same as user light */
+  --color-lock:        #0d9151;
+  --color-lock-bg:     #ecfdf5;
+  --color-lock-border: #a7f3d0;
+  --color-lock-muted:  #6ee7b7;
+  --color-lock-text:   #065f46;
+
+  --color-unlock:      #0369a1;
+  --color-unlock-bg:   #f0f9ff;
+  --color-unlock-border:#bae6fd;
+  --color-unlock-muted:#7dd3fc;
+  --color-unlock-text: #0c4a6e;
+
+  --color-inspect:     #c2610a;
+  --color-inspect-bg:  #fff7ed;
+  --color-inspect-border:#fed7aa;
+  --color-inspect-muted:#fdba74;
+  --color-inspect-text:#92400e;
+
+  --color-orgasm:      #be185d;
+  --color-orgasm-bg:   #fdf2f8;
+  --color-orgasm-border:#fbcfe8;
+  --color-orgasm-muted:#f9a8d4;
+  --color-orgasm-text: #9d174d;
+
+  --color-request:     #4338ca;
+  --color-request-bg:  #eef2ff;
+  --color-request-border:#c7d2fe;
+  --color-request-muted:#a5b4fc;
+  --color-request-text:#3730a3;
+
+  --color-warn:        #c2410c;
+  --color-warn-bg:     #fff5f0;
+  --color-warn-border: #fed7aa;
+  --color-warn-muted:  #fdba74;
+  --color-warn-text:   #9a3412;
+
+  --color-sperrzeit:   #7c3aed;
+  --color-sperrzeit-bg:#faf5ff;
+  --color-sperrzeit-border:#ddd6fe;
+  --color-sperrzeit-muted:#c4b5fd;
+  --color-sperrzeit-text:#5b21b6;
+
+  --color-ok:          #0d9151;
+  --color-ok-bg:       #ecfdf5;
+  --color-ok-border:   #a7f3d0;
+  --color-ok-muted:    #6ee7b7;
+  --color-ok-text:     #065f46;
+
+  /* Header — Indigo accent (admin) on light */
+  --header-bg:          #eef2ff;
+  --header-border:      #c7d2fe;
+  --header-text:        #3730a3;
+  --header-avatar-bg:   #ddd6fe;
+  --header-avatar-text: #3730a3;
+
+  /* Navigation — Indigo accent (admin) on light */
+  --nav-bg:            #eef2ff;
+  --nav-border:        #c7d2fe;
+  --nav-active-bg:     #ddd6fe;
+  --nav-active-text:   #3730a3;
+  --nav-inactive-text: #3730a3aa;
+  --nav-inactive-hover:#3730a3;
+  --nav-icon-bg:       #ddd6fe;
+  --nav-icon-active-bg:#4f46e5;
+
+  /* Interactive — Indigo primary */
+  --focus-ring:        #6366f1;
+  --btn-primary-bg:    #4f46e5;
+  --btn-primary-hover: #4338ca;
+  --btn-primary-text:  #ffffff;
+
+  /* Semantic button fills — same as user light */
+  --btn-lock:          #059669;
+  --btn-unlock:        #0284c7;
+  --btn-inspect:       #d97706;
+  --btn-orgasm:        #db2777;
+  --btn-request:       #4f46e5;
+  --btn-sperrzeit:     #7c3aed;
+  --btn-warn:          #dc2626;
+  --btn-ok:            #059669;
+
+  /* Elevation — same as user light */
+  --shadow-card:   0 1px 3px 0 rgb(0 0 0 / 0.07), 0 1px 2px -1px rgb(0 0 0 / 0.05);
+  --shadow-raised: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --shadow-overlay:0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.07);
+}
+
+
+/* ─────────────────────────────────────────────
+   SPACING TOKENS (4px base grid)
+   Applied globally, theme-independent
+   ───────────────────────────────────────────── */
+:root {
+  --space-0\.5: 0.125rem; /* 2px */
+  --space-1:    0.25rem;  /* 4px */
+  --space-1\.5: 0.375rem; /* 6px */
+  --space-2:    0.5rem;   /* 8px */
+  --space-3:    0.75rem;  /* 12px */
+  --space-4:    1rem;     /* 16px */
+  --space-5:    1.25rem;  /* 20px */
+  --space-6:    1.5rem;   /* 24px */
+  --space-8:    2rem;     /* 32px */
+  --space-10:   2.5rem;   /* 40px */
+  --space-12:   3rem;     /* 48px */
+  --space-16:   4rem;     /* 64px */
+}
+
+
+/* ─────────────────────────────────────────────
+   ANIMATION TOKENS
+   ───────────────────────────────────────────── */
+:root {
+  /* Durations */
+  --duration-instant:  100ms;
+  --duration-fast:     150ms;
+  --duration-normal:   300ms;
+  --duration-slow:     500ms;
+  --duration-emphasis: 800ms;
+
+  /* Easing curves */
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in:      cubic-bezier(0.4, 0, 1, 1);
+  --ease-out:     cubic-bezier(0, 0, 0.2, 1);
+  --ease-spring:  cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-bounce:  cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+
+/* ─────────────────────────────────────────────
+   TAILWIND v4 THEME BRIDGE
+   Exposes CSS vars as Tailwind design tokens
+   ───────────────────────────────────────────── */
+@theme inline {
+  /* Canvas */
+  --color-background:         var(--background);
+  --color-background-subtle:  var(--background-subtle);
+  --color-surface:            var(--surface);
+  --color-surface-raised:     var(--surface-raised);
+  --color-surface-overlay:    var(--surface-overlay);
+
+  /* Content */
+  --color-border:             var(--border);
+  --color-border-subtle:      var(--border-subtle);
+  --color-border-strong:      var(--border-strong);
+
+  --color-foreground:         var(--foreground);
+  --color-foreground-muted:   var(--foreground-muted);
+  --color-foreground-faint:   var(--foreground-faint);
+  --color-foreground-invert:  var(--foreground-invert);
+
+  /* Semantic: Lock */
+  --color-lock:               var(--color-lock);
+  --color-lock-bg:            var(--color-lock-bg);
+  --color-lock-border:        var(--color-lock-border);
+  --color-lock-muted:         var(--color-lock-muted);
+  --color-lock-text:          var(--color-lock-text);
+
+  /* Semantic: Unlock */
+  --color-unlock:             var(--color-unlock);
+  --color-unlock-bg:          var(--color-unlock-bg);
+  --color-unlock-border:      var(--color-unlock-border);
+  --color-unlock-muted:       var(--color-unlock-muted);
+  --color-unlock-text:        var(--color-unlock-text);
+
+  /* Semantic: Inspect */
+  --color-inspect:            var(--color-inspect);
+  --color-inspect-bg:         var(--color-inspect-bg);
+  --color-inspect-border:     var(--color-inspect-border);
+  --color-inspect-muted:      var(--color-inspect-muted);
+  --color-inspect-text:       var(--color-inspect-text);
+
+  /* Semantic: Orgasm */
+  --color-orgasm:             var(--color-orgasm);
+  --color-orgasm-bg:          var(--color-orgasm-bg);
+  --color-orgasm-border:      var(--color-orgasm-border);
+  --color-orgasm-muted:       var(--color-orgasm-muted);
+  --color-orgasm-text:        var(--color-orgasm-text);
+
+  /* Semantic: Request */
+  --color-request:            var(--color-request);
+  --color-request-bg:         var(--color-request-bg);
+  --color-request-border:     var(--color-request-border);
+  --color-request-muted:      var(--color-request-muted);
+  --color-request-text:       var(--color-request-text);
+
+  /* Semantic: Warn */
+  --color-warn:               var(--color-warn);
+  --color-warn-bg:            var(--color-warn-bg);
+  --color-warn-border:        var(--color-warn-border);
+  --color-warn-muted:         var(--color-warn-muted);
+  --color-warn-text:          var(--color-warn-text);
+
+  /* Semantic: Sperrzeit */
+  --color-sperrzeit:          var(--color-sperrzeit);
+  --color-sperrzeit-bg:       var(--color-sperrzeit-bg);
+  --color-sperrzeit-border:   var(--color-sperrzeit-border);
+  --color-sperrzeit-muted:    var(--color-sperrzeit-muted);
+  --color-sperrzeit-text:     var(--color-sperrzeit-text);
+
+  /* Semantic: OK */
+  --color-ok:                 var(--color-ok);
+  --color-ok-bg:              var(--color-ok-bg);
+  --color-ok-border:          var(--color-ok-border);
+  --color-ok-muted:           var(--color-ok-muted);
+  --color-ok-text:            var(--color-ok-text);
+
+  /* Header */
+  --color-header-bg:           var(--header-bg);
+  --color-header-border:       var(--header-border);
+  --color-header-text:         var(--header-text);
+  --color-header-avatar-bg:    var(--header-avatar-bg);
+  --color-header-avatar-text:  var(--header-avatar-text);
+
+  /* Navigation */
+  --color-nav-bg:             var(--nav-bg);
+  --color-nav-border:         var(--nav-border);
+  --color-nav-active-bg:      var(--nav-active-bg);
+  --color-nav-active-text:    var(--nav-active-text);
+  --color-nav-inactive-text:  var(--nav-inactive-text);
+  --color-nav-inactive-hover: var(--nav-inactive-hover);
+  --color-nav-icon-bg:        var(--nav-icon-bg);
+  --color-nav-icon-active-bg: var(--nav-icon-active-bg);
+
+  /* Interactive */
+  --color-btn-primary:        var(--btn-primary-bg);
+  --color-btn-primary-hover:  var(--btn-primary-hover);
+  --color-btn-primary-text:   var(--btn-primary-text);
+  --color-focus-ring:         var(--focus-ring);
+
+  /* Semantic button fills */
+  --color-btn-lock:            var(--btn-lock);
+  --color-btn-unlock:          var(--btn-unlock);
+  --color-btn-inspect:         var(--btn-inspect);
+  --color-btn-orgasm:          var(--btn-orgasm);
+  --color-btn-request:         var(--btn-request);
+  --color-btn-sperrzeit:       var(--btn-sperrzeit);
+  --color-btn-warn:            var(--btn-warn);
+  --color-btn-ok:              var(--btn-ok);
+
+  /* Typography */
+  --font-sans:      var(--font-geist-sans);
+  --font-mono:      var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* Elevation */
+  --shadow-card:    var(--shadow-card);
+  --shadow-raised:  var(--shadow-raised);
+  --shadow-overlay: var(--shadow-overlay);
+
+  /* Animation durations */
+  --duration-instant:  var(--duration-instant);
+  --duration-fast:     var(--duration-fast);
+  --duration-normal:   var(--duration-normal);
+  --duration-slow:     var(--duration-slow);
+  --duration-emphasis: var(--duration-emphasis);
+
+  /* Animation easing */
+  --ease-default:  var(--ease-default);
+  --ease-in:       var(--ease-in);
+  --ease-out:      var(--ease-out);
+  --ease-spring:   var(--ease-spring);
+  --ease-bounce:   var(--ease-bounce);
+}
+
+
+/* ─────────────────────────────────────────────
+   BASE STYLES
+   ───────────────────────────────────────────── */
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Focus-visible: keyboard-only focus ring */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Safe area for iOS standalone PWA */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+
+/* ─────────────────────────────────────────────
+   KEYFRAME ANIMATIONS
+   ───────────────────────────────────────────── */
+
+/* Bottom sheet slide-up */
+@keyframes slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.animate-slide-up {
+  animation: slide-up 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Modal dialog enter */
+@keyframes modal-enter {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.animate-modal-enter {
+  animation: modal-enter 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+/* Backdrop fade */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fade-in 300ms ease;
+}
+
+/* View Transitions (Chrome 111+, Safari 18+) */
+@keyframes fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+::view-transition-old(root) {
+  animation: var(--duration-fast) var(--ease-out) fade-out;
+}
+::view-transition-new(root) {
+  animation: var(--duration-fast) var(--ease-out) fade-in;
+}
+
+/* Toast enter (slide down from top) */
+@keyframes toast-enter {
+  from { transform: translateY(-16px); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+@keyframes toast-exit {
+  from { transform: translateY(0);     opacity: 1; }
+  to   { transform: translateY(-8px);  opacity: 0; }
+}
+.animate-toast-enter {
+  animation: toast-enter 300ms cubic-bezier(0, 0, 0.2, 1);
+}
+.animate-toast-exit {
+  animation: toast-exit 200ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Success checkmark */
+@keyframes checkmark-circle {
+  0%   { transform: scale(0); }
+  60%  { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+@keyframes checkmark-draw {
+  from { stroke-dashoffset: 100; }
+  to   { stroke-dashoffset: 0; }
+}
+
+/* Spinner rotation */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+
+/* ─────────────────────────────────────────────
+   REDUCED MOTION
+   ───────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

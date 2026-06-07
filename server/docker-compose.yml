@@ -1,0 +1,22 @@
+services:
+  heimdall-server:
+    build: .
+    container_name: heimdall-server
+    init: true
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    env_file:
+      - .env
+    volumes:
+      - heimdall-data:/app/data
+    # Traefik labels (uncomment and adjust for your setup):
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.heimdall.rule=Host(`heimdall.trublue.ch`)"
+    #   - "traefik.http.routers.heimdall.entrypoints=websecure"
+    #   - "traefik.http.routers.heimdall.tls.certresolver=letsencrypt"
+    #   - "traefik.http.services.heimdall.loadbalancer.server.port=3000"
+
+volumes:
+  heimdall-data:

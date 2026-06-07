@@ -1,0 +1,39 @@
+import { NextRequest, NextResponse } from "next/server";
+import { authenticateDevice, extractBearerToken, effectiveLockUntil } from "@/lib/device-auth";
+import { prisma } from "@/lib/prisma";
+
+function ts() { return new Date().toISOString(); }
+
+export async function POST(req: NextRequest) {
+  const rawToken = extractBearerToken(req.headers.get("authorization"));
+  if (!rawToken) {
+    return NextResponse.json({ error: "Missing token" }, { status: 401 });
+  }
+
+  const device = await authenticateDevice(rawToken);
+  if (!device) {
+    console.warn(`${ts()} [box/register] Invalid token`);
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const now = new Date();
+
+  // Ensure a default LockPolicy exists
+  if (!device.policy) {
+    await prisma.lockPolicy.create({
+      data: { deviceId: device.id },
+    });
+    await prisma.device.findUnique({ where: { id: device.id }, include: { policy: true } });
+  }
+
+  const lockUntil = effectiveLockUntil(device.policy, now);
+  console.log(`${ts()} [box/register] Device "${device.name}" registered`);
+
+  return NextResponse.json({
+    lockUntil: lockUntil?.toISOString() ?? null,
+    offlineOpenHours: device.policy?.offlineOpenHours ?? 24,
+    hardCapHours: device.policy?.hardCapHours ?? null,
+    timeUTC: now.toISOString(),
+    fwTarget: null,
+  });
+}
