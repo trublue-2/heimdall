@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { Lock, Activity, Settings, Users, LogOut } from "lucide-react";
-import { signOut } from "@/lib/auth";
+import { Lock } from "lucide-react";
+import { handleSignOut } from "@/lib/actions";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -28,17 +28,18 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <Link href="/dashboard/events" className="px-3 py-1.5 text-sm rounded-lg hover:bg-[var(--surface-raised)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">
               Events
             </Link>
+            <Link href="/dashboard/devices" className="px-3 py-1.5 text-sm rounded-lg hover:bg-[var(--surface-raised)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">
+              Geräte
+            </Link>
+            <Link href="/dashboard/settings" className="px-3 py-1.5 text-sm rounded-lg hover:bg-[var(--surface-raised)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">
+              Einstellungen
+            </Link>
             {role === "admin" && (
-              <>
-                <Link href="/dashboard/devices/new" className="px-3 py-1.5 text-sm rounded-lg hover:bg-[var(--surface-raised)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">
-                  Gerät +
-                </Link>
-                <Link href="/admin/users" className="px-3 py-1.5 text-sm rounded-lg hover:bg-[var(--surface-raised)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">
-                  Konten
-                </Link>
-              </>
+              <Link href="/admin/users" className="px-3 py-1.5 text-sm rounded-lg hover:bg-[var(--surface-raised)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">
+                Konten
+              </Link>
             )}
-            <form action={async () => { "use server"; await signOut({ redirectTo: "/login" }); }}>
+            <form action={handleSignOut}>
               <button type="submit" className="px-3 py-1.5 text-sm rounded-lg hover:bg-[var(--surface-raised)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">
                 Abmelden
               </button>

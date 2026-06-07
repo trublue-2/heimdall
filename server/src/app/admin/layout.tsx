@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Lock } from "lucide-react";
-import { signOut } from "@/lib/auth";
+import { handleSignOut } from "@/lib/actions";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -25,7 +25,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <Link href="/admin/users" className="px-3 py-1.5 text-sm rounded-lg hover:bg-[var(--surface-raised)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">
               Konten
             </Link>
-            <form action={async () => { "use server"; await signOut({ redirectTo: "/login" }); }}>
+            <form action={handleSignOut}>
               <button type="submit" className="px-3 py-1.5 text-sm rounded-lg hover:bg-[var(--surface-raised)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">
                 Abmelden
               </button>
