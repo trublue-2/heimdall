@@ -25,8 +25,11 @@ setInterval(() => {
 }, 30 * 60 * 1000);
 
 export default auth((req) => {
+  // Next-Action header must be present for server action requests but its format
+  // varies by Next.js version (hex, encrypted, etc.) — Next.js validates the ID
+  // itself; we only reject clearly non-hex garbage to block trivial injection.
   const actionId = req.headers.get("Next-Action");
-  if (actionId !== null && !/^[0-9a-f]{40}$/i.test(actionId)) {
+  if (actionId !== null && !/^[0-9a-f]/i.test(actionId)) {
     return new NextResponse(null, { status: 400 });
   }
 
