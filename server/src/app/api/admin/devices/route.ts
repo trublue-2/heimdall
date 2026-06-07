@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/authGuards";
 import { prisma } from "@/lib/prisma";
-import bcrypt from "bcryptjs";
-import { generateProvisioningToken } from "@/lib/utils";
+import { generateProvisioningToken, hashProvisioningToken } from "@/lib/utils";
 
 export async function GET() {
   const { response } = await requireAdminApi();
@@ -33,8 +32,7 @@ export async function POST(req: NextRequest) {
   if (!name) return NextResponse.json({ error: "Name required" }, { status: 400 });
 
   const rawToken = generateProvisioningToken();
-  const normalized = rawToken.replace(/-/g, "").toUpperCase();
-  const tokenHash = await bcrypt.hash(normalized, 12);
+  const tokenHash = await hashProvisioningToken(rawToken);
 
   const device = await prisma.device.create({
     data: { name, tokenHash },

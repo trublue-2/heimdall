@@ -1,8 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/authGuards";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import bcrypt from "bcryptjs";
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ userId: string }> }
+) {
+  const { response } = await requireAdminApi();
+  if (response) return response;
+
+  const { userId } = await params;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, username: true, role: true, createdAt: true },
+  });
+
+  if (!user) return NextResponse.json({ error: "Benutzer nicht gefunden" }, { status: 404 });
+  return NextResponse.json(user);
+}
 
 export async function PATCH(
   req: NextRequest,
@@ -12,8 +30,7 @@ export async function PATCH(
   if (response) return response;
 
   const { userId } = await params;
-  const body = await req.json();
-  const { password } = body as { password?: string };
+  const { password } = (await req.json()) as { password?: string };
 
   if (!password || password.length < 8) {
     return NextResponse.json(
@@ -22,13 +39,16 @@ export async function PATCH(
     );
   }
 
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) {
-    return NextResponse.json({ error: "Benutzer nicht gefunden" }, { status: 404 });
-  }
-
   const passwordHash = await bcrypt.hash(password, 12);
-  await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+
+  try {
+    await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
+      return NextResponse.json({ error: "Benutzer nicht gefunden" }, { status: 404 });
+    }
+    throw e;
+  }
 
   return new NextResponse(null, { status: 204 });
 }

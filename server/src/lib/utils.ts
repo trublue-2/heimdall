@@ -1,3 +1,11 @@
+import bcrypt from "bcryptjs";
+
+/** Hash a provisioning token for DB storage (strips dashes, uppercases, then bcrypt). */
+export async function hashProvisioningToken(rawToken: string): Promise<string> {
+  const normalized = rawToken.replace(/-/g, "").toUpperCase();
+  return bcrypt.hash(normalized, 12);
+}
+
 export function formatDateTime(date: Date | string | null | undefined): string {
   if (!date) return "—";
   return new Date(date).toLocaleString("de-CH", {

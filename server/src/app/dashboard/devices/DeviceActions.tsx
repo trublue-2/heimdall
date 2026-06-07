@@ -14,10 +14,8 @@ export function DeviceActions({ deviceId, deviceName }: { deviceId: string; devi
     if (!confirm(`Gerät "${deviceName}" wirklich löschen? Alle Events und die Policy werden ebenfalls gelöscht.`)) return;
     setDeleting(true);
     const res = await fetch(`/api/admin/devices/${deviceId}`, { method: "DELETE" });
-    if (!res.ok) {
-      alert("Fehler beim Löschen");
-    }
     setDeleting(false);
+    if (!res.ok) { alert("Fehler beim Löschen"); return; }
     router.refresh();
   }
 

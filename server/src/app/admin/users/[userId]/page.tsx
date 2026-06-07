@@ -1,11 +1,12 @@
 "use client";
 import { useState, FormEvent, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { Card } from "@/app/components/Card";
 import { Button } from "@/app/components/Button";
 import { Input } from "@/app/components/Input";
 import { FormError } from "@/app/components/FormError";
-import { CheckCircle, ArrowLeft } from "lucide-react";
+import { FormSuccess } from "@/app/components/FormSuccess";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
 interface UserInfo {
@@ -15,9 +16,7 @@ interface UserInfo {
 }
 
 export default function UserDetailPage() {
-  const params = useParams<{ userId: string }>();
-  const router = useRouter();
-  const userId = params.userId;
+  const { userId } = useParams<{ userId: string }>();
 
   const [user, setUser] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,14 +28,9 @@ export default function UserDetailPage() {
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    // Fetch user info from the list endpoint
-    fetch("/api/admin/users")
-      .then((r) => r.json())
-      .then((users: UserInfo[]) => {
-        const found = users.find((u) => u.id === userId) ?? null;
-        setUser(found);
-        setLoading(false);
-      })
+    fetch(`/api/admin/users/${userId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: UserInfo | null) => { setUser(data); setLoading(false); })
       .catch(() => setLoading(false));
   }, [userId]);
 
@@ -73,7 +67,7 @@ export default function UserDetailPage() {
   }
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto px-4 py-6 max-w-md">
+    <div className="space-y-4 max-w-md mx-auto px-4 py-6">
       <div className="flex items-center gap-3">
         <Link href="/admin/users" className="text-[var(--foreground-muted)] hover:text-[var(--foreground)]">
           <ArrowLeft className="h-4 w-4" />
@@ -119,22 +113,11 @@ export default function UserDetailPage() {
             </div>
 
             <FormError message={error} />
+            {success && <FormSuccess message="Passwort erfolgreich gesetzt." />}
 
-            {success && (
-              <div className="flex items-center gap-2 text-sm text-[var(--color-unlock)] bg-[var(--color-unlock-bg)] border border-[var(--color-unlock-border)] rounded-xl px-3 py-2">
-                <CheckCircle className="h-4 w-4 shrink-0" />
-                Passwort erfolgreich gesetzt.
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <Button type="submit" loading={saving} className="flex-1">
-                Passwort setzen
-              </Button>
-              <Button type="button" variant="secondary" onClick={() => router.push("/admin/users")}>
-                Abbrechen
-              </Button>
-            </div>
+            <Button type="submit" loading={saving} className="w-full">
+              Passwort setzen
+            </Button>
           </form>
         </Card>
       )}

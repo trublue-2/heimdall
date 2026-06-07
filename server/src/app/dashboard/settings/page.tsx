@@ -4,7 +4,7 @@ import { Card } from "@/app/components/Card";
 import { Button } from "@/app/components/Button";
 import { Input } from "@/app/components/Input";
 import { FormError } from "@/app/components/FormError";
-import { CheckCircle } from "lucide-react";
+import { FormSuccess } from "@/app/components/FormSuccess";
 
 export default function SettingsPage() {
   const [currentPassword, setCurrentPassword] = useState("");
@@ -91,12 +91,7 @@ export default function SettingsPage() {
 
           <FormError message={error} />
 
-          {success && (
-            <div className="flex items-center gap-2 text-sm text-[var(--color-unlock)] bg-[var(--color-unlock-bg)] border border-[var(--color-unlock-border)] rounded-xl px-3 py-2">
-              <CheckCircle className="h-4 w-4 shrink-0" />
-              Passwort erfolgreich geändert.
-            </div>
-          )}
+          {success && <FormSuccess message="Passwort erfolgreich geändert." />}
 
           <Button type="submit" loading={saving} className="w-full">
             Passwort speichern

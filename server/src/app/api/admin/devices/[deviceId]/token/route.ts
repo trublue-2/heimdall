@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/authGuards";
 import { prisma } from "@/lib/prisma";
-import bcrypt from "bcryptjs";
-import { generateProvisioningToken } from "@/lib/utils";
+import { Prisma } from "@prisma/client";
+import { generateProvisioningToken, hashProvisioningToken } from "@/lib/utils";
 
 export async function POST(
   _req: NextRequest,
@@ -12,20 +12,19 @@ export async function POST(
   if (response) return response;
 
   const { deviceId } = await params;
-
-  const device = await prisma.device.findUnique({ where: { id: deviceId } });
-  if (!device) {
-    return NextResponse.json({ error: "Gerät nicht gefunden" }, { status: 404 });
-  }
-
   const rawToken = generateProvisioningToken();
-  const normalized = rawToken.replace(/-/g, "").toUpperCase();
-  const tokenHash = await bcrypt.hash(normalized, 12);
+  const [tokenHash] = await Promise.all([
+    hashProvisioningToken(rawToken),
+  ]);
 
-  await prisma.device.update({
-    where: { id: deviceId },
-    data: { tokenHash },
-  });
+  try {
+    await prisma.device.update({ where: { id: deviceId }, data: { tokenHash } });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
+      return NextResponse.json({ error: "Gerät nicht gefunden" }, { status: 404 });
+    }
+    throw e;
+  }
 
   return NextResponse.json({ token: rawToken });
 }

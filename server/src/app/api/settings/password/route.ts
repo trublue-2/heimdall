@@ -23,13 +23,16 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Benutzer nicht gefunden" }, { status: 404 });
   }
 
-  const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+  // Run compare and hash in parallel — hash result discarded on wrong password
+  const [valid, passwordHash] = await Promise.all([
+    bcrypt.compare(currentPassword, user.passwordHash),
+    bcrypt.hash(newPassword, 12),
+  ]);
+
   if (!valid) {
     return NextResponse.json({ error: "Aktuelles Passwort ist falsch" }, { status: 403 });
   }
 
-  const passwordHash = await bcrypt.hash(newPassword, 12);
   await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
-
   return new NextResponse(null, { status: 204 });
 }
