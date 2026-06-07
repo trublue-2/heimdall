@@ -15,10 +15,17 @@ services:
       - ./data:/app/data
     labels:
       - "traefik.enable=true"
+      # HTTPS router
       - "traefik.http.routers.heimdall.rule=Host(`heimdall.trublue.ch`)"
       - "traefik.http.routers.heimdall.entrypoints=websecure"
       - "traefik.http.routers.heimdall.tls.certresolver=letsencrypt"
       - "traefik.http.services.heimdall.loadbalancer.server.port=3000"
+      # HTTP → HTTPS redirect
+      - "traefik.http.routers.heimdall-http.rule=Host(`heimdall.trublue.ch`)"
+      - "traefik.http.routers.heimdall-http.entrypoints=web"
+      - "traefik.http.routers.heimdall-http.middlewares=heimdall-https-redirect"
+      - "traefik.http.middlewares.heimdall-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.heimdall-https-redirect.redirectscheme.permanent=true"
     networks:
       - traefik
 
