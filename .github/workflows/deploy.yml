@@ -93,6 +93,7 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           envs: DEPLOY_PATH
           script: |
+            DEPLOY_PATH="$(printf '%s' "$DEPLOY_PATH" | tr -d '\n\r')"
             cd "$DEPLOY_PATH"
             echo "→ Image pullen ..."
             docker compose pull
