@@ -1,10 +1,6 @@
 services:
   app:
-    build:
-      context: .
-      args:
-        BUILD_DATE: ${BUILD_DATE:-}
-    image: heimdall-server:latest
+    image: ghcr.io/trublue-2/heimdall:latest
     container_name: heimdall
     init: true
     restart: unless-stopped
