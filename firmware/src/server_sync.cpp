@@ -64,8 +64,15 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   JsonDocument req;
   req["token"] = creds.deviceToken;
   JsonObject s = req["state"].to<JsonObject>();
-  s["locked"]     = state.locked;
-  s["since"]      = (long long)state.lockedSince;
+  s["locked"]  = state.locked;
+  // "since" nur senden wenn gesperrt und Timestamp bekannt (Server erwartet ISO-8601-String)
+  if (state.locked && state.lockedSince > 0) {
+    char sinceStr[32];
+    struct tm tm_info;
+    gmtime_r(&state.lockedSince, &tm_info);
+    strftime(sinceStr, sizeof(sinceStr), "%Y-%m-%dT%H:%M:%SZ", &tm_info);
+    s["since"] = sinceStr;
+  }
   s["battery"]    = 0;         // TODO: Failsafe::batteryPercent()
   s["boltPos"]    = "UNKNOWN"; // TODO: Endlagensensor
   s["fwVersion"]  = FW_VERSION;
