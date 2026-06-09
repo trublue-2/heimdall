@@ -23,6 +23,7 @@ const syncBodySchema = z.object({
     wakeReason: z.string().max(64).optional(),
     wifiSsid: z.string().max(64).optional(),
     wifiRssi: z.number().int().min(-120).max(0).optional(),
+    charging: z.boolean().optional(),
   }),
 });
 
@@ -73,8 +74,9 @@ export async function POST(req: NextRequest) {
         fwVersion: state.fwVersion ?? device.fwVersion,
         lastSyncAt: now,
         wakeReason: state.wakeReason ?? null,
-        wifiSsid: state.wifiSsid ?? null,
-        wifiRssi: state.wifiRssi ?? null,
+        wifiSsid: state.wifiSsid  ?? null,
+        wifiRssi: state.wifiRssi  ?? null,
+        charging: state.charging  ?? null,
       },
     });
 

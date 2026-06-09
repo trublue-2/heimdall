@@ -16,6 +16,7 @@ struct BoxState {
   time_t lastSyncAt;   // Unix-Epoch des letzten erfolgreichen Syncs
   char   wakeReason[32];
   int    batteryPct;   // Aktuell gemessen, vor WiFi-Init (ADC ungestört)
+  bool   charging;     // true wenn Akku lädt (Trend aus NVS-Vorwert)
 };
 
 // Letzte vom Server empfangene Policy.

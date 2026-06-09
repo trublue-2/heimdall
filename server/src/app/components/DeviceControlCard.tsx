@@ -25,6 +25,7 @@ export interface DeviceControlCardProps {
   wifiSsid: string | null;
   wifiRssi: number | null;
   wakeReason: string | null;
+  charging: boolean | null;
 }
 
 function toLocalDatetime(iso: string | null): string {
@@ -129,7 +130,7 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <Stat label="Akku" value={props.battery != null ? `${props.battery} %` : "—"} />
+        <BatteryStat battery={props.battery} charging={props.charging} />
         <SyncStat lastSyncAt={props.lastSyncAt} />
         {locked && lockUntil && (
           <Stat label="Geschlossen bis" value={formatDateTime(lockUntil)} highlight />
@@ -201,6 +202,21 @@ function Stat({ label, value, highlight }: { label: string; value: string; highl
   );
 }
 
+function BatteryStat({ battery, charging }: { battery: number | null; charging: boolean | null }) {
+  if (battery == null) return <Stat label="Akku" value="—" />;
+  const icon  = charging === true  ? "⚡" : charging === false ? "↓" : "";
+  const label = charging === true  ? "Lädt" : charging === false ? "Entlädt" : "";
+  return (
+    <div className="bg-[var(--background-subtle)] rounded-xl px-3 py-2">
+      <p className="text-xs text-[var(--foreground-faint)] mb-0.5">Akku</p>
+      <p className="text-sm font-medium flex items-center gap-1">
+        {battery} %
+        {icon && <span title={label}>{icon}</span>}
+      </p>
+    </div>
+  );
+}
+
 function SyncStat({ lastSyncAt }: { lastSyncAt: string | null }) {
   const fresh = lastSyncAt
     ? Date.now() - new Date(lastSyncAt).getTime() < 60_000
@@ -215,7 +231,14 @@ function SyncStat({ lastSyncAt }: { lastSyncAt: string | null }) {
             <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--color-lock)]" />
           </span>
         )}
-        <span className="text-sm font-medium">{formatDuration(lastSyncAt)}</span>
+        <span className="text-sm font-medium">
+          {formatDuration(lastSyncAt)}
+          {lastSyncAt && (
+            <span className="text-[var(--foreground-faint)] font-normal">
+              {" "}({formatDateTime(lastSyncAt)})
+            </span>
+          )}
+        </span>
       </div>
     </div>
   );

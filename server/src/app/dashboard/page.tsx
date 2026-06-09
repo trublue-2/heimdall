@@ -72,6 +72,7 @@ export default async function DashboardPage() {
             wifiSsid={device.wifiSsid ?? null}
             wifiRssi={device.wifiRssi ?? null}
             wakeReason={device.wakeReason ?? null}
+            charging={device.charging ?? null}
           />
         );
       })}

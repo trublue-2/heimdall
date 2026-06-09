@@ -102,7 +102,11 @@ void setup() {
   bool hasState = NVS::loadState(gBox);
   NVS::loadPolicy(gPolicy);
   strlcpy(gBox.wakeReason, reason, sizeof(gBox.wakeReason));
+
+  // Lade-Status: Vergleich aktueller Messwert vs. gespeicherter Vorwert (≥2% Schwelle)
+  int prevBatt = gBox.batteryPct; // aus NVS (-1 = noch nie gespeichert)
   gBox.batteryPct = batt;
+  gBox.charging = (prevBatt >= 0) && (batt >= prevBatt + 2);
 
   // LED sofort aus gecachtem NVS-Zustand setzen — vor dem Sync (der bis zu 15s dauert)
   digitalWrite(PIN_LED, (hasState && gBox.locked) ? HIGH : LOW);

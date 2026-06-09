@@ -74,6 +74,7 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
     s["since"] = sinceStr;
   }
   s["battery"]    = state.batteryPct;
+  s["charging"]   = state.charging;
   s["boltPos"]    = "UNKNOWN"; // TODO: Endlagensensor
   s["fwVersion"]  = FW_VERSION;
   s["wakeReason"] = state.wakeReason;

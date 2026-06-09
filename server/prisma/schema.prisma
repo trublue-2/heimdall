@@ -32,6 +32,7 @@ model Device {
   wakeReason  String?
   wifiSsid    String?
   wifiRssi    Int?
+  charging    Boolean?
   policy      LockPolicy?
   events      DeviceEvent[]
 }
