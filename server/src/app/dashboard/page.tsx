@@ -69,6 +69,9 @@ export default async function DashboardPage() {
             lockUntil={device.policy?.lockUntil?.toISOString() ?? null}
             offlineOpenHours={device.policy?.offlineOpenHours ?? 24}
             hardCapHours={device.policy?.hardCapHours ?? null}
+            wifiSsid={device.wifiSsid ?? null}
+            wifiRssi={device.wifiRssi ?? null}
+            wakeReason={device.wakeReason ?? null}
           />
         );
       })}

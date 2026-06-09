@@ -30,6 +30,8 @@ model Device {
   fwVersion   String?
   lastSyncAt  DateTime?
   wakeReason  String?
+  wifiSsid    String?
+  wifiRssi    Int?
   policy      LockPolicy?
   events      DeviceEvent[]
 }

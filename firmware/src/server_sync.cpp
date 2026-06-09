@@ -77,6 +77,8 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   s["boltPos"]    = "UNKNOWN"; // TODO: Endlagensensor
   s["fwVersion"]  = FW_VERSION;
   s["wakeReason"] = state.wakeReason;
+  s["wifiSsid"]   = WiFi.SSID().c_str();
+  s["wifiRssi"]   = WiFi.RSSI();
 
   String body;
   serializeJson(req, body);

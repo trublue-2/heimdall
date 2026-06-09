@@ -22,9 +22,11 @@ export interface DeviceControlCardProps {
   lockUntil: string | null;
   offlineOpenHours: number;
   hardCapHours: number | null;
+  wifiSsid: string | null;
+  wifiRssi: number | null;
+  wakeReason: string | null;
 }
 
-/** Konvertiert ISO-UTC-String in datetime-local-Inputwert (Localtime, kein Z). */
 function toLocalDatetime(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -33,19 +35,43 @@ function toLocalDatetime(iso: string | null): string {
     .slice(0, 16);
 }
 
-/** Gibt datetime-local-Default zurück: jetzt + 24 h, auf ganze Stunde gerundet. */
 function defaultLockUntil(): string {
   const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
   d.setMinutes(0, 0, 0);
   return toLocalDatetime(d.toISOString());
 }
 
+function rssiLabel(rssi: number): string {
+  if (rssi >= -50) return "Ausgezeichnet";
+  if (rssi >= -60) return "Gut";
+  if (rssi >= -70) return "Mittel";
+  return "Schwach";
+}
+
+function RssiBars({ rssi }: { rssi: number }) {
+  const bars = rssi >= -50 ? 4 : rssi >= -60 ? 3 : rssi >= -70 ? 2 : 1;
+  return (
+    <span className="inline-flex items-end gap-[2px] h-3.5" title={`${rssi} dBm`}>
+      {[1, 2, 3, 4].map((b) => (
+        <span
+          key={b}
+          className={`inline-block w-[3px] rounded-sm ${b <= bars ? "bg-[var(--color-lock)]" : "bg-[var(--border)]"}`}
+          style={{ height: `${b * 25}%` }}
+        />
+      ))}
+    </span>
+  );
+}
+
 export function DeviceControlCard(props: DeviceControlCardProps) {
   const router = useRouter();
 
-  const [locked, setLocked]       = useState(props.locked);
+  // locked kommt immer aus DB (was das Gerät zuletzt gemeldet hat).
+  // Kein optimistisches Update — Badge zeigt physischen Zustand.
+  const locked = props.locked;
+
   const [lockUntil, setLockUntil] = useState(props.lockUntil);
-  const [input, setInput]         = useState(
+  const [input, setInput] = useState(
     props.lockUntil ? toLocalDatetime(props.lockUntil) : defaultLockUntil()
   );
   const [saving, setSaving] = useState(false);
@@ -66,7 +92,6 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
       });
       if (!res.ok) throw new Error(await res.text());
       setLockUntil(lockUntilIso);
-      setLocked(lockUntilIso !== null);
       router.refresh();
     } catch (e) {
       setError(String(e));
@@ -77,7 +102,7 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
 
   return (
     <Card className="space-y-4">
-      {/* Header: Name + Status */}
+      {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className={`p-2 rounded-xl ${locked ? "bg-[var(--color-lock-bg)]" : "bg-[var(--color-unlock-bg)]"}`}>
@@ -116,13 +141,11 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
         {locked ? (
           <div className="flex items-center justify-between gap-4">
             <p className="text-sm text-[var(--foreground-muted)]">
-              Öffnet beim nächsten Sync.
+              {lockUntil
+                ? `Öffnet beim nächsten Sync nach ${formatDateTime(lockUntil)}.`
+                : "Öffnet beim nächsten Sync."}
             </p>
-            <Button
-              variant="secondary"
-              loading={saving}
-              onClick={() => patchPolicy(null)}
-            >
+            <Button variant="secondary" loading={saving} onClick={() => patchPolicy(null)}>
               Öffnen
             </Button>
           </div>
@@ -138,32 +161,42 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
                 required
               />
             </div>
-            <Button
-              loading={saving}
-              disabled={!input}
-              onClick={() => patchPolicy(new Date(input).toISOString())}
-            >
+            <Button loading={saving} disabled={!input} onClick={() => patchPolicy(new Date(input).toISOString())}>
               Schliessen
             </Button>
           </div>
         )}
         <FormError message={error} />
       </div>
+
+      {/* Debug-Info */}
+      <div className="pt-1 border-t border-[var(--border-subtle)] flex flex-wrap gap-x-4 gap-y-1">
+        {props.wifiSsid && (
+          <span className="flex items-center gap-1.5 text-xs text-[var(--foreground-faint)]">
+            {props.wifiRssi != null
+              ? <RssiBars rssi={props.wifiRssi} />
+              : <Wifi className="h-3 w-3" />}
+            <span>{props.wifiSsid}</span>
+            {props.wifiRssi != null && (
+              <span className="font-mono">{props.wifiRssi} dBm · {rssiLabel(props.wifiRssi)}</span>
+            )}
+          </span>
+        )}
+        {props.wakeReason && (
+          <span className="text-xs text-[var(--foreground-faint)]">
+            Boot: <code className="font-mono">{props.wakeReason}</code>
+          </span>
+        )}
+      </div>
     </Card>
   );
 }
 
-function Stat({
-  label, value, highlight,
-}: {
-  label: string; value: string; highlight?: boolean;
-}) {
+function Stat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div className="bg-[var(--background-subtle)] rounded-xl px-3 py-2">
       <p className="text-xs text-[var(--foreground-faint)] mb-0.5">{label}</p>
-      <p className={`text-sm font-medium ${highlight ? "text-[var(--color-lock)]" : ""}`}>
-        {value}
-      </p>
+      <p className={`text-sm font-medium ${highlight ? "text-[var(--color-lock)]" : ""}`}>{value}</p>
     </div>
   );
 }
@@ -172,7 +205,6 @@ function SyncStat({ lastSyncAt }: { lastSyncAt: string | null }) {
   const fresh = lastSyncAt
     ? Date.now() - new Date(lastSyncAt).getTime() < 60_000
     : false;
-
   return (
     <div className="bg-[var(--background-subtle)] rounded-xl px-3 py-2">
       <p className="text-xs text-[var(--foreground-faint)] mb-0.5">Letzter Sync</p>

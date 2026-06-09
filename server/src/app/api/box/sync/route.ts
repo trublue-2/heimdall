@@ -21,6 +21,8 @@ const syncBodySchema = z.object({
     boltPos: z.enum(["OPEN", "CLOSED", "UNKNOWN"]).optional(),
     fwVersion: z.string().max(32).optional(),
     wakeReason: z.string().max(64).optional(),
+    wifiSsid: z.string().max(64).optional(),
+    wifiRssi: z.number().int().min(-120).max(0).optional(),
   }),
 });
 
@@ -71,6 +73,8 @@ export async function POST(req: NextRequest) {
         fwVersion: state.fwVersion ?? device.fwVersion,
         lastSyncAt: now,
         wakeReason: state.wakeReason ?? null,
+        wifiSsid: state.wifiSsid ?? null,
+        wifiRssi: state.wifiRssi ?? null,
       },
     });
 
