@@ -1,6 +1,7 @@
 """
-PlatformIO pre-upload script: Patch-Version in config.h automatisch erhöhen.
-Läuft vor jedem `pio run -t upload` — die neue Version landet im nächsten Build.
+PlatformIO post-upload script: Patch-Version in config.h erhöhen.
+Läuft NUR nach erfolgreichem Upload — die neue Version landet im nächsten Build.
+(Post-Action statt Pre-Action: kein Hochzählen bei fehlgeschlagenem Flash.)
 """
 Import("env")
 import re, os
@@ -23,4 +24,4 @@ def bump_patch(*args, **kwargs):
         f.write(content)
     print(f"\n→ FW_VERSION bumped to {new_ver}\n")
 
-env.AddPreAction("upload", bump_patch)
+env.AddPostAction("upload", bump_patch)

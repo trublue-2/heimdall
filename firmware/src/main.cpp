@@ -31,22 +31,20 @@ static const char* wakeReasonStr() {
 
 // ── Deep-Sleep ──────────────────────────────────────────────────────────────
 static void goDeepSleep() {
-  // Timer-Wake: kurz vor Policy-Deadline aufwachen (falls gesetzt).
-  uint64_t timerUs = 0;
+  // Periodischer Sync alle WAKE_INTERVAL_S — oder früher, wenn eine
+  // Policy-Deadline näher liegt (dann genau zur Deadline aufwachen).
+  uint64_t timerS = WAKE_INTERVAL_S;
   if (gPolicy.lockUntil > 0) {
     time_t remaining = gPolicy.lockUntil - time(nullptr);
-    if (remaining > 60 && remaining < (long)(gPolicy.offlineOpenH * 3600LL)) {
-      timerUs = (uint64_t)remaining * 1000000ULL;
-    }
+    if (remaining > 60 && remaining < (long)timerS) timerS = (uint64_t)remaining;
   }
 
-  log_i("Deep-Sleep — button=GPIO%d LOW, timer=%llus",
-        PIN_BUTTON, timerUs / 1000000ULL);
+  log_i("Deep-Sleep — button=GPIO%d LOW, timer=%llus", PIN_BUTTON, timerS);
   Stepper::powerOff();
   // GPIO0 = BOOT-Button, Pull-Up → normalerweise HIGH.
   // Wake auf LOW: aufwachen wenn Button gedrückt (zieht GPIO0 auf GND).
   esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_BUTTON, LOW);
-  if (timerUs > 0) esp_sleep_enable_timer_wakeup(timerUs);
+  esp_sleep_enable_timer_wakeup(timerS * 1000000ULL);
   esp_deep_sleep_start();
 }
 
@@ -176,6 +174,10 @@ void loop() {
           gBox.lockedSince = time(nullptr);
           NVS::saveState(gBox);
           Stepper::lock();
+          gLastActivityMs = millis();
+          // Neuen Zustand sofort an Server melden — sonst zeigt das Web "Offen"
+          // bis zum nächsten Wake (Diskrepanz zur LED).
+          ServerSync::run(gCreds, gBox, gPolicy);
           gState = State::LOCKED;
         } else {
           gState = gBox.locked ? State::LOCKED : State::IDLE_OPEN;
