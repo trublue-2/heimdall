@@ -22,6 +22,15 @@ static WifiCredentials gCreds          = {};
 static BoxState        gBox            = {};
 static BoxPolicy       gPolicy         = {};
 static unsigned long   gLastActivityMs = 0;
+static bool            gBtnPrev        = false; // true = Button war letzte Runde gedrückt
+
+// LED-Sofortquittung: 3× kurz blinken (Knopfdruck angekommen).
+static void ledAck() {
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(PIN_LED, LED_ON);  delay(70);
+    digitalWrite(PIN_LED, LED_OFF); delay(70);
+  }
+}
 
 // ── Statusseite (nur aktiv solange am Strom, siehe loop) ────────────────────
 static WebServer gWeb(80);
@@ -118,16 +127,12 @@ void setup() {
   gWeb.on("/", handleStatus); // Statusseite-Route einmalig registrieren
   pinMode(PIN_LED, OUTPUT);
   digitalWrite(PIN_LED, LED_OFF);
+  pinMode(PIN_BUTTON, INPUT_PULLUP); // GPIO0: HIGH per Pull-up, LOW bei Druck
   gLastActivityMs = millis();
 
-  // Sofort-Quittung bei Knopfdruck: 3× kurz blinken, BEVOR WiFi/Sync starten.
-  // Der User vor Ort sieht damit innerhalb ~0.3 s, dass der Druck angekommen ist.
-  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) {
-    for (int i = 0; i < 3; i++) {
-      digitalWrite(PIN_LED, LED_ON);  delay(70);
-      digitalWrite(PIN_LED, LED_OFF); delay(70);
-    }
-  }
+  // Sofort-Quittung bei Knopfdruck aus dem Schlaf: 3× blinken, bevor WiFi/Sync.
+  // Der User vor Ort sieht innerhalb ~0.3 s, dass der Druck angekommen ist.
+  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) ledAck();
 
   // Batterie vor WiFi messen — ADC ist ohne WiFi-Rauschen genauer
   int batt = Failsafe::batteryPercent();
@@ -285,8 +290,24 @@ void loop() {
 
     // ── LOCKED / IDLE_OPEN ────────────────────────────────────────────────
     case State::LOCKED:
-    case State::IDLE_OPEN:
+    case State::IDLE_OPEN: {
       digitalWrite(PIN_LED, (gState == State::LOCKED) ? LED_ON : LED_OFF);
+
+      // Button im Wachzustand: fallende Flanke (HIGH→LOW) = Druck → sofort syncen.
+      // Sonst reagiert der Knopf nur aus dem Deep-Sleep (EXT0) — am USB/Idle tot.
+      bool btn = (digitalRead(PIN_BUTTON) == LOW);
+      if (btn && !gBtnPrev) {
+        delay(30); // entprellen
+        if (digitalRead(PIN_BUTTON) == LOW) {
+          log_i("Button (wach) → Sync");
+          ledAck();
+          gLastActivityMs = millis();
+          gBtnPrev = true;
+          gState = State::SYNCING;
+          break;
+        }
+      }
+      gBtnPrev = btn;
 
       if (Failsafe::isOnExternalPower(gBox)) {
         // Am Strom: nicht schlafen, Statusseite bedienen, periodisch re-syncen.
@@ -303,5 +324,6 @@ void loop() {
         delay(100);
       }
       break;
+    }
   }
 }
