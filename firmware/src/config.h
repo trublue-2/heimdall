@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.1.6"
+#define FW_VERSION "0.1.7"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Boot-sichere GPIOs ohne Strapping-Konflikt.
@@ -15,8 +15,10 @@
 #define STEPPER_STEP_DELAY_US 3000 // µs — langsamer = mehr Drehmoment; mit Last ≥3000
 
 // ── Onboard LED ────────────────────────────────────────────────────────────
-// LOLIN D32: Blaue LED auf GPIO5, active HIGH.
-#define PIN_LED 5
+// LOLIN D32: Blaue LED auf GPIO5, ACTIVE-LOW (leuchtet bei LOW-Pegel!).
+#define PIN_LED  5
+#define LED_ON   LOW
+#define LED_OFF  HIGH
 
 // ── Button ─────────────────────────────────────────────────────────────────
 // LOLIN D32: Onboard BOOT-Button auf GPIO0 (interner Pull-Up, LOW bei Druck).

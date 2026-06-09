@@ -117,7 +117,7 @@ void setup() {
   Stepper::begin();
   gWeb.on("/", handleStatus); // Statusseite-Route einmalig registrieren
   pinMode(PIN_LED, OUTPUT);
-  digitalWrite(PIN_LED, LOW);
+  digitalWrite(PIN_LED, LED_OFF);
   gLastActivityMs = millis();
 
   // Batterie vor WiFi messen — ADC ist ohne WiFi-Rauschen genauer
@@ -171,7 +171,7 @@ void setup() {
   // LED zeigt Lock-Status NUR während die Box wach ist (Knopfdruck → Status auf Abruf).
   // Bewusst KEIN gpio_hold im Deep-Sleep: spart Akku, LED erlischt im Schlaf.
   // Sofort aus gecachtem NVS-Zustand setzen — vor dem Sync (der bis zu 15s dauert).
-  digitalWrite(PIN_LED, (hasState && gBox.locked) ? HIGH : LOW);
+  digitalWrite(PIN_LED, (hasState && gBox.locked) ? LED_ON : LED_OFF);
   log_i("NVS: hasState=%d locked=%d lockedSince=%ld | LED=%d",
         hasState, gBox.locked, (long)gBox.lockedSince, (hasState && gBox.locked));
 
@@ -277,7 +277,7 @@ void loop() {
     // ── LOCKED / IDLE_OPEN ────────────────────────────────────────────────
     case State::LOCKED:
     case State::IDLE_OPEN:
-      digitalWrite(PIN_LED, (gState == State::LOCKED) ? HIGH : LOW);
+      digitalWrite(PIN_LED, (gState == State::LOCKED) ? LED_ON : LED_OFF);
 
       if (Failsafe::isOnExternalPower(gBox)) {
         // Am Strom: nicht schlafen, Statusseite bedienen, periodisch re-syncen.
