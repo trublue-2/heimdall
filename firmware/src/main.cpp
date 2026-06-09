@@ -106,7 +106,9 @@ void setup() {
   gBox.batteryPct = batt;
   gBox.charging = (prevBatt >= 0) && (batt >= prevBatt + 2);
 
-  // LED sofort aus gecachtem NVS-Zustand setzen — vor dem Sync (der bis zu 15s dauert)
+  // LED zeigt Lock-Status NUR während die Box wach ist (Knopfdruck → Status auf Abruf).
+  // Bewusst KEIN gpio_hold im Deep-Sleep: spart Akku, LED erlischt im Schlaf.
+  // Sofort aus gecachtem NVS-Zustand setzen — vor dem Sync (der bis zu 15s dauert).
   digitalWrite(PIN_LED, (hasState && gBox.locked) ? HIGH : LOW);
   log_i("NVS: hasState=%d locked=%d lockedSince=%ld | LED=%d",
         hasState, gBox.locked, (long)gBox.lockedSince, (hasState && gBox.locked));
