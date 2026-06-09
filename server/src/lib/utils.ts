@@ -9,6 +9,7 @@ export async function hashProvisioningToken(rawToken: string): Promise<string> {
 export function formatDateTime(date: Date | string | null | undefined): string {
   if (!date) return "—";
   return new Date(date).toLocaleString("de-CH", {
+    timeZone: "Europe/Zurich",
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
