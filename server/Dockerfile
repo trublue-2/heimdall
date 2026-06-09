@@ -29,6 +29,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Build-Nummer (Git-Commit-Count aus CI) → zur Laufzeit im Header sichtbar
+ARG APP_BUILD=dev
+ENV APP_BUILD=${APP_BUILD}
+
 RUN apk add --no-cache openssl su-exec
 
 COPY --from=deps /app/node_modules ./node_modules

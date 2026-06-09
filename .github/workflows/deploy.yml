@@ -40,9 +40,13 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # volle Historie für git rev-list (Build-Nummer)
 
-      - name: Read version from package.json
-        run: echo "VERSION=$(jq -r .version server/package.json)" >> $GITHUB_ENV
+      - name: Read version + build number
+        run: |
+          echo "VERSION=$(jq -r .version server/package.json)" >> $GITHUB_ENV
+          echo "APP_BUILD=$(git rev-list --count HEAD)" >> $GITHUB_ENV
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -75,6 +79,7 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             BUILD_DATE=${{ github.run_started_at }}
+            APP_BUILD=${{ env.APP_BUILD }}
 
   # ── Deploy auf Server ────────────────────────────────────────────────────────
   deploy:
