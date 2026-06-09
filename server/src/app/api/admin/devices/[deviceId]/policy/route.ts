@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/authGuards";
 import { prisma } from "@/lib/prisma";
+import { notifyDeviceChange } from "@/lib/events";
 
 export async function PATCH(
   req: NextRequest,
@@ -22,6 +23,8 @@ export async function PATCH(
     update: { lockUntil, offlineOpenHours, hardCapHours },
     include: { device: { select: { name: true } } },
   });
+
+  notifyDeviceChange(); // offene Dashboards sofort aktualisieren
 
   return NextResponse.json({
     deviceId,

@@ -47,7 +47,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <LiveRefresh intervalMs={15_000} />
+      <LiveRefresh />
       <h1 className="text-xl font-bold">Gerätestatus</h1>
 
       {devices.map((device) => {

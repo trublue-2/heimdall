@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { Card } from "@/app/components/Card";
 import { Badge } from "@/app/components/Badge";
+import { LiveRefresh } from "@/app/components/LiveRefresh";
 import { formatDateTime } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export default async function EventsPage() {
 
   return (
     <div className="space-y-4">
+      <LiveRefresh />
       <h1 className="text-xl font-bold">Event-Log</h1>
 
       {events.length === 0 && (

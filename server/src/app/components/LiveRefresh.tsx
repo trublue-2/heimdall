@@ -3,12 +3,26 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-/** Ruft router.refresh() periodisch auf — hält Server-Component-Daten aktuell. */
-export function LiveRefresh({ intervalMs = 15_000 }: { intervalMs?: number }) {
+/**
+ * Hält Server-Component-Daten live:
+ * - SSE-Push (/api/events/stream) → sofortiges router.refresh() bei Änderung
+ * - Fallback-Poll als Sicherheitsnetz, falls SSE blockiert ist (Proxy o.ä.)
+ */
+export function LiveRefresh({ fallbackMs = 30_000 }: { fallbackMs?: number }) {
   const router = useRouter();
+
   useEffect(() => {
-    const id = setInterval(() => router.refresh(), intervalMs);
-    return () => clearInterval(id);
-  }, [router, intervalMs]);
+    const es = new EventSource("/api/events/stream");
+    es.onmessage = () => router.refresh();
+    // onerror → EventSource reconnectet automatisch; kein Handling nötig
+
+    const poll = setInterval(() => router.refresh(), fallbackMs);
+
+    return () => {
+      es.close();
+      clearInterval(poll);
+    };
+  }, [router, fallbackMs]);
+
   return null;
 }

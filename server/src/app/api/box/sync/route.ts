@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { authenticateDevice, extractBearerToken, effectiveLockUntil } from "@/lib/device-auth";
 import { prisma } from "@/lib/prisma";
+import { notifyDeviceChange } from "@/lib/events";
 
 function ts() { return new Date().toISOString(); }
 
@@ -100,6 +101,9 @@ export async function POST(req: NextRequest) {
       await tx.lockPolicy.create({ data: { deviceId: device.id } });
     }
   });
+
+  // Live-Update an offene Dashboards pushen (jeder Sync ändert mind. lastSyncAt)
+  notifyDeviceChange();
 
   // Reload policy after potential creation
   const policy = device.policy ?? await prisma.lockPolicy.findUnique({ where: { deviceId: device.id } });
