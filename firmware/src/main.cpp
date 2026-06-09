@@ -14,10 +14,10 @@ enum class State {
   IDLE_OPEN,    // Riegel offen, wartet auf neue Policy oder User-Intent
 };
 
-static State          gState  = State::PROVISIONING;
-static WifiCredentials gCreds = {};
-static BoxState        gBox   = {};
-static BoxPolicy       gPolicy= {};
+static State           gState          = State::PROVISIONING;
+static WifiCredentials gCreds          = {};
+static BoxState        gBox            = {};
+static BoxPolicy       gPolicy         = {};
 static unsigned long   gLastActivityMs = 0;
 
 // ── Wake-Reason ─────────────────────────────────────────────────────────────
@@ -40,9 +40,12 @@ static void goDeepSleep() {
     }
   }
 
-  log_i("Deep-Sleep — button=GPIO%d, timer=%llus", PIN_BUTTON, timerUs / 1000000ULL);
+  log_i("Deep-Sleep — button=GPIO%d LOW, timer=%llus",
+        PIN_BUTTON, timerUs / 1000000ULL);
   Stepper::powerOff();
-  esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_BUTTON, HIGH);
+  // GPIO0 = BOOT-Button, Pull-Up → normalerweise HIGH.
+  // Wake auf LOW: aufwachen wenn Button gedrückt (zieht GPIO0 auf GND).
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_BUTTON, LOW);
   if (timerUs > 0) esp_sleep_enable_timer_wakeup(timerUs);
   esp_deep_sleep_start();
 }
@@ -50,6 +53,7 @@ static void goDeepSleep() {
 // ── setup: läuft einmal nach jedem Wake / Power-On ──────────────────────────
 void setup() {
   Serial.begin(115200);
+  delay(200); // Sicherstellen dass UART-Buffer geleert wird vor erstem Log
   NVS::begin();
   Stepper::begin();
   gLastActivityMs = millis();
@@ -60,15 +64,45 @@ void setup() {
   const char* reason = wakeReasonStr();
   log_i("=== Heimdall %s | Wake: %s | Batt: %d%% ===", FW_VERSION, reason, batt);
 
-  // Zustand aus NVS wiederherstellen
+  // ── Bench-Test: Stepper/GPIO manuell testen ──────────────────────────────
+#if defined(GPIO_TEST) || defined(STEPPER_TEST)
+  const uint8_t testPins[4] = {STEPPER_IN1, STEPPER_IN2, STEPPER_IN3, STEPPER_IN4};
+  log_i("[GPIO_TEST] IN1=GPIO%d IN2=GPIO%d IN3=GPIO%d IN4=GPIO%d",
+        STEPPER_IN1, STEPPER_IN2, STEPPER_IN3, STEPPER_IN4);
+  for (int i = 0; i < 4; i++) {
+    log_i("[GPIO_TEST] IN%d (GPIO%d) HIGH …", i+1, testPins[i]);
+    digitalWrite(testPins[i], HIGH);
+    delay(1000);
+    digitalWrite(testPins[i], LOW);
+    delay(300);
+  }
+  log_i("[GPIO_TEST] Fertig.");
+#endif
+#ifdef STEPPER_TEST
+  delay(1000);
+  log_i("[STEPPER_TEST] Steps=%d Delay=%dus", STEPPER_LOCK_STEPS, STEPPER_STEP_DELAY_US);
+  for (int round = 1; round <= 3; round++) {
+    log_i("[STEPPER_TEST] Runde %d — lock", round);
+    Stepper::lock();
+    delay(2000);
+    log_i("[STEPPER_TEST] Runde %d — unlock", round);
+    Stepper::unlock();
+    delay(2000);
+  }
+  log_i("[STEPPER_TEST] Fertig.");
+#endif
+#if defined(GPIO_TEST) || defined(STEPPER_TEST)
+  return;
+#endif
+
+  // ── Zustand aus NVS laden ────────────────────────────────────────────────
   bool hasCreds = NVS::loadCredentials(gCreds);
   bool hasState = NVS::loadState(gBox);
   NVS::loadPolicy(gPolicy);
   strlcpy(gBox.wakeReason, reason, sizeof(gBox.wakeReason));
   gBox.batteryPct = batt;
 
-  // ── Bench-Test: Credentials aus config.h flashen ──────────────────────
-  // Nur aktiv wenn TEST_WIFI_SSID in config.h definiert ist.
+  // ── Bench-Test: Credentials aus config.h flashen ─────────────────────────
 #if defined(TEST_WIFI_SSID) && defined(TEST_DEVICE_TOKEN)
   if (!hasCreds) {
     log_w("Bench-Test: Schreibe Test-Credentials in NVS …");
@@ -86,15 +120,14 @@ void setup() {
     return;
   }
 
-  // Zustand aus NVS oder Standardannahme
   gState = (hasState && gBox.locked) ? State::LOCKED : State::IDLE_OPEN;
 
-  // ── P0: Failsafes — Safety vor Security vor Funktion ──────────────────
+  // ── P0: Failsafes — Safety vor Security vor Funktion ────────────────────
   if (Failsafe::isLowBattery()) {
     log_w("FAILSAFE: Low-Battery (%d%%) → OPENING", Failsafe::batteryPercent());
     strlcpy(gBox.wakeReason, "low_battery", sizeof(gBox.wakeReason));
     gState = State::OPENING;
-    return; // Kein Sync mehr, direkt öffnen
+    return;
   }
 
   if (gBox.locked && Failsafe::isOfflineTimeout(gBox, gPolicy)) {
@@ -104,7 +137,6 @@ void setup() {
     return;
   }
 
-  // Kein Failsafe → normaler Sync-Zyklus
   gState = State::SYNCING;
 }
 
@@ -115,7 +147,7 @@ void loop() {
     // ── PROVISIONING ──────────────────────────────────────────────────────
     case State::PROVISIONING:
       // TODO: Captive-Portal / AP-Modus implementieren
-      log_w("PROVISIONING: Keine Credentials. Captive Portal noch nicht implementiert.");
+      log_w("PROVISIONING: Keine Credentials. Captive Portal nicht implementiert.");
       delay(5000);
       break;
 
@@ -128,10 +160,8 @@ void loop() {
         bool shouldLock = (gPolicy.lockUntil > 0 && time(nullptr) < gPolicy.lockUntil);
 
         if (gBox.locked && Failsafe::isPolicyExpired(gPolicy)) {
-          // Policy abgelaufen → öffnen
           gState = State::OPENING;
         } else if (!gBox.locked && shouldLock) {
-          // Server will Sperren
           log_i("Policy: Sperren bis %ld", (long)gPolicy.lockUntil);
           gBox.locked      = true;
           gBox.lockedSince = time(nullptr);
@@ -142,7 +172,6 @@ void loop() {
           gState = gBox.locked ? State::LOCKED : State::IDLE_OPEN;
         }
       } else {
-        // Sync fehlgeschlagen — mit gespeicherter Policy weiterarbeiten
         log_e("Sync fehlgeschlagen (code=%d) — arbeite mit Cache", (int)res);
         if (gBox.locked && Failsafe::isPolicyExpired(gPolicy)) {
           gState = State::OPENING;
@@ -161,7 +190,7 @@ void loop() {
       NVS::saveState(gBox);
       gState = State::IDLE_OPEN;
       gLastActivityMs = millis();
-      // Best-effort Sync nach Öffnen (wakeReason landet im Log)
+      // Best-effort Sync nach Öffnen (wakeReason landet im Event-Log)
       ServerSync::run(gCreds, gBox, gPolicy);
       break;
 

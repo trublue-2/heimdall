@@ -12,13 +12,13 @@
 // Schritte pro Richtung — muss nach Bench-Test kalibriert werden.
 // 28BYJ-48 Half-Step: 4096 Steps/Umdrehung; echter Riegelweg < 1 Umdrehung.
 #define STEPPER_LOCK_STEPS  512   // TODO: Kalibrieren
-#define STEPPER_STEP_DELAY_US 1200 // µs — langsamer = mehr Drehmoment
+#define STEPPER_STEP_DELAY_US 3000 // µs — langsamer = mehr Drehmoment; mit Last ≥3000
 
 // ── Button ─────────────────────────────────────────────────────────────────
-// GPIO36 (VP): RTC-GPIO, input-only, kein Strapping-Konflikt.
-// Externes Pull-Down (10k) nötig — kein interner PD auf GPIO36.
-// Button: GPIO36 → 3.3V bei Tastendruck → EXT0-Wake auf HIGH.
-#define PIN_BUTTON 36
+// LOLIN D32: Onboard BOOT-Button auf GPIO0 (interner Pull-Up, LOW bei Druck).
+// RTC-GPIO — funktioniert als EXT0-Wake auf LOW-Level.
+// Achtung: GPIO0 muss beim Power-On HIGH sein (normal, da Pull-Up aktiv).
+#define PIN_BUTTON 0
 
 // ── Batterie ADC ───────────────────────────────────────────────────────────
 // LOLIN D32: GPIO35 mit 100k/100k Teiler → misst Vbat/2.
@@ -40,3 +40,8 @@
 // #define TEST_WIFI_PASS    "Passwort"
 // #define TEST_SERVER_URL   "https://heimdall.trublue.ch"
 // #define TEST_DEVICE_TOKEN "XXXX-XXXX-XXXX-XXXX"
+
+// ── Stepper-Kalibrierung: State-Machine überspringen, nur Stepper fahren ───
+// Einkommentieren, flashen, Riegel beobachten, STEPPER_LOCK_STEPS anpassen.
+// #define STEPPER_TEST
+// #define GPIO_TEST
