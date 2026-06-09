@@ -24,6 +24,7 @@ const syncBodySchema = z.object({
     wifiSsid: z.string().max(64).optional(),
     wifiRssi: z.number().int().min(-120).max(0).optional(),
     charging: z.boolean().optional(),
+    ip: z.string().max(45).optional(),
   }),
 });
 
@@ -77,6 +78,7 @@ export async function POST(req: NextRequest) {
         wifiSsid: state.wifiSsid  ?? null,
         wifiRssi: state.wifiRssi  ?? null,
         charging: state.charging  ?? null,
+        boxIp:    state.ip        ?? null,
       },
     });
 

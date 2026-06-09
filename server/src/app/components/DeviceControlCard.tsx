@@ -26,6 +26,7 @@ export interface DeviceControlCardProps {
   wifiRssi: number | null;
   wakeReason: string | null;
   charging: boolean | null;
+  boxIp: string | null;
 }
 
 function toLocalDatetime(iso: string | null): string {
@@ -187,6 +188,17 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
           <span className="text-xs text-[var(--foreground-faint)]">
             Boot: <code className="font-mono">{props.wakeReason}</code>
           </span>
+        )}
+        {props.boxIp && (
+          <a
+            href={`http://${props.boxIp}/`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-[var(--color-lock)] hover:underline font-mono"
+            title="Statusseite der Box (nur erreichbar wenn die Box wach / am Strom ist)"
+          >
+            {props.boxIp} ↗
+          </a>
         )}
       </div>
     </Card>

@@ -1,4 +1,7 @@
 #include <Arduino.h>
+#include <WiFi.h>
+#include <WebServer.h>
+#include <time.h>
 #include "config.h"
 #include "nvs_storage.h"
 #include "stepper.h"
@@ -19,6 +22,62 @@ static WifiCredentials gCreds          = {};
 static BoxState        gBox            = {};
 static BoxPolicy       gPolicy         = {};
 static unsigned long   gLastActivityMs = 0;
+
+// ── Statusseite (nur aktiv solange am Strom, siehe loop) ────────────────────
+static WebServer gWeb(80);
+static bool      gWebOn = false;
+
+// Epoch → "TT.MM.JJJJ HH:MM" in lokaler Zeit (TZ in syncNtp gesetzt).
+static String fmtLocal(time_t t) {
+  if (t <= 0) return "—";
+  struct tm tm_l;
+  localtime_r(&t, &tm_l);
+  char buf[20];
+  strftime(buf, sizeof(buf), "%d.%m.%Y %H:%M", &tm_l);
+  return String(buf);
+}
+
+static void handleStatus() {
+  bool   locked = gBox.locked;
+  String html = "<!DOCTYPE html><html lang=de><head><meta charset=utf-8>"
+                "<meta name=viewport content='width=device-width,initial-scale=1'>"
+                "<meta http-equiv=refresh content=5>"
+                "<title>Heimdall</title><style>"
+                "body{font-family:system-ui,sans-serif;margin:0;padding:2rem;"
+                "background:#0f1115;color:#e6e6e6;text-align:center}"
+                ".s{font-size:2rem;font-weight:700;margin:1rem 0;padding:1rem;border-radius:1rem}"
+                ".lock{background:#2a1416;color:#ff6b6b}.open{background:#13241a;color:#4ade80}"
+                ".m{color:#8a8a8a;font-size:.9rem;margin:.3rem}</style></head><body>"
+                "<h2>🔒 Heimdall</h2>";
+  if (locked) {
+    html += "<div class='s lock'>GESCHLOSSEN</div>";
+    if (gPolicy.lockUntil > 0)
+      html += "<p class=m>bis " + fmtLocal(gPolicy.lockUntil) + "</p>";
+  } else {
+    html += "<div class='s open'>OFFEN</div>";
+  }
+  html += "<p class=m>Zeit: " + fmtLocal(time(nullptr)) + "</p>";
+  html += "<p class=m>Akku: " + String(gBox.batteryPct) + "% · fw " + FW_VERSION + "</p>";
+  html += "</body></html>";
+  gWeb.send(200, "text/html", html);
+}
+
+// Stellt WiFi + Web-Server sicher (für die Statusseite am Strom).
+static void ensureStatusServer() {
+  if (WiFi.status() != WL_CONNECTED) {
+    gWebOn = false;
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(gCreds.ssid, gCreds.password);
+    unsigned long t = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - t < WIFI_CONNECT_TIMEOUT_MS) delay(100);
+    if (WiFi.status() != WL_CONNECTED) return;
+  }
+  if (!gWebOn) {
+    gWeb.begin();
+    gWebOn = true;
+    log_i("Statusseite live: http://%s/", WiFi.localIP().toString().c_str());
+  }
+}
 
 // ── Wake-Reason ─────────────────────────────────────────────────────────────
 static const char* wakeReasonStr() {
@@ -41,6 +100,8 @@ static void goDeepSleep() {
 
   log_i("Deep-Sleep — button=GPIO%d LOW, timer=%llus", PIN_BUTTON, timerS);
   Stepper::powerOff();
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
   // GPIO0 = BOOT-Button, Pull-Up → normalerweise HIGH.
   // Wake auf LOW: aufwachen wenn Button gedrückt (zieht GPIO0 auf GND).
   esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_BUTTON, LOW);
@@ -54,6 +115,7 @@ void setup() {
   delay(200); // Sicherstellen dass UART-Buffer geleert wird vor erstem Log
   NVS::begin();
   Stepper::begin();
+  gWeb.on("/", handleStatus); // Statusseite-Route einmalig registrieren
   pinMode(PIN_LED, OUTPUT);
   digitalWrite(PIN_LED, LOW);
   gLastActivityMs = millis();
@@ -214,15 +276,23 @@ void loop() {
 
     // ── LOCKED / IDLE_OPEN ────────────────────────────────────────────────
     case State::LOCKED:
-      digitalWrite(PIN_LED, HIGH);
-      if (millis() - gLastActivityMs > IDLE_SLEEP_MS) goDeepSleep();
-      delay(100);
-      break;
-
     case State::IDLE_OPEN:
-      digitalWrite(PIN_LED, LOW);
-      if (millis() - gLastActivityMs > IDLE_SLEEP_MS) goDeepSleep();
-      delay(100);
+      digitalWrite(PIN_LED, (gState == State::LOCKED) ? HIGH : LOW);
+
+      if (Failsafe::isOnExternalPower(gBox)) {
+        // Am Strom: nicht schlafen, Statusseite bedienen, periodisch re-syncen.
+        ensureStatusServer();
+        gWeb.handleClient();
+        if (millis() - gLastActivityMs > WAKE_INTERVAL_S * 1000UL) {
+          gLastActivityMs = millis();
+          gState = State::SYNCING; // Policy/Zustand turnusmäßig auffrischen
+        }
+        delay(10);
+      } else if (millis() - gLastActivityMs > IDLE_SLEEP_MS) {
+        goDeepSleep();
+      } else {
+        delay(100);
+      }
       break;
   }
 }

@@ -73,6 +73,7 @@ export default async function DashboardPage() {
             wifiRssi={device.wifiRssi ?? null}
             wakeReason={device.wakeReason ?? null}
             charging={device.charging ?? null}
+            boxIp={device.boxIp ?? null}
           />
         );
       })}

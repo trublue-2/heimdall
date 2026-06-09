@@ -33,6 +33,7 @@ model Device {
   wifiSsid    String?
   wifiRssi    Int?
   charging    Boolean?
+  boxIp       String?
   policy      LockPolicy?
   events      DeviceEvent[]
 }

@@ -22,6 +22,14 @@ namespace Failsafe {
     return batteryPercent() <= BATT_CRITICAL_PCT;
   }
 
+  // Heuristik "an externer Stromversorgung" (kein USB-Sense-Pin am LOLIN D32):
+  // Akku quasi voll ODER lädt aktiv (Trend stieg seit letztem Wake).
+  // → Box bleibt wach, Statusseite dauerhaft erreichbar.
+  // Robuster wäre ein 5V-Sense-GPIO; siehe TODO.
+  inline bool isOnExternalPower(const BoxState& state) {
+    return state.charging || batteryPercent() >= 97;
+  }
+
   // Offline-Timeout: letzter erfolgreicher Sync liegt zu lang zurück.
   inline bool isOfflineTimeout(const BoxState& state, const BoxPolicy& policy) {
     if (state.lastSyncAt == 0) return false;

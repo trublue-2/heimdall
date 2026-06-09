@@ -11,6 +11,8 @@ enum class SyncResult {
 namespace ServerSync {
   // Verbindet WiFi, synct Zustand mit Heimdall-Server,
   // schreibt aktualisierte Policy zurück in `policy` und NVS.
-  // WiFi wird nach dem Call wieder abgeschaltet.
-  SyncResult run(const WifiCredentials& creds, BoxState& state, BoxPolicy& policy);
+  // keepWifi=false: WiFi nach dem Call abschalten (Standard, akkuschonend).
+  // keepWifi=true:  WiFi anlassen (z.B. wenn die Statusseite weiterläuft).
+  SyncResult run(const WifiCredentials& creds, BoxState& state, BoxPolicy& policy,
+                 bool keepWifi = false);
 }

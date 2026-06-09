@@ -6,8 +6,21 @@
 #include <ArduinoJson.h>
 #include <time.h>
 
-// ISO-8601 "2026-06-08T12:00:00Z" → Unix-Epoch.
-// Funktioniert nur nach configTime(0,0,...) — TZ muss UTC sein.
+// struct tm (UTC) → Unix-Epoch, TZ-unabhängig (Hinnant days-from-civil).
+// ESP32-newlib hat kein timegm(); mktime würde die gesetzte TZ anwenden.
+static time_t tmToUtc(const struct tm& t) {
+  int  y = t.tm_year + 1900;
+  int  m = t.tm_mon + 1;
+  y -= (m <= 2);
+  int era = (y >= 0 ? y : y - 399) / 400;
+  unsigned yoe = (unsigned)(y - era * 400);
+  unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + t.tm_mday - 1;
+  unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  long days = (long)(era * 146097 + (int)doe - 719468);
+  return (time_t)days * 86400 + t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec;
+}
+
+// ISO-8601 "2026-06-08T12:00:00Z" → Unix-Epoch (UTC).
 static time_t parseIso8601(const char* s) {
   if (!s || s[0] == '\0') return 0;
   struct tm t = {};
@@ -16,8 +29,7 @@ static time_t parseIso8601(const char* s) {
         &t.tm_hour, &t.tm_min, &t.tm_sec) != 6) return 0;
   t.tm_year -= 1900;
   t.tm_mon  -= 1;
-  t.tm_isdst = 0;
-  return mktime(&t); // mktime in UTC nach configTime(0,0,...)
+  return tmToUtc(t);
 }
 
 static bool connectWifi(const char* ssid, const char* pass) {
@@ -33,14 +45,19 @@ static bool connectWifi(const char* ssid, const char* pass) {
 }
 
 static void syncNtp() {
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov"); // Epoch bleibt UTC
+  // TZ für lokale Anzeige (Statusseite): Europe/Zurich inkl. DST.
+  // Beeinflusst nur localtime_r — time(), gmtime_r, timegm bleiben UTC.
+  setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
+  tzset();
   struct tm t;
   for (int i = 0; i < 20 && !getLocalTime(&t, 500); i++) delay(100);
 }
 
 SyncResult ServerSync::run(const WifiCredentials& creds,
-                           BoxState& state, BoxPolicy& policy) {
-  if (!connectWifi(creds.ssid, creds.password)) return SyncResult::NO_WIFI;
+                           BoxState& state, BoxPolicy& policy, bool keepWifi) {
+  if (WiFi.status() != WL_CONNECTED &&
+      !connectWifi(creds.ssid, creds.password)) return SyncResult::NO_WIFI;
   syncNtp();
 
   WiFiClientSecure client;
@@ -51,8 +68,10 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   String url = String(creds.serverUrl) + SERVER_PATH_SYNC;
   auto cleanup = [&]() {
     http.end();
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
+    if (!keepWifi) {
+      WiFi.disconnect(true);
+      WiFi.mode(WIFI_OFF);
+    }
   };
 
   if (!http.begin(client, url)) { cleanup(); return SyncResult::SERVER_ERROR; }
@@ -80,6 +99,7 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   s["wakeReason"] = state.wakeReason;
   s["wifiSsid"]   = WiFi.SSID().c_str();
   s["wifiRssi"]   = WiFi.RSSI();
+  s["ip"]         = WiFi.localIP().toString();
 
   String body;
   serializeJson(req, body);
