@@ -104,6 +104,9 @@ void setup() {
   strlcpy(gBox.wakeReason, reason, sizeof(gBox.wakeReason));
   gBox.batteryPct = batt;
 
+  // LED sofort aus gecachtem NVS-Zustand setzen — vor dem Sync (der bis zu 15s dauert)
+  digitalWrite(PIN_LED, (hasState && gBox.locked) ? HIGH : LOW);
+
   // ── Bench-Test: Credentials aus config.h flashen ─────────────────────────
 #if defined(TEST_WIFI_SSID) && defined(TEST_DEVICE_TOKEN)
   if (!hasCreds) {

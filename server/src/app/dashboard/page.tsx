@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { DeviceControlCard } from "@/app/components/DeviceControlCard";
+import { LiveRefresh } from "@/app/components/LiveRefresh";
 import { formatDateTime } from "@/lib/utils";
 import { Lock } from "lucide-react";
 import { Card } from "@/app/components/Card";
@@ -46,6 +47,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <LiveRefresh intervalMs={15_000} />
       <h1 className="text-xl font-bold">Gerätestatus</h1>
 
       {devices.map((device) => {

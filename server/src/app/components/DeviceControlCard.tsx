@@ -8,7 +8,7 @@ import { Badge } from "./Badge";
 import { Button } from "./Button";
 import { Input } from "./Input";
 import { FormError } from "./FormError";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, formatDuration } from "@/lib/utils";
 
 export interface DeviceControlCardProps {
   id: string;
@@ -104,11 +104,10 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <Stat label="Akku"         value={props.battery != null ? `${props.battery} %` : "—"} />
-        <Stat label="Letzter Sync" value={formatDateTime(props.lastSyncAt)} />
+        <Stat label="Akku" value={props.battery != null ? `${props.battery} %` : "—"} />
+        <SyncStat lastSyncAt={props.lastSyncAt} />
         {locked && lockUntil && (
-          <Stat label="Geschlossen bis" value={formatDateTime(lockUntil)}
-            highlight />
+          <Stat label="Geschlossen bis" value={formatDateTime(lockUntil)} highlight />
         )}
       </div>
 
@@ -165,6 +164,27 @@ function Stat({
       <p className={`text-sm font-medium ${highlight ? "text-[var(--color-lock)]" : ""}`}>
         {value}
       </p>
+    </div>
+  );
+}
+
+function SyncStat({ lastSyncAt }: { lastSyncAt: string | null }) {
+  const fresh = lastSyncAt
+    ? Date.now() - new Date(lastSyncAt).getTime() < 60_000
+    : false;
+
+  return (
+    <div className="bg-[var(--background-subtle)] rounded-xl px-3 py-2">
+      <p className="text-xs text-[var(--foreground-faint)] mb-0.5">Letzter Sync</p>
+      <div className="flex items-center gap-1.5">
+        {fresh && (
+          <span className="relative flex h-2 w-2 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--color-lock)] opacity-60" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--color-lock)]" />
+          </span>
+        )}
+        <span className="text-sm font-medium">{formatDuration(lastSyncAt)}</span>
+      </div>
     </div>
   );
 }

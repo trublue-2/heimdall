@@ -21,11 +21,12 @@ export function formatDateTime(date: Date | string | null | undefined): string {
 export function formatDuration(from: Date | string | null | undefined): string {
   if (!from) return "—";
   const ms = Date.now() - new Date(from).getTime();
+  if (ms < 60_000) return "gerade eben";
   const totalMin = Math.floor(ms / 60000);
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
-  if (h === 0) return `${m} min`;
-  return `${h} h ${m} min`;
+  if (h === 0) return `vor ${m} min`;
+  return `vor ${h} h ${m > 0 ? ` ${m} min` : ""}`;
 }
 
 /** Generate a provisioning token: 16 base32 chars in 4-char groups, e.g. XK7F-M2PQ-9TRW-4VNB */
