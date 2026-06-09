@@ -56,6 +56,8 @@ void setup() {
   delay(200); // Sicherstellen dass UART-Buffer geleert wird vor erstem Log
   NVS::begin();
   Stepper::begin();
+  pinMode(PIN_LED, OUTPUT);
+  digitalWrite(PIN_LED, LOW);
   gLastActivityMs = millis();
 
   // Batterie vor WiFi messen — ADC ist ohne WiFi-Rauschen genauer
@@ -196,10 +198,14 @@ void loop() {
 
     // ── LOCKED / IDLE_OPEN ────────────────────────────────────────────────
     case State::LOCKED:
+      digitalWrite(PIN_LED, HIGH);
+      if (millis() - gLastActivityMs > IDLE_SLEEP_MS) goDeepSleep();
+      delay(100);
+      break;
+
     case State::IDLE_OPEN:
-      if (millis() - gLastActivityMs > IDLE_SLEEP_MS) {
-        goDeepSleep();
-      }
+      digitalWrite(PIN_LED, LOW);
+      if (millis() - gLastActivityMs > IDLE_SLEEP_MS) goDeepSleep();
       delay(100);
       break;
   }

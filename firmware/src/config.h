@@ -14,6 +14,10 @@
 #define STEPPER_LOCK_STEPS  512   // TODO: Kalibrieren
 #define STEPPER_STEP_DELAY_US 3000 // µs — langsamer = mehr Drehmoment; mit Last ≥3000
 
+// ── Onboard LED ────────────────────────────────────────────────────────────
+// LOLIN D32: Blaue LED auf GPIO5, active HIGH.
+#define PIN_LED 5
+
 // ── Button ─────────────────────────────────────────────────────────────────
 // LOLIN D32: Onboard BOOT-Button auf GPIO0 (interner Pull-Up, LOW bei Druck).
 // RTC-GPIO — funktioniert als EXT0-Wake auf LOW-Level.
