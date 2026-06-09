@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.1.4"
+#define FW_VERSION "0.1.5"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Boot-sichere GPIOs ohne Strapping-Konflikt.

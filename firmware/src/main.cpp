@@ -108,6 +108,8 @@ void setup() {
 
   // LED sofort aus gecachtem NVS-Zustand setzen — vor dem Sync (der bis zu 15s dauert)
   digitalWrite(PIN_LED, (hasState && gBox.locked) ? HIGH : LOW);
+  log_i("NVS: hasState=%d locked=%d lockedSince=%ld | LED=%d",
+        hasState, gBox.locked, (long)gBox.lockedSince, (hasState && gBox.locked));
 
   // ── Bench-Test: Credentials aus config.h flashen ─────────────────────────
 #if defined(TEST_WIFI_SSID) && defined(TEST_DEVICE_TOKEN)
@@ -165,6 +167,9 @@ void loop() {
 
       if (res == SyncResult::OK) {
         bool shouldLock = (gPolicy.lockUntil > 0 && time(nullptr) < gPolicy.lockUntil);
+        log_i("Entscheidung: locked=%d lockUntil=%ld shouldLock=%d expired=%d",
+              gBox.locked, (long)gPolicy.lockUntil, shouldLock,
+              Failsafe::isPolicyExpired(gPolicy));
 
         if (gBox.locked && Failsafe::isPolicyExpired(gPolicy)) {
           gState = State::OPENING;
