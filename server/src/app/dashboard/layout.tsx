@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Lock } from "lucide-react";
 import { handleSignOut } from "@/lib/actions";
+import pkg from "../../../package.json";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -17,6 +18,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <div className="flex items-center gap-3">
             <Lock className="h-5 w-5 text-[var(--color-lock)]" />
             <span className="font-semibold">Heimdall</span>
+            <span className="text-xs text-[var(--foreground-faint)] font-mono">v{pkg.version}</span>
           </div>
           <nav className="flex items-center gap-1">
             <Link href="/dashboard" className="px-3 py-1.5 text-sm rounded-lg hover:bg-[var(--surface-raised)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">
