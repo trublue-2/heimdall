@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Lock, Unlock } from "lucide-react";
+import { Lock, Unlock, Loader2 } from "lucide-react";
 import { Card } from "./Card";
 import { Badge } from "./Badge";
 import { Button } from "./Button";
@@ -81,9 +81,12 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
 
           {/* Soll/Ist: ausstehende Änderung */}
           {pending !== "none" && (
-            <div className="rounded-xl bg-[var(--color-warn-bg)] px-3 py-2 text-xs text-[var(--color-warn)]">
-              → {pending === "closing" ? "GESCHLOSSEN" : "OFFEN"} ausstehend ·
-              {" "}Button an der Box drücken zum Aktivieren
+            <div className="flex items-center gap-2 rounded-xl bg-[var(--color-warn-bg)] px-3 py-2 text-xs text-[var(--color-warn)]">
+              <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+              <span>
+                Wird {pending === "closing" ? "geschlossen" : "geöffnet"} ·
+                {" "}Button an der Box drücken zum Aktivieren
+              </span>
             </div>
           )}
 
