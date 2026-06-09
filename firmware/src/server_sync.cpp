@@ -73,7 +73,7 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
     strftime(sinceStr, sizeof(sinceStr), "%Y-%m-%dT%H:%M:%SZ", &tm_info);
     s["since"] = sinceStr;
   }
-  s["battery"]    = 0;         // TODO: Failsafe::batteryPercent()
+  s["battery"]    = state.batteryPct;
   s["boltPos"]    = "UNKNOWN"; // TODO: Endlagensensor
   s["fwVersion"]  = FW_VERSION;
   s["wakeReason"] = state.wakeReason;

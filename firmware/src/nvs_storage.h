@@ -12,9 +12,10 @@ struct WifiCredentials {
 // Persistenter Box-Zustand (bleibt über Deep-Sleep erhalten).
 struct BoxState {
   bool   locked;
-  time_t lockedSince; // Unix-Epoch; 0 wenn nie gesperrt
-  time_t lastSyncAt;  // Unix-Epoch des letzten erfolgreichen Syncs
+  time_t lockedSince;  // Unix-Epoch; 0 wenn nie gesperrt
+  time_t lastSyncAt;   // Unix-Epoch des letzten erfolgreichen Syncs
   char   wakeReason[32];
+  int    batteryPct;   // Aktuell gemessen, vor WiFi-Init (ADC ungestört)
 };
 
 // Letzte vom Server empfangene Policy.

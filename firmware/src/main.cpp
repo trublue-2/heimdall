@@ -54,14 +54,18 @@ void setup() {
   Stepper::begin();
   gLastActivityMs = millis();
 
+  // Batterie vor WiFi messen — ADC ist ohne WiFi-Rauschen genauer
+  int batt = Failsafe::batteryPercent();
+
   const char* reason = wakeReasonStr();
-  log_i("=== Heimdall %s | Wake: %s ===", FW_VERSION, reason);
+  log_i("=== Heimdall %s | Wake: %s | Batt: %d%% ===", FW_VERSION, reason, batt);
 
   // Zustand aus NVS wiederherstellen
   bool hasCreds = NVS::loadCredentials(gCreds);
   bool hasState = NVS::loadState(gBox);
   NVS::loadPolicy(gPolicy);
   strlcpy(gBox.wakeReason, reason, sizeof(gBox.wakeReason));
+  gBox.batteryPct = batt;
 
   // ── Bench-Test: Credentials aus config.h flashen ──────────────────────
   // Nur aktiv wenn TEST_WIFI_SSID in config.h definiert ist.
