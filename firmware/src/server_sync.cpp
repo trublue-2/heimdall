@@ -32,24 +32,56 @@ static time_t parseIso8601(const char* s) {
   return tmToUtc(t);
 }
 
-static bool connectWifi(const char* ssid, const char* pass) {
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, pass);
+// Letzte erfolgreiche WiFi-Parameter — überlebt Deep-Sleep (RTC-RAM).
+// Gezielter Reconnect (Kanal+BSSID) spart den Scan und damit ~0.5–1.5 s pro Wake.
+RTC_DATA_ATTR static uint8_t  rtcBssid[6] = {0};
+RTC_DATA_ATTR static int32_t  rtcChannel  = 0;
+RTC_DATA_ATTR static bool     rtcWifiHint = false;
+
+static bool waitConnected(unsigned long timeoutMs) {
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED) {
-    if (millis() - start > WIFI_CONNECT_TIMEOUT_MS) return false;
-    delay(200);
+    if (millis() - start > timeoutMs) return false;
+    delay(50);
   }
+  return true;
+}
+
+static bool connectWifi(const char* ssid, const char* pass) {
+  WiFi.persistent(false); // keine Flash-Writes pro Connect
+  WiFi.mode(WIFI_STA);
+
+  // Schnellpfad: direkt auf bekannten Kanal/AP verbinden (kein Scan).
+  if (rtcWifiHint) {
+    WiFi.begin(ssid, pass, rtcChannel, rtcBssid);
+    if (waitConnected(WIFI_CONNECT_TIMEOUT_MS / 2)) {
+      log_i("WiFi OK (fast): %s", WiFi.localIP().toString().c_str());
+      return true;
+    }
+    // AP umgezogen/Kanal gewechselt → Hint verwerfen, normal scannen.
+    rtcWifiHint = false;
+    WiFi.disconnect();
+  }
+
+  WiFi.begin(ssid, pass);
+  if (!waitConnected(WIFI_CONNECT_TIMEOUT_MS)) return false;
+
+  // Parameter für den nächsten Wake merken.
+  memcpy(rtcBssid, WiFi.BSSID(), 6);
+  rtcChannel  = WiFi.channel();
+  rtcWifiHint = true;
   log_i("WiFi OK: %s", WiFi.localIP().toString().c_str());
   return true;
 }
 
 static void syncNtp() {
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov"); // Epoch bleibt UTC
-  // TZ für lokale Anzeige (Statusseite): Europe/Zurich inkl. DST.
-  // Beeinflusst nur localtime_r — time(), gmtime_r, timegm bleiben UTC.
+  // TZ immer setzen (für lokale Anzeige der Statusseite).
   setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
   tzset();
+  // RTC läuft im Deep-Sleep weiter: ist die Uhr schon plausibel gesetzt,
+  // sparen wir den NTP-Roundtrip komplett (mehrere Sekunden auf dem Wake-Pfad).
+  if (time(nullptr) > 1700000000) return; // ~2023-11 → Uhr gültig
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov"); // Epoch bleibt UTC
   struct tm t;
   for (int i = 0; i < 20 && !getLocalTime(&t, 500); i++) delay(100);
 }
