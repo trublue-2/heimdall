@@ -120,6 +120,15 @@ void setup() {
   digitalWrite(PIN_LED, LED_OFF);
   gLastActivityMs = millis();
 
+  // Sofort-Quittung bei Knopfdruck: 3× kurz blinken, BEVOR WiFi/Sync starten.
+  // Der User vor Ort sieht damit innerhalb ~0.3 s, dass der Druck angekommen ist.
+  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) {
+    for (int i = 0; i < 3; i++) {
+      digitalWrite(PIN_LED, LED_ON);  delay(70);
+      digitalWrite(PIN_LED, LED_OFF); delay(70);
+    }
+  }
+
   // Batterie vor WiFi messen — ADC ist ohne WiFi-Rauschen genauer
   int batt = Failsafe::batteryPercent();
 
