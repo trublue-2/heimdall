@@ -2,7 +2,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/app/components/Button";
-import { RefreshCw, Trash2, X } from "lucide-react";
+import { TokenDisplayModal } from "@/app/components/TokenDisplayModal";
+import { RefreshCw, Trash2 } from "lucide-react";
 
 export function DeviceActions({ deviceId, deviceName }: { deviceId: string; deviceName: string }) {
   const router = useRouter();
@@ -45,34 +46,7 @@ export function DeviceActions({ deviceId, deviceName }: { deviceId: string; devi
       </Button>
 
       {newToken && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 w-full max-w-sm shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold">Neuer Provisioning-Token</h2>
-              <button onClick={() => setNewToken(null)} className="text-[var(--foreground-muted)] hover:text-[var(--foreground)]">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <p className="text-sm text-[var(--foreground-muted)] mb-3">
-              Dieser Token wird <strong>nur einmal</strong> angezeigt. Jetzt in die Box eintragen.
-            </p>
-
-            <div className="bg-[var(--surface-raised)] border border-[var(--border)] rounded-xl px-4 py-3 text-center">
-              <code className="text-lg font-mono font-bold tracking-widest text-[var(--color-lock)]">
-                {newToken}
-              </code>
-            </div>
-
-            <p className="text-xs text-[var(--foreground-muted)] mt-3 text-center">
-              Gerät: <strong>{deviceName}</strong>
-            </p>
-
-            <Button onClick={() => setNewToken(null)} variant="secondary" className="w-full mt-4">
-              Verstanden, Token notiert
-            </Button>
-          </div>
-        </div>
+        <TokenDisplayModal token={newToken} deviceName={deviceName} onClose={() => setNewToken(null)} />
       )}
     </>
   );

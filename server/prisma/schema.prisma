@@ -15,6 +15,7 @@ model User {
   role         String      @default("viewer") // "admin" | "viewer"
   createdAt    DateTime    @default(now())
   rateLimits   RateLimit[]
+  devices      Device[]    @relation("DeviceAccess")
 }
 
 model Device {
@@ -36,6 +37,7 @@ model Device {
   boxIp       String?
   policy      LockPolicy?
   events      DeviceEvent[]
+  users       User[]        @relation("DeviceAccess")
 }
 
 model LockPolicy {

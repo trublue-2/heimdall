@@ -18,6 +18,48 @@ export function formatDateTime(date: Date | string | null | undefined): string {
   });
 }
 
+/** Soll-Zustand: ist gemäss Policy aktuell "geschlossen" gewünscht? */
+export function wantsClosed(lockUntil: Date | string | null, now: Date = new Date()): boolean {
+  return !!lockUntil && new Date(lockUntil) > now;
+}
+
+/**
+ * Soll/Ist-Abgleich: Soll = lockUntil (Keyholder-Wunsch), Ist = locked (gemeldet).
+ * "closing": gewünscht zu, aber noch offen. "opening": gewünscht offen, aber noch zu.
+ * Bis die Box synct, hängt die Änderung "ausstehend" fest.
+ */
+export type PendingState = "none" | "closing" | "opening";
+export function pendingState(
+  lockUntil: Date | string | null,
+  locked: boolean,
+  now: Date = new Date()
+): PendingState {
+  const closed = wantsClosed(lockUntil, now);
+  if (closed && !locked) return "closing";
+  if (!closed && locked) return "opening";
+  return "none";
+}
+
+/** Box gilt als online, wenn der letzte Sync < 15 min zurückliegt. */
+export function isOnline(lastSyncAt: Date | string | null): boolean {
+  if (!lastSyncAt) return false;
+  return Date.now() - new Date(lastSyncAt).getTime() < 15 * 60 * 1000;
+}
+
+/** Date → Wert für <input type="datetime-local"> (lokale Zeit, ohne Sekunden). */
+export function toDatetimeLocalValue(d: Date): string {
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+/** Event-Typ → Anzeige-Label + Badge-Variante (zentral, statt pro Seite). */
+export const EVENT_CONFIG: Record<string, { label: string; variant: "lock" | "unlock" | "warn" | "neutral" }> = {
+  LOCKED:            { label: "Verschlossen", variant: "lock" },
+  UNLOCKED:          { label: "Geöffnet", variant: "unlock" },
+  SYNC:              { label: "Sync", variant: "neutral" },
+  FAILSAFE_OPEN:     { label: "Failsafe-Öffnung", variant: "warn" },
+  UNAUTHORIZED_OPEN: { label: "Unautorisiert geöffnet", variant: "warn" },
+};
+
 export function formatDuration(from: Date | string | null | undefined): string {
   if (!from) return "—";
   const ms = Date.now() - new Date(from).getTime();
