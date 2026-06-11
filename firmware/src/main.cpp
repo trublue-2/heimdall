@@ -241,9 +241,10 @@ static void goDeepSleep() {
 void setup() {
   Serial.begin(115200);
   delay(200); // Sicherstellen dass UART-Buffer geleert wird vor erstem Log
-  // CPU auf 80 MHz (WiFi-Minimum) drosseln: spart ~20-25 mA und gibt damit
-  // dem schwachen LOLIN-D32-LDO Reserve für die WLAN-Stromspitzen (Brownout).
-  setCpuFrequencyMhz(80);
+  // CPU auf 160 MHz: schneller (TLS/Sync) als das frühere 80-MHz-Sparmodell.
+  // Der eigentliche Brownout-Fix war ein gutes Kabel; etwas LDO-Marge bleibt
+  // (160 statt voll 240). OTA-Rollback + Reset-Zähler sind das Netz, falls's zwickt.
+  setCpuFrequencyMhz(160);
   recordBoot();   // Reset-Grund + Zähler (über WLAN/Statusseite sichtbar)
   otaCheckBoot(); // OTA-Validierung/Rollback (S14) — vor allem anderen
   NVS::begin();
