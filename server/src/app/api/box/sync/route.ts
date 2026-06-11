@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
         wifiRssi: state.wifiRssi  ?? null,
         charging: state.charging  ?? null,
         boxIp:    state.ip        ?? null,
+        primarySsid: body.knownSsids?.[0] ?? device.primarySsid,
       },
     });
 

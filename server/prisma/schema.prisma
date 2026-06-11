@@ -35,6 +35,7 @@ model Device {
   wifiRssi    Int?
   charging    Boolean?
   boxIp       String?
+  primarySsid String? // Provisioning-Netz (knownSsids[0] der Box)
   policy       LockPolicy?
   events       DeviceEvent[]
   users        User[]        @relation("DeviceAccess")

@@ -11,7 +11,7 @@ type Net = { id: string; ssid: string; delivered: boolean };
 
 /** Zusatz-WLANs eines Geräts verwalten. Box zieht sie beim Sync; Passwort wird
  *  danach serverseitig gelöscht (nur SSID + „ausgeliefert" bleibt sichtbar). */
-export function WifiNetworksManager({ deviceId }: { deviceId: string }) {
+export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: string; primarySsid?: string | null }) {
   const [nets, setNets] = useState<Net[]>([]);
   const [ssid, setSsid] = useState("");
   const [pass, setPass] = useState("");
@@ -54,8 +54,18 @@ export function WifiNetworksManager({ deviceId }: { deviceId: string }) {
 
   return (
     <div className="space-y-3">
-      {nets.length > 0 && (
+      {(primarySsid || nets.length > 0) && (
         <ul className="divide-y divide-[var(--border-subtle)]">
+          {primarySsid && (
+            <li className="flex items-center justify-between gap-3 py-2">
+              <span className="flex items-center gap-2 min-w-0">
+                <Wifi className="h-4 w-4 text-[var(--foreground-faint)] shrink-0" />
+                <span className="truncate">{primarySsid}</span>
+                <Badge variant="lock">Primär</Badge>
+              </span>
+              <span className="text-xs text-[var(--foreground-faint)] shrink-0">aus Provisioning</span>
+            </li>
+          )}
           {nets.map((n) => (
             <li key={n.id} className="flex items-center justify-between gap-3 py-2">
               <span className="flex items-center gap-2 min-w-0">

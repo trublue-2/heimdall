@@ -124,7 +124,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-[var(--foreground-muted)] uppercase tracking-wide">Weitere WLAN-Zugänge (Admin)</h2>
           <Card>
-            <WifiNetworksManager deviceId={device.id} />
+            <WifiNetworksManager deviceId={device.id} primarySsid={device.primarySsid} />
           </Card>
         </section>
       )}
