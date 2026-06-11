@@ -82,6 +82,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
           <Info label="Akku" value={device.battery != null ? `${device.battery}%${device.charging ? " ⚡ lädt" : ""}` : "—"} />
           <Info label="Letzter Sync" value={formatDateTime(device.lastSyncAt)} />
           <Info label="Boot-Grund" value={device.wakeReason ?? "—"} mono />
+          <Info label="Firmware" value={device.fwVersion ? `v${device.fwVersion}` : "—"} mono />
           <Info
             label="IP"
             value={
