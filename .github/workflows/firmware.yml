@@ -11,6 +11,7 @@ jobs:
   build-publish:
     name: Build & Publish
     runs-on: ubuntu-latest
+    environment: kink # gleiche SSH-Deploy-Credentials wie der Server-Deploy
     steps:
       - uses: actions/checkout@v4
 
@@ -39,12 +40,33 @@ jobs:
           echo "FW=$FW" >> "$GITHUB_ENV"
           echo "Firmware-Version: $FW"
 
-      - name: Publish .bin to Heimdall-Server
+      # .bin in den Home des Deploy-Users laden (dort hat er Schreibrecht)
+      - name: Copy .bin to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_SERVER }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          source: firmware/.pio/build/lolin_d32/firmware.bin
+          target: heimdall-ota
+          strip_components: 4
+
+      # In das App-Volume schreiben (über docker compose cp → richtige Perms)
+      - name: Publish into container volume
+        uses: appleboy/ssh-action@v1
         env:
-          OTA_KEY: ${{ secrets.OTA_UPLOAD_KEY }}
-        run: |
-          curl -fsS -X POST "https://heimdall.trublue.ch/api/ota/publish" \
-            -H "X-OTA-Key: ${OTA_KEY}" \
-            -F "version=${FW}" \
-            -F "file=@firmware/.pio/build/lolin_d32/firmware.bin" \
-          && echo "Firmware ${FW} veroeffentlicht - Boxen ziehen beim naechsten Sync."
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          FW: ${{ env.FW }}
+        with:
+          host: ${{ secrets.DEPLOY_SERVER }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          envs: DEPLOY_PATH,FW
+          script: |
+            DEPLOY_PATH="$(printf '%s' "$DEPLOY_PATH" | tr -d '\n\r')"
+            cd "$DEPLOY_PATH"
+            docker compose exec -T app mkdir -p /app/data/firmware
+            docker compose cp "$HOME/heimdall-ota/firmware.bin" app:/app/data/firmware/latest.bin
+            printf '%s\n' "$FW" | docker compose exec -T app sh -c 'cat > /app/data/firmware/version.txt'
+            rm -f "$HOME/heimdall-ota/firmware.bin"
+            echo "Firmware $FW veroeffentlicht - Boxen ziehen beim naechsten Sync."

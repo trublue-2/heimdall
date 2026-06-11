@@ -56,8 +56,7 @@ export default auth((req) => {
     pathname.startsWith("/api/auth") ||
     pathname === "/login" ||
     pathname === "/api/version" ||
-    pathname.startsWith("/api/box/") ||
-    pathname.startsWith("/api/ota/"); // CI-Publish: eigene X-OTA-Key-Auth
+    pathname.startsWith("/api/box/");
 
   const isAdminRoute = pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
   const isProtected =
