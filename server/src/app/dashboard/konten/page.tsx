@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { AccountManager } from "@/app/components/AccountManager";
 import { DeviceManager } from "@/app/components/DeviceManager";
+import { FirmwareManager } from "@/app/components/FirmwareManager";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,11 @@ export default async function KontenPage() {
       <section className="space-y-3">
         <h1 className="text-xl font-bold">Konten</h1>
         <AccountManager users={users} />
+      </section>
+
+      <section className="space-y-3">
+        <h1 className="text-xl font-bold">Firmware (OTA)</h1>
+        <FirmwareManager />
       </section>
     </div>
   );

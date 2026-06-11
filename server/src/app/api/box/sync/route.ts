@@ -3,6 +3,7 @@ import { z } from "zod";
 import { authenticateDevice, extractBearerToken, effectiveLockUntil } from "@/lib/device-auth";
 import { prisma } from "@/lib/prisma";
 import { notifyDeviceChange } from "@/lib/events";
+import { getTargetVersion } from "@/lib/firmware";
 
 function ts() { return new Date().toISOString(); }
 
@@ -118,11 +119,16 @@ export async function POST(req: NextRequest) {
     // TODO: push event to chastitytracker.ch
   }
 
+  // Server-Pull-OTA: Zielversion ≠ gemeldeter FW → Box zieht die neue Bin.
+  const targetVersion = await getTargetVersion();
+  const otaPending = !!targetVersion && targetVersion !== state.fwVersion;
+
   return NextResponse.json({
     lockUntil: lockUntil?.toISOString() ?? null,
     offlineOpenHours: policy?.offlineOpenHours ?? 24,
     timeUTC: now.toISOString(),
-    otaAvailable: false,
+    otaVersion: otaPending ? targetVersion : null,
+    otaUrl: otaPending ? `${process.env.NEXTAUTH_URL ?? ""}/api/box/firmware` : null,
     commands: [],
   });
 }
