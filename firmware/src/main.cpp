@@ -124,7 +124,7 @@ static void handleStatus() {
                 ".s{font-size:2rem;font-weight:700;margin:1rem 0;padding:1rem;border-radius:1rem}"
                 ".lock{background:#2a1416;color:#ff6b6b}.open{background:#13241a;color:#4ade80}"
                 ".m{color:#8a8a8a;font-size:.9rem;margin:.3rem}</style></head><body>"
-                "<h2>🔒 Heimdall</h2>";
+                "<h2>🔒 " + String(gBox.deviceName[0] ? gBox.deviceName : "Heimdall") + "</h2>";
   if (locked) {
     html += "<div class='s lock'>GESCHLOSSEN</div>";
     if (gPolicy.lockUntil > 0)

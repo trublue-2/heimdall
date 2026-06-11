@@ -17,6 +17,7 @@ struct BoxState {
   char   wakeReason[32];
   int    batteryPct;   // Aktuell gemessen, vor WiFi-Init (ADC ungestört)
   bool   charging;     // true wenn Akku lädt (Trend aus NVS-Vorwert)
+  char   deviceName[64]; // Anzeigename vom Server (nur RAM, je Sync gesetzt)
 };
 
 // Letzte vom Server empfangene Policy.

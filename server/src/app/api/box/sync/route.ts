@@ -124,6 +124,7 @@ export async function POST(req: NextRequest) {
   const otaPending = !!targetVersion && targetVersion !== state.fwVersion;
 
   return NextResponse.json({
+    name: device.name,
     lockUntil: lockUntil?.toISOString() ?? null,
     offlineOpenHours: policy?.offlineOpenHours ?? 24,
     timeUTC: now.toISOString(),

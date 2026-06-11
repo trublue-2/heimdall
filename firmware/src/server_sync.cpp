@@ -156,6 +156,7 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   policy.lockUntil    = parseIso8601(lockUntilStr);
   policy.offlineOpenH = resp["offlineOpenHours"] | OFFLINE_OPEN_H;
   policy.hardCapH     = resp["hardCapHours"] | 0;
+  strlcpy(state.deviceName, resp["name"] | "", sizeof(state.deviceName));
   state.lastSyncAt    = time(nullptr);
 
   // OTA-Hinweis (Server-Pull): leer = kein Update.
