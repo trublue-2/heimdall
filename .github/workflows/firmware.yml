@@ -1,0 +1,50 @@
+name: Firmware Build & Publish (OTA)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "firmware/**"
+  workflow_dispatch:
+
+jobs:
+  build-publish:
+    name: Build & Publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            firmware/.pio
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build firmware
+        working-directory: firmware
+        run: pio run
+
+      - name: Read FW version from config.h
+        run: |
+          FW=$(grep -oE 'FW_VERSION[[:space:]]+"[^"]+"' firmware/src/config.h | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          echo "FW=$FW" >> "$GITHUB_ENV"
+          echo "Firmware-Version: $FW"
+
+      - name: Publish .bin to Heimdall-Server
+        env:
+          OTA_KEY: ${{ secrets.OTA_UPLOAD_KEY }}
+        run: |
+          curl -fsS -X POST "https://heimdall.trublue.ch/api/ota/publish" \
+            -H "X-OTA-Key: ${OTA_KEY}" \
+            -F "version=${FW}" \
+            -F "file=@firmware/.pio/build/lolin_d32/firmware.bin" \
+          && echo "Firmware ${FW} veroeffentlicht - Boxen ziehen beim naechsten Sync."
