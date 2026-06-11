@@ -17,28 +17,41 @@ namespace Failsafe {
     return constrain(pct, 0, 100);
   }
 
+  // Wall-Clock plausibel? Nach Power-on/Brownout ist time()≈0 (1970), bis NTP läuft.
+  // Zeit-basierte Server-Deadlines dürfen einer ungültigen Uhr NICHT vertrauen.
+  inline bool clockValid() { return time(nullptr) > 1700000000; } // ~2023-11
+
   // Low-Battery: Öffnen solange noch genug Energie für den Stepper da ist.
   inline bool isLowBattery() {
     return batteryPercent() <= BATT_CRITICAL_PCT;
   }
 
-  // Offline-Timeout: letzter erfolgreicher Sync liegt zu lang zurück.
+  // Offline-Timeout: zu lange kein erfolgreicher Sync. CLOCK-UNABHÄNGIG über den
+  // monotonen offlineSeconds-Zähler — greift auch bei 1970-Uhr (genau dann nötig).
   inline bool isOfflineTimeout(const BoxState& state, const BoxPolicy& policy) {
-    if (state.lastSyncAt == 0) return false;
-    long elapsedH = (long)(time(nullptr) - state.lastSyncAt) / 3600;
-    return elapsedH >= policy.offlineOpenH;
+    return state.offlineSeconds >= (uint32_t)policy.offlineOpenH * 3600u;
   }
 
-  // Policy-Deadline: Server-Vorgabe abgelaufen oder kein Lock gesetzt.
+  // HardCap: absolute, NIE überschreitbare Sperr-Obergrenze (CLAUDE.md). Lokal
+  // enforced über die monotone Sperrdauer — unabhängig von Server UND Wall-Clock.
+  inline bool isHardCapExceeded(const BoxState& state, const BoxPolicy& policy) {
+    if (policy.hardCapH <= 0) return false; // 0 = kein Cap
+    return state.lockedSeconds >= (uint32_t)policy.hardCapH * 3600u;
+  }
+
+  // Policy-Deadline: Server-Vorgabe abgelaufen. Öffnet NUR bei gültiger Uhr —
+  // sonst übernehmen Offline-Timeout/HardCap (sonst bliebe die Box bei 1970 ewig zu).
   inline bool isPolicyExpired(const BoxPolicy& policy) {
     if (policy.lockUntil == 0) return true; // kein Lock → offen
+    if (!clockValid()) return false;        // Uhr ungültig → nicht hierauf öffnen
     return time(nullptr) >= policy.lockUntil;
   }
 
-  // Fasst alle drei zusammen: true → Box muss jetzt öffnen.
+  // Fasst alle Öffnungsgründe zusammen: true → Box muss jetzt öffnen.
   inline bool shouldOpen(const BoxState& state, const BoxPolicy& policy) {
     return isLowBattery()
         || isOfflineTimeout(state, policy)
+        || isHardCapExceeded(state, policy)
         || isPolicyExpired(policy);
   }
 

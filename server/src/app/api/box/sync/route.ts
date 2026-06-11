@@ -143,6 +143,8 @@ export async function POST(req: NextRequest) {
     name: device.name,
     lockUntil: lockUntil?.toISOString() ?? null,
     offlineOpenHours: policy?.offlineOpenHours ?? 24,
+    hardCapHours: policy?.hardCapHours ?? 0, // lokal als absolute Obergrenze enforced
+
     timeUTC: now.toISOString(),
     otaVersion: otaPending ? targetVersion : null,
     otaUrl: otaPending ? `${process.env.NEXTAUTH_URL ?? ""}/api/box/firmware` : null,

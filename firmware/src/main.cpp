@@ -3,6 +3,7 @@
 #include <WebServer.h>
 #include <Preferences.h>
 #include <esp_system.h>
+#include <esp_ota_ops.h>
 #include <driver/rtc_io.h>
 #include <time.h>
 #include "config.h"
@@ -27,6 +28,10 @@ static WifiCredentials gCreds          = {};
 static BoxState        gBox            = {};
 static BoxPolicy       gPolicy         = {};
 static unsigned long   gLastActivityMs = 0;
+
+// Aufeinanderfolgende 401 (überlebt Deep-Sleep) → Selbstheilung in den Hotspot (S8).
+RTC_DATA_ATTR static uint32_t gAuthFails = 0;
+static bool            gOtaPending     = false; // läuft eine OTA-Validierung? (S14)
 
 // Knopfdruck wird per Interrupt gelatcht — so geht keine Flanke verloren,
 // auch nicht während SYNCING/Boot/Actuation, wo der Loop nicht pollt.
@@ -86,6 +91,39 @@ static void checkFactoryReset() {
     }
     delay(20);
   }
+}
+
+// ── OTA-Validierung / Rollback (S14) ─────────────────────────────────────────
+// Nach einer OTA muss sich die neue FW durch einen erfolgreichen Sync bestätigen.
+// Bleibt die Bestätigung über mehrere Boots aus (neue FW kaputt) → zurück auf die
+// alte Partition. Schützt vor „bricked = stuck lock".
+static void otaCheckBoot() {
+  Preferences p;
+  p.begin("ota", false);
+  gOtaPending = p.getBool("pending", false);
+  if (gOtaPending) {
+    uint32_t boots = p.getUInt("boots", 0) + 1;
+    p.putUInt("boots", boots);
+    log_w("OTA-Validierung: Boot %u — warte auf erfolgreichen Sync", boots);
+    if (boots > 3) { // neue FW bootet, validiert sich aber nicht → Rollback
+      log_e("OTA-Validierung fehlgeschlagen → Rollback auf vorige Partition");
+      p.putBool("pending", false);
+      p.end();
+      const esp_partition_t* prev = esp_ota_get_next_update_partition(NULL);
+      if (prev && esp_ota_set_boot_partition(prev) == ESP_OK) { delay(100); ESP.restart(); }
+      return;
+    }
+  }
+  p.end();
+}
+
+// Erfolgreicher Sync → neue FW bestätigen (Rollback abbestellen).
+static void otaCommit() {
+  if (!gOtaPending) return;
+  gOtaPending = false;
+  Preferences p; p.begin("ota", false); p.putBool("pending", false); p.end();
+  esp_ota_mark_app_valid_cancel_rollback(); // no-op falls Bootloader-Rollback aus
+  log_i("OTA-Validierung: Sync OK → neue FW bestätigt");
 }
 
 // LED-Sofortquittung: 3× gegen den aktuellen Pegel blitzen (Knopfdruck angekommen).
@@ -204,7 +242,8 @@ void setup() {
   // CPU auf 80 MHz (WiFi-Minimum) drosseln: spart ~20-25 mA und gibt damit
   // dem schwachen LOLIN-D32-LDO Reserve für die WLAN-Stromspitzen (Brownout).
   setCpuFrequencyMhz(80);
-  recordBoot(); // Reset-Grund + Zähler (über WLAN/Statusseite sichtbar)
+  recordBoot();   // Reset-Grund + Zähler (über WLAN/Statusseite sichtbar)
+  otaCheckBoot(); // OTA-Validierung/Rollback (S14) — vor allem anderen
   NVS::begin();
   Stepper::begin();
   gWeb.on("/", handleStatus); // Statusseite-Route einmalig registrieren
@@ -264,6 +303,23 @@ void setup() {
   NVS::loadPolicy(gPolicy);
   strlcpy(gBox.wakeReason, reason, sizeof(gBox.wakeReason));
 
+  // ── Monotone Failsafe-Zähler ticken (clock-UNABHÄNGIG, überleben 1970/Brownout) ──
+  // Delta der RTC-Uhr ist über Deep-Sleep korrekt; bei Power-Loss/1970-Sprung wird
+  // konservativ ein Wake-Intervall angenommen. Garantiert: Offline/HardCap greifen.
+  {
+    time_t now = time(nullptr);
+    uint32_t inc = 0;
+    if (gBox.lastTick > 0) {
+      long delta = (long)(now - gBox.lastTick);
+      inc = (delta >= 0 && delta <= (long)(2UL * WAKE_INTERVAL_S))
+              ? (uint32_t)delta : (uint32_t)WAKE_INTERVAL_S;
+    }
+    gBox.offlineSeconds += inc;
+    gBox.lockedSeconds = gBox.locked ? gBox.lockedSeconds + inc : 0;
+    gBox.lastTick = now;
+    NVS::saveState(gBox); // persistieren — überlebt Brownout
+  }
+
   // Lade-Status: Vergleich aktueller Messwert vs. gespeicherter Vorwert (≥2% Schwelle)
   int prevBatt = gBox.batteryPct; // aus NVS (-1 = noch nie gespeichert)
   gBox.batteryPct = batt;
@@ -305,8 +361,18 @@ void setup() {
   }
 
   if (gBox.locked && Failsafe::isOfflineTimeout(gBox, gPolicy)) {
-    log_w("FAILSAFE: Offline-Timeout (%dh) → OPENING", gPolicy.offlineOpenH);
+    log_w("FAILSAFE: Offline-Timeout (%dh, %us offline) → OPENING",
+          gPolicy.offlineOpenH, gBox.offlineSeconds);
     strlcpy(gBox.wakeReason, "offline_timeout", sizeof(gBox.wakeReason));
+    gState = State::OPENING;
+    return;
+  }
+
+  // HardCap: absolute Obergrenze — lokal, nie überschreitbar (CLAUDE.md).
+  if (gBox.locked && Failsafe::isHardCapExceeded(gBox, gPolicy)) {
+    log_w("FAILSAFE: HardCap (%dh, %us locked) → OPENING",
+          gPolicy.hardCapH, gBox.lockedSeconds);
+    strlcpy(gBox.wakeReason, "hard_deadline", sizeof(gBox.wakeReason));
     gState = State::OPENING;
     return;
   }
@@ -333,7 +399,12 @@ void loop() {
       SyncResult res = ServerSync::run(gCreds, gBox, gPolicy, true, &ota);
 
       if (res == SyncResult::OK) {
-        bool shouldLock = (gPolicy.lockUntil > 0 && time(nullptr) < gPolicy.lockUntil);
+        gAuthFails = 0; // erfolgreicher Sync → 401-Zähler zurücksetzen
+        otaCommit();    // neue FW (falls OTA gerade lief) bestätigen
+        // (Re)Sperren nur mit GÜLTIGER Uhr — sonst könnte eine 1970-Uhr eine
+        // längst abgelaufene Policy fälschlich als "noch gültig" werten (S2).
+        bool shouldLock = (gPolicy.lockUntil > 0 && Failsafe::clockValid() &&
+                           time(nullptr) < gPolicy.lockUntil);
         log_i("Entscheidung: locked=%d lockUntil=%ld shouldLock=%d expired=%d",
               gBox.locked, (long)gPolicy.lockUntil, shouldLock,
               Failsafe::isPolicyExpired(gPolicy));
@@ -342,8 +413,9 @@ void loop() {
           gState = State::OPENING;
         } else if (!gBox.locked && shouldLock) {
           log_i("Policy: Sperren bis %ld", (long)gPolicy.lockUntil);
-          gBox.locked      = true;
-          gBox.lockedSince = time(nullptr);
+          gBox.locked        = true;
+          gBox.lockedSince   = time(nullptr);
+          gBox.lockedSeconds = 0; // Sperrdauer-Zähler startet frisch (HardCap)
           NVS::saveState(gBox);
           Stepper::lock();
           gLastActivityMs = millis();
@@ -366,6 +438,18 @@ void loop() {
         }
       } else {
         log_e("Sync fehlgeschlagen (code=%d) — arbeite mit Cache", (int)res);
+        // Selbstheilung (S8): wiederholter 401 = Token passt nicht mehr (z.B. nach
+        // Server-Token-Rotation) → Credentials löschen → Setup-Hotspot.
+        if (res == SyncResult::AUTH_ERROR) {
+          gAuthFails++;
+          log_w("AUTH-Fehler %u/%d", gAuthFails, AUTH_FAIL_LIMIT);
+          if (gAuthFails >= AUTH_FAIL_LIMIT) {
+            log_w("Wiederholter 401 → Credentials löschen, Setup-Hotspot");
+            NVS::clearCredentials();
+            delay(100);
+            ESP.restart();
+          }
+        }
         if (gBox.locked && Failsafe::isPolicyExpired(gPolicy)) {
           gState = State::OPENING;
         } else {

@@ -50,6 +50,9 @@ bool NVS::loadState(BoxState& out) {
     out.lastSyncAt  = (time_t)prefs.getLong64("lsync",  0);
     out.batteryPct  = prefs.getInt("prevBatt", -1); // -1 = noch nie gemessen
     strlcpy(out.wakeReason, prefs.getString("reason", "unknown").c_str(), sizeof(out.wakeReason));
+    out.lockedSeconds  = prefs.getUInt("locksec",  0);
+    out.offlineSeconds = prefs.getUInt("offsec",   0);
+    out.lastTick       = (time_t)prefs.getLong64("ltick", 0);
   }
   prefs.end();
   return ok;
@@ -62,6 +65,9 @@ void NVS::saveState(const BoxState& in) {
   prefs.putLong64("lsync",   (int64_t)in.lastSyncAt);
   prefs.putString("reason",  in.wakeReason);
   prefs.putInt("prevBatt",   in.batteryPct);
+  prefs.putUInt("locksec",   in.lockedSeconds);
+  prefs.putUInt("offsec",    in.offlineSeconds);
+  prefs.putLong64("ltick",   (int64_t)in.lastTick);
   prefs.end();
 }
 

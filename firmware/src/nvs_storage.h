@@ -25,6 +25,12 @@ struct BoxState {
   int    batteryPct;   // Aktuell gemessen, vor WiFi-Init (ADC ungestört)
   bool   charging;     // true wenn Akku lädt (Trend aus NVS-Vorwert)
   char   deviceName[64]; // Anzeigename vom Server (nur RAM, je Sync gesetzt)
+
+  // Monotone Failsafe-Zähler — clock-UNABHÄNGIG (überleben Brownout/1970-Uhr via NVS).
+  // Garantieren, dass Offline-Timeout/HardCap auch ohne gültige Wall-Clock greifen.
+  uint32_t lockedSeconds;  // akkumulierte Sperrdauer (0 wenn offen) → HardCap
+  uint32_t offlineSeconds; // Zeit seit letztem erfolgreichen Sync (0 bei Sync) → Offline-Open
+  time_t   lastTick;       // time() beim letzten Wake (für Delta-Berechnung)
 };
 
 // Letzte vom Server empfangene Policy.

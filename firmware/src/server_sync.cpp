@@ -196,6 +196,7 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   policy.hardCapH     = resp["hardCapHours"] | 0;
   strlcpy(state.deviceName, resp["name"] | "", sizeof(state.deviceName));
   state.lastSyncAt    = time(nullptr);
+  state.offlineSeconds = 0; // erfolgreicher Sync → Offline-Zähler zurücksetzen
 
   // OTA-Hinweis (Server-Pull): leer = kein Update.
   if (ota) {

@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.1.26"
+#define FW_VERSION "0.1.27"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Boot-sichere GPIOs ohne Strapping-Konflikt.
@@ -38,6 +38,8 @@
 #define WAKE_INTERVAL_S          (5UL * 60)         // 5 min → periodischer Sync-Wake
 #define OFFLINE_OPEN_H           24                 // h ohne Sync → Auto-Open
 #define WIFI_CONNECT_TIMEOUT_MS  (15 * 1000)        // 15 s WiFi-Connect-Limit
+#define AUTH_FAIL_LIMIT          10                 // N×401 in Folge → Setup-Hotspot (Selbstheilung)
+#define OTA_VALIDATE_SYNCS       1                  // erfolgreiche Syncs bis OTA bestätigt (sonst Rollback)
 
 // WLAN-Sendeleistung: LOLIN D32 3,3-V-LDO (ME6211, ~500 mA) bricht bei voller
 // Power (19,5 dBm) unter den WLAN-TX-Stromstoss ein → Brownout-Reset. Auf 2 dBm

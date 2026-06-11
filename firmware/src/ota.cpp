@@ -3,6 +3,7 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <Update.h>
+#include <Preferences.h>
 
 bool OTA::apply(const char* url, const char* token) {
   WiFiClientSecure client;
@@ -31,6 +32,9 @@ bool OTA::apply(const char* url, const char* token) {
     return false;
   }
   log_i("OTA: OK (%u Bytes) → Reboot in neue Firmware", (unsigned)written);
+  // Validierung anstoßen (S14): neue FW muss sich durch erfolgreichen Sync bestätigen,
+  // sonst Rollback. Flag überlebt den Reboot in NVS.
+  { Preferences p; p.begin("ota", false); p.putBool("pending", true); p.putUInt("boots", 0); p.end(); }
   delay(500);
   ESP.restart();
   return true; // nie erreicht
