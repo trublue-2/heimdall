@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.1.21"
+#define FW_VERSION "0.1.24"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Boot-sichere GPIOs ohne Strapping-Konflikt.
@@ -34,8 +34,8 @@
 #define BATT_CRITICAL_PCT  8  // % → Auto-Open Failsafe
 
 // ── Timeouts ───────────────────────────────────────────────────────────────
-#define IDLE_SLEEP_MS            (3UL * 60 * 1000) // 3 min → Deep-Sleep
-#define WAKE_INTERVAL_S          (10UL * 60)        // 10 min → periodischer Sync-Wake
+#define IDLE_SLEEP_MS            (1UL * 60 * 1000) // 1 min → Deep-Sleep
+#define WAKE_INTERVAL_S          (5UL * 60)         // 5 min → periodischer Sync-Wake
 #define OFFLINE_OPEN_H           24                 // h ohne Sync → Auto-Open
 #define WIFI_CONNECT_TIMEOUT_MS  (15 * 1000)        // 15 s WiFi-Connect-Limit
 

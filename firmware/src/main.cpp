@@ -3,12 +3,15 @@
 #include <WebServer.h>
 #include <Preferences.h>
 #include <esp_system.h>
+#include <driver/rtc_io.h>
 #include <time.h>
 #include "config.h"
 #include "nvs_storage.h"
 #include "stepper.h"
 #include "server_sync.h"
 #include "failsafe.h"
+#include "provisioning.h"
+#include "ota.h"
 
 // ── State-Machine ───────────────────────────────────────────────────────────
 enum class State {
@@ -63,6 +66,26 @@ static void recordBoot() {
   p.putUInt("boots", gBootCount);
   p.putUInt("unexp", gUnexpected);
   p.end();
+}
+
+// Long-Press auf dem Button (GND↔27 ≥3 s gehalten) → Credentials löschen →
+// Reboot in den Setup-Hotspot. Aufruf nach Button-pinMode, vor dem Cred-Load.
+static void checkFactoryReset() {
+  if (digitalRead(PIN_BUTTON) != LOW) return; // nicht gedrückt
+  log_w("Button gehalten — halte 3 s für Factory-Reset …");
+  unsigned long t0 = millis();
+  while (digitalRead(PIN_BUTTON) == LOW) {
+    if (millis() - t0 >= 3000) {
+      log_w("FACTORY-RESET: Credentials gelöscht → Setup-Hotspot");
+      for (int i = 0; i < 6; i++) { // schnelles LED-Blinken als Quittung
+        digitalWrite(PIN_LED, LED_ON);  delay(80);
+        digitalWrite(PIN_LED, LED_OFF); delay(80);
+      }
+      NVS::clearCredentials();
+      ESP.restart();
+    }
+    delay(20);
+  }
 }
 
 // LED-Sofortquittung: 3× gegen den aktuellen Pegel blitzen (Knopfdruck angekommen).
@@ -164,8 +187,11 @@ static void goDeepSleep() {
   Stepper::powerOff();
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
-  // GPIO0 = BOOT-Button, Pull-Up → normalerweise HIGH.
-  // Wake auf LOW: aufwachen wenn Button gedrückt (zieht GPIO0 auf GND).
+  // GPIO27 hat keinen externen Pull-up → im Deep-Sleep RTC-Pull-up aktivieren,
+  // sonst floatet der Pin und EXT0 (Wake auf LOW) triggert spontan/unzuverlässig.
+  rtc_gpio_pullup_en((gpio_num_t)PIN_BUTTON);
+  rtc_gpio_pulldown_dis((gpio_num_t)PIN_BUTTON);
+  // Wake auf LOW: aufwachen wenn Taster GPIO27 auf GND zieht.
   esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_BUTTON, LOW);
   esp_sleep_enable_timer_wakeup(timerS * 1000000ULL);
   esp_deep_sleep_start();
@@ -191,6 +217,9 @@ void setup() {
   // Sofort-Quittung bei Knopfdruck aus dem Schlaf: 3× blinken, bevor WiFi/Sync.
   // Der User vor Ort sieht innerhalb ~0.3 s, dass der Druck angekommen ist.
   if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) ledAck();
+
+  // Button beim Boot ≥3 s gehalten → Factory-Reset in den Setup-Hotspot.
+  checkFactoryReset();
 
   // Batterie vor WiFi messen — ADC ist ohne WiFi-Rauschen genauer
   int batt = Failsafe::batteryPercent();
@@ -292,15 +321,16 @@ void loop() {
 
     // ── PROVISIONING ──────────────────────────────────────────────────────
     case State::PROVISIONING:
-      // TODO: Captive-Portal / AP-Modus implementieren
-      log_w("PROVISIONING: Keine Credentials. Captive Portal nicht implementiert.");
-      delay(5000);
+      // Setup-Hotspot: blockiert bis QR-/Formular-Provisionierung, dann Reboot.
+      Provisioning::run(); // kehrt nicht zurück
       break;
 
     // ── SYNCING ───────────────────────────────────────────────────────────
     case State::SYNCING: {
       log_i("SYNCING …");
-      SyncResult res = ServerSync::run(gCreds, gBox, gPolicy);
+      OtaInfo ota = {};
+      // keepWifi=true: WiFi bleibt an für Statusseite + mögliches OTA (kein Re-Connect).
+      SyncResult res = ServerSync::run(gCreds, gBox, gPolicy, true, &ota);
 
       if (res == SyncResult::OK) {
         bool shouldLock = (gPolicy.lockUntil > 0 && time(nullptr) < gPolicy.lockUntil);
@@ -319,10 +349,20 @@ void loop() {
           gLastActivityMs = millis();
           // Neuen Zustand sofort an Server melden — sonst zeigt das Web "Offen"
           // bis zum nächsten Wake (Diskrepanz zur LED).
-          ServerSync::run(gCreds, gBox, gPolicy);
+          ServerSync::run(gCreds, gBox, gPolicy, true);
           gState = State::LOCKED;
         } else {
           gState = gBox.locked ? State::LOCKED : State::IDLE_OPEN;
+        }
+
+        // OTA (Server-Pull): nur wenn der Riegel ruht (kein Aktuieren ausstehend)
+        // und genug Akku da ist. Safety > Function: niemals mitten in OPENING.
+        if (ota.version[0] && strcmp(ota.version, FW_VERSION) != 0 &&
+            (gState == State::LOCKED || gState == State::IDLE_OPEN) &&
+            Failsafe::batteryPercent() >= 40) {
+          log_w("OTA: Server bietet %s an (aktuell %s) → Update", ota.version, FW_VERSION);
+          OTA::apply(ota.url, gCreds.deviceToken); // Erfolg → Reboot (kehrt nicht zurück)
+          log_e("OTA fehlgeschlagen — weiter mit aktueller FW");
         }
       } else {
         log_e("Sync fehlgeschlagen (code=%d) — arbeite mit Cache", (int)res);

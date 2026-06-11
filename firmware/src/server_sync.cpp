@@ -89,7 +89,8 @@ static void syncNtp() {
 }
 
 SyncResult ServerSync::run(const WifiCredentials& creds,
-                           BoxState& state, BoxPolicy& policy, bool keepWifi) {
+                           BoxState& state, BoxPolicy& policy, bool keepWifi,
+                           OtaInfo* ota) {
   if (WiFi.status() != WL_CONNECTED &&
       !connectWifi(creds.ssid, creds.password)) return SyncResult::NO_WIFI;
   syncNtp();
@@ -156,6 +157,12 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   policy.offlineOpenH = resp["offlineOpenHours"] | OFFLINE_OPEN_H;
   policy.hardCapH     = resp["hardCapHours"] | 0;
   state.lastSyncAt    = time(nullptr);
+
+  // OTA-Hinweis (Server-Pull): leer = kein Update.
+  if (ota) {
+    strlcpy(ota->version, resp["otaVersion"] | "", sizeof(ota->version));
+    strlcpy(ota->url,     resp["otaUrl"]     | "", sizeof(ota->url));
+  }
 
   NVS::savePolicy(policy);
   NVS::saveState(state);
