@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.1.29"
+#define FW_VERSION "0.1.30"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Boot-sichere GPIOs ohne Strapping-Konflikt.
@@ -22,10 +22,10 @@
 
 // ── Button ─────────────────────────────────────────────────────────────────
 // Externer Lockbox-Taster gegen GND. Der LOLIN D32 hat KEINEN BOOT/IO0-Knopf
-// (nur RESET), darum eigener GPIO. GPIO27: RTC-fähig (→ EXT0-Wake aus Deep-Sleep),
-// interner Pull-Up (HIGH idle, LOW bei Druck), KEIN Strapping-Pin (anders als
-// GPIO0 → keine Download-Modus-Falle beim Reset). Taster: GPIO27 ↔ GND.
-#define PIN_BUTTON 27
+// (nur RESET), darum eigener GPIO. GPIO14: RTC-fähig (→ EXT0-Wake aus Deep-Sleep),
+// interner Pull-Up (HIGH idle, LOW bei Druck), KEIN Strapping-Pin. Auf dem Board
+// der zweitunterste Pin der linken Reihe. Taster: GPIO14 ↔ GND.
+#define PIN_BUTTON 14
 
 // ── Batterie ADC ───────────────────────────────────────────────────────────
 // LOLIN D32: GPIO35 mit 100k/100k Teiler → misst Vbat/2.
