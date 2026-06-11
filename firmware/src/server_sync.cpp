@@ -54,6 +54,7 @@ static bool connectWifi(const char* ssid, const char* pass) {
   // Schnellpfad: direkt auf bekannten Kanal/AP verbinden (kein Scan).
   if (rtcWifiHint) {
     WiFi.begin(ssid, pass, rtcChannel, rtcBssid);
+    WiFi.setTxPower(WIFI_TX_POWER); // erst NACH begin() — STA muss gestartet sein
     if (waitConnected(WIFI_CONNECT_TIMEOUT_MS / 2)) {
       log_i("WiFi OK (fast): %s", WiFi.localIP().toString().c_str());
       return true;
@@ -64,6 +65,7 @@ static bool connectWifi(const char* ssid, const char* pass) {
   }
 
   WiFi.begin(ssid, pass);
+  WiFi.setTxPower(WIFI_TX_POWER); // erst NACH begin() — STA muss gestartet sein
   if (!waitConnected(WIFI_CONNECT_TIMEOUT_MS)) return false;
 
   // Parameter für den nächsten Wake merken.

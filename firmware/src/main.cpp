@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
+#include <Preferences.h>
+#include <esp_system.h>
 #include <time.h>
 #include "config.h"
 #include "nvs_storage.h"
@@ -22,13 +24,55 @@ static WifiCredentials gCreds          = {};
 static BoxState        gBox            = {};
 static BoxPolicy       gPolicy         = {};
 static unsigned long   gLastActivityMs = 0;
-static bool            gBtnPrev        = false; // true = Button war letzte Runde gedrückt
 
-// LED-Sofortquittung: 3× kurz blinken (Knopfdruck angekommen).
+// Knopfdruck wird per Interrupt gelatcht — so geht keine Flanke verloren,
+// auch nicht während SYNCING/Boot/Actuation, wo der Loop nicht pollt.
+static volatile bool   gBtnLatched     = false;
+static void IRAM_ATTR onButtonIsr() { gBtnLatched = true; }
+
+// ── Diagnose (über WLAN sichtbar, kein Serial nötig) ────────────────────────
+// Persistente Zähler in NVS: Brownouts zeigen sich als Resets, die KEIN
+// Deep-Sleep-Wake sind (POWERON/BROWNOUT). gUnexpected klettert dann hoch.
+static uint32_t    gBootCount  = 0;
+static uint32_t    gUnexpected = 0;
+static const char* gResetReason = "?";
+
+static const char* resetReasonStr(esp_reset_reason_t r) {
+  switch (r) {
+    case ESP_RST_POWERON:   return "POWERON";
+    case ESP_RST_BROWNOUT:  return "BROWNOUT";
+    case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
+    case ESP_RST_SW:        return "SW";
+    case ESP_RST_PANIC:     return "PANIC";
+    case ESP_RST_INT_WDT:   return "INT_WDT";
+    case ESP_RST_TASK_WDT:  return "TASK_WDT";
+    case ESP_RST_EXT:       return "EXT";
+    default:                return "OTHER";
+  }
+}
+
+static void recordBoot() {
+  esp_reset_reason_t r = esp_reset_reason();
+  gResetReason = resetReasonStr(r);
+  Preferences p;
+  p.begin("diag", false);
+  gBootCount  = p.getUInt("boots", 0) + 1;
+  gUnexpected = p.getUInt("unexp", 0);
+  // Alles außer regulärem Deep-Sleep-Wake gilt als unerwartet (Brownout-Verdacht).
+  if (r != ESP_RST_DEEPSLEEP) gUnexpected++;
+  p.putUInt("boots", gBootCount);
+  p.putUInt("unexp", gUnexpected);
+  p.end();
+}
+
+// LED-Sofortquittung: 3× gegen den aktuellen Pegel blitzen (Knopfdruck angekommen).
+// Gegenphasig, damit die Quittung auch bei dauerleuchtender LED (LOCKED) sichtbar ist.
 static void ledAck() {
+  int rest = digitalRead(PIN_LED); // Ruhepegel des aktuellen Zustands
+  int flash = (rest == LED_ON) ? LED_OFF : LED_ON;
   for (int i = 0; i < 3; i++) {
-    digitalWrite(PIN_LED, LED_ON);  delay(70);
-    digitalWrite(PIN_LED, LED_OFF); delay(70);
+    digitalWrite(PIN_LED, flash); delay(90);
+    digitalWrite(PIN_LED, rest);  delay(90);
   }
 }
 
@@ -66,7 +110,14 @@ static void handleStatus() {
     html += "<div class='s open'>OFFEN</div>";
   }
   html += "<p class=m>Zeit: " + fmtLocal(time(nullptr)) + "</p>";
-  html += "<p class=m>Akku: " + String(gBox.batteryPct) + "% · fw " + FW_VERSION + "</p>";
+  html += "<p class=m>Akku: " + String(gBox.batteryPct) + "% · "
+          + String(WiFi.RSSI()) + " dBm · fw " + FW_VERSION + "</p>";
+  // Diagnose: gUnexpected > Boot-Power-On = Brownout-Verdacht (über WLAN sichtbar).
+  html += "<p class=m>Boots: " + String(gBootCount)
+          + " · unerwartet: " + String(gUnexpected)
+          + " · Reset: " + String(gResetReason) + "</p>";
+  html += "<p class=m>Uptime: " + String(millis() / 1000) + " s · Heap: "
+          + String(ESP.getFreeHeap() / 1024) + " kB</p>";
   html += "</body></html>";
   gWeb.send(200, "text/html", html);
 }
@@ -77,6 +128,7 @@ static void ensureStatusServer() {
     gWebOn = false;
     WiFi.mode(WIFI_STA);
     WiFi.begin(gCreds.ssid, gCreds.password);
+    WiFi.setTxPower(WIFI_TX_POWER); // erst NACH begin() — STA muss gestartet sein
     unsigned long t = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - t < WIFI_CONNECT_TIMEOUT_MS) delay(100);
     if (WiFi.status() != WL_CONNECTED) return;
@@ -108,6 +160,7 @@ static void goDeepSleep() {
   }
 
   log_i("Deep-Sleep — button=GPIO%d LOW, timer=%llus", PIN_BUTTON, timerS);
+  detachInterrupt(digitalPinToInterrupt(PIN_BUTTON)); // GPIO-ISR freigeben, EXT0 übernimmt
   Stepper::powerOff();
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
@@ -122,12 +175,17 @@ static void goDeepSleep() {
 void setup() {
   Serial.begin(115200);
   delay(200); // Sicherstellen dass UART-Buffer geleert wird vor erstem Log
+  // CPU auf 80 MHz (WiFi-Minimum) drosseln: spart ~20-25 mA und gibt damit
+  // dem schwachen LOLIN-D32-LDO Reserve für die WLAN-Stromspitzen (Brownout).
+  setCpuFrequencyMhz(80);
+  recordBoot(); // Reset-Grund + Zähler (über WLAN/Statusseite sichtbar)
   NVS::begin();
   Stepper::begin();
   gWeb.on("/", handleStatus); // Statusseite-Route einmalig registrieren
   pinMode(PIN_LED, OUTPUT);
   digitalWrite(PIN_LED, LED_OFF);
   pinMode(PIN_BUTTON, INPUT_PULLUP); // GPIO0: HIGH per Pull-up, LOW bei Druck
+  attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), onButtonIsr, FALLING);
   gLastActivityMs = millis();
 
   // Sofort-Quittung bei Knopfdruck aus dem Schlaf: 3× blinken, bevor WiFi/Sync.
@@ -225,6 +283,7 @@ void setup() {
   }
 
   gState = State::SYNCING;
+  gBtnLatched = false; // Boot-Bounce verwerfen — der Initial-Sync läuft ohnehin
 }
 
 // ── loop: State-Machine ──────────────────────────────────────────────────────
@@ -293,35 +352,27 @@ void loop() {
     case State::IDLE_OPEN: {
       digitalWrite(PIN_LED, (gState == State::LOCKED) ? LED_ON : LED_OFF);
 
-      // Button im Wachzustand: fallende Flanke (HIGH→LOW) = Druck → sofort syncen.
-      // Sonst reagiert der Knopf nur aus dem Deep-Sleep (EXT0) — am USB/Idle tot.
-      bool btn = (digitalRead(PIN_BUTTON) == LOW);
-      if (btn && !gBtnPrev) {
-        delay(30); // entprellen
-        if (digitalRead(PIN_BUTTON) == LOW) {
-          log_i("Button (wach) → Sync");
-          ledAck();
-          gLastActivityMs = millis();
-          gBtnPrev = true;
-          gState = State::SYNCING;
-          break;
-        }
+      // Per ISR gelatchter Druck — auch dann gesetzt, wenn er während eines
+      // anderen Zustands (SYNCING/Boot) kam. Flag konsumieren und syncen.
+      if (gBtnLatched) {
+        gBtnLatched = false;
+        log_i("Button (wach) → Sync");
+        ledAck();
+        gLastActivityMs = millis();
+        gState = State::SYNCING;
+        break;
       }
-      gBtnPrev = btn;
 
-      if (Failsafe::isOnExternalPower(gBox)) {
-        // Am Strom: nicht schlafen, Statusseite bedienen, periodisch re-syncen.
-        ensureStatusServer();
-        gWeb.handleClient();
-        if (millis() - gLastActivityMs > WAKE_INTERVAL_S * 1000UL) {
-          gLastActivityMs = millis();
-          gState = State::SYNCING; // Policy/Zustand turnusmäßig auffrischen
-        }
-        delay(10);
-      } else if (millis() - gLastActivityMs > IDLE_SLEEP_MS) {
+      // Status-Seite in jedem Wach-Fenster bedienen — entkoppelt von der
+      // unzuverlässigen Power-Erkennung. Nach IDLE_SLEEP_MS ohne Aktivität
+      // Deep-Sleep; der periodische Re-Sync läuft über den Timer-Wake.
+      ensureStatusServer();
+      gWeb.handleClient();
+
+      if (millis() - gLastActivityMs > IDLE_SLEEP_MS) {
         goDeepSleep();
       } else {
-        delay(100);
+        delay(10);
       }
       break;
     }

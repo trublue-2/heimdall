@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.1.11"
+#define FW_VERSION "0.1.21"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Boot-sichere GPIOs ohne Strapping-Konflikt.
@@ -21,10 +21,11 @@
 #define LED_OFF  HIGH
 
 // ── Button ─────────────────────────────────────────────────────────────────
-// LOLIN D32: Onboard BOOT-Button auf GPIO0 (interner Pull-Up, LOW bei Druck).
-// RTC-GPIO — funktioniert als EXT0-Wake auf LOW-Level.
-// Achtung: GPIO0 muss beim Power-On HIGH sein (normal, da Pull-Up aktiv).
-#define PIN_BUTTON 0
+// Externer Lockbox-Taster gegen GND. Der LOLIN D32 hat KEINEN BOOT/IO0-Knopf
+// (nur RESET), darum eigener GPIO. GPIO27: RTC-fähig (→ EXT0-Wake aus Deep-Sleep),
+// interner Pull-Up (HIGH idle, LOW bei Druck), KEIN Strapping-Pin (anders als
+// GPIO0 → keine Download-Modus-Falle beim Reset). Taster: GPIO27 ↔ GND.
+#define PIN_BUTTON 27
 
 // ── Batterie ADC ───────────────────────────────────────────────────────────
 // LOLIN D32: GPIO35 mit 100k/100k Teiler → misst Vbat/2.
@@ -37,6 +38,12 @@
 #define WAKE_INTERVAL_S          (10UL * 60)        // 10 min → periodischer Sync-Wake
 #define OFFLINE_OPEN_H           24                 // h ohne Sync → Auto-Open
 #define WIFI_CONNECT_TIMEOUT_MS  (15 * 1000)        // 15 s WiFi-Connect-Limit
+
+// WLAN-Sendeleistung: LOLIN D32 3,3-V-LDO (ME6211, ~500 mA) bricht bei voller
+// Power (19,5 dBm) unter den WLAN-TX-Stromstoss ein → Brownout-Reset. Auf 2 dBm
+// gedrosselt; bei ~3 m zum AP unkritisch. MUSS nach jedem WiFi.mode(STA) gesetzt
+// werden (mode-Wechsel setzt die Power zurück).
+#define WIFI_TX_POWER            WIFI_POWER_2dBm
 
 // ── Server API ─────────────────────────────────────────────────────────────
 #define SERVER_PATH_REGISTER "/api/box/register"
