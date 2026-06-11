@@ -35,9 +35,23 @@ model Device {
   wifiRssi    Int?
   charging    Boolean?
   boxIp       String?
-  policy      LockPolicy?
-  events      DeviceEvent[]
-  users       User[]        @relation("DeviceAccess")
+  policy       LockPolicy?
+  events       DeviceEvent[]
+  users        User[]        @relation("DeviceAccess")
+  wifiNetworks WifiNetwork[]
+}
+
+// Zusätzliche WLAN-Zugänge (über das Provisioning-Primärnetz hinaus).
+// password wird nach Auslieferung an die Box genullt (Box meldet SSID als bekannt).
+model WifiNetwork {
+  id        String   @id @default(cuid())
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  deviceId  String
+  ssid      String
+  password  String? // null = bereits an die Box ausgeliefert
+  createdAt DateTime @default(now())
+
+  @@unique([deviceId, ssid])
 }
 
 model LockPolicy {

@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #include <DNSServer.h>
 #include <WebServer.h>
+#include <mbedtls/base64.h>
 
 namespace {
 
@@ -66,8 +67,23 @@ void handleProvision() {
   }
 
   WifiCredentials c = {};
-  strlcpy(c.ssid,        server.arg("ssid").c_str(),  sizeof(c.ssid));
-  strlcpy(c.password,    server.arg("pass").c_str(),  sizeof(c.password));
+  strlcpy(c.ssid, server.arg("ssid").c_str(), sizeof(c.ssid));
+
+  // Passwort: bei enc=b64 Base64-dekodieren (sonst Klartext).
+  String passArg = server.arg("pass");
+  if (server.arg("enc") == "b64") {
+    unsigned char buf[64] = {0};
+    size_t olen = 0;
+    if (mbedtls_base64_decode(buf, sizeof(buf) - 1, &olen,
+          (const unsigned char*)passArg.c_str(), passArg.length()) == 0) {
+      buf[olen] = '\0';
+      strlcpy(c.password, (const char*)buf, sizeof(c.password));
+    } else {
+      strlcpy(c.password, passArg.c_str(), sizeof(c.password)); // Fallback
+    }
+  } else {
+    strlcpy(c.password, passArg.c_str(), sizeof(c.password));
+  }
   strlcpy(c.serverUrl,
           server.hasArg("url") && !server.arg("url").isEmpty()
             ? server.arg("url").c_str() : "https://heimdall.trublue.ch",

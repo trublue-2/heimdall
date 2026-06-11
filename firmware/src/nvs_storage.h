@@ -9,6 +9,13 @@ struct WifiCredentials {
   char deviceToken[64];
 };
 
+// Zusätzliche WLANs (vom Server per Sync geliefert). Primärnetz = WifiCredentials.
+#define MAX_EXTRA_NETS 3
+struct WifiNet {
+  char ssid[64];
+  char pass[64];
+};
+
 // Persistenter Box-Zustand (bleibt über Deep-Sleep erhalten).
 struct BoxState {
   bool   locked;
@@ -39,4 +46,7 @@ namespace NVS {
 
   bool loadPolicy(BoxPolicy& out);
   void savePolicy(const BoxPolicy& in);
+
+  int  loadExtraNets(WifiNet* out, int maxN);          // gibt Anzahl zurück
+  void saveExtraNet(const char* ssid, const char* pass); // dedup nach SSID, max MAX_EXTRA_NETS
 }

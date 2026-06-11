@@ -37,6 +37,8 @@ static time_t parseIso8601(const char* s) {
 RTC_DATA_ATTR static uint8_t  rtcBssid[6] = {0};
 RTC_DATA_ATTR static int32_t  rtcChannel  = 0;
 RTC_DATA_ATTR static bool     rtcWifiHint = false;
+RTC_DATA_ATTR static char     rtcSsid[64] = {0};
+RTC_DATA_ATTR static char     rtcPass[64] = {0};
 
 static bool waitConnected(unsigned long timeoutMs) {
   unsigned long start = millis();
@@ -47,32 +49,61 @@ static bool waitConnected(unsigned long timeoutMs) {
   return true;
 }
 
-static bool connectWifi(const char* ssid, const char* pass) {
+static bool tryConnect(const char* ssid, const char* pass, unsigned long timeout,
+                       int32_t channel = 0, const uint8_t* bssid = nullptr) {
+  if (channel && bssid) WiFi.begin(ssid, pass, channel, bssid);
+  else                  WiFi.begin(ssid, pass);
+  WiFi.setTxPower(WIFI_TX_POWER); // erst NACH begin() — STA muss gestartet sein
+  return waitConnected(timeout);
+}
+
+// Verbindet mit dem stärksten *bekannten* Netz (Primär + Zusatz-WLANs aus NVS).
+// Schnellpfad: zuletzt erfolgreiches Netz direkt (kein Scan).
+static bool connectWifi(const WifiCredentials& creds) {
   WiFi.persistent(false); // keine Flash-Writes pro Connect
   WiFi.mode(WIFI_STA);
 
-  // Schnellpfad: direkt auf bekannten Kanal/AP verbinden (kein Scan).
-  if (rtcWifiHint) {
-    WiFi.begin(ssid, pass, rtcChannel, rtcBssid);
-    WiFi.setTxPower(WIFI_TX_POWER); // erst NACH begin() — STA muss gestartet sein
-    if (waitConnected(WIFI_CONNECT_TIMEOUT_MS / 2)) {
-      log_i("WiFi OK (fast): %s", WiFi.localIP().toString().c_str());
+  WifiNet known[1 + MAX_EXTRA_NETS];
+  strlcpy(known[0].ssid, creds.ssid,     sizeof(known[0].ssid));
+  strlcpy(known[0].pass, creds.password, sizeof(known[0].pass));
+  int n = 1 + NVS::loadExtraNets(&known[1], MAX_EXTRA_NETS);
+
+  // Schnellpfad: letztes erfolgreiches Netz direkt (kein Scan).
+  if (rtcWifiHint && rtcSsid[0]) {
+    if (tryConnect(rtcSsid, rtcPass, WIFI_CONNECT_TIMEOUT_MS / 2, rtcChannel, rtcBssid)) {
+      log_i("WiFi OK (fast): %s @ %s", rtcSsid, WiFi.localIP().toString().c_str());
       return true;
     }
-    // AP umgezogen/Kanal gewechselt → Hint verwerfen, normal scannen.
     rtcWifiHint = false;
     WiFi.disconnect();
   }
 
-  WiFi.begin(ssid, pass);
-  WiFi.setTxPower(WIFI_TX_POWER); // erst NACH begin() — STA muss gestartet sein
-  if (!waitConnected(WIFI_CONNECT_TIMEOUT_MS)) return false;
+  // Scan → stärkstes bekanntes Netz wählen.
+  int found = WiFi.scanNetworks();
+  int bestNet = -1, bestRssi = -999, bestChannel = 0;
+  uint8_t bestBssid[6] = {0};
+  for (int s = 0; s < found; s++) {
+    for (int k = 0; k < n; k++) {
+      if (WiFi.SSID(s) == known[k].ssid && WiFi.RSSI(s) > bestRssi) {
+        bestRssi = WiFi.RSSI(s); bestNet = k; bestChannel = WiFi.channel(s);
+        memcpy(bestBssid, WiFi.BSSID(s), 6);
+      }
+    }
+  }
+  WiFi.scanDelete();
 
-  // Parameter für den nächsten Wake merken.
+  if (bestNet < 0) { log_w("Kein bekanntes WLAN sichtbar (%d APs)", found); return false; }
+
+  log_i("Verbinde '%s' (%d dBm)", known[bestNet].ssid, bestRssi);
+  if (!tryConnect(known[bestNet].ssid, known[bestNet].pass, WIFI_CONNECT_TIMEOUT_MS,
+                  bestChannel, bestBssid)) return false;
+
   memcpy(rtcBssid, WiFi.BSSID(), 6);
-  rtcChannel  = WiFi.channel();
+  rtcChannel = WiFi.channel();
+  strlcpy(rtcSsid, known[bestNet].ssid, sizeof(rtcSsid));
+  strlcpy(rtcPass, known[bestNet].pass, sizeof(rtcPass));
   rtcWifiHint = true;
-  log_i("WiFi OK: %s", WiFi.localIP().toString().c_str());
+  log_i("WiFi OK: %s @ %s", known[bestNet].ssid, WiFi.localIP().toString().c_str());
   return true;
 }
 
@@ -92,7 +123,7 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
                            BoxState& state, BoxPolicy& policy, bool keepWifi,
                            OtaInfo* ota) {
   if (WiFi.status() != WL_CONNECTED &&
-      !connectWifi(creds.ssid, creds.password)) return SyncResult::NO_WIFI;
+      !connectWifi(creds)) return SyncResult::NO_WIFI;
   syncNtp();
 
   WiFiClientSecure client;
@@ -136,6 +167,13 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   s["wifiRssi"]   = WiFi.RSSI();
   s["ip"]         = WiFi.localIP().toString();
 
+  // Bekannte WLANs melden → Server nullt gelieferte Passwörter.
+  JsonArray ks = req["knownSsids"].to<JsonArray>();
+  ks.add(creds.ssid);
+  WifiNet extras[MAX_EXTRA_NETS];
+  int ne = NVS::loadExtraNets(extras, MAX_EXTRA_NETS);
+  for (int i = 0; i < ne; i++) ks.add(extras[i].ssid);
+
   String body;
   serializeJson(req, body);
 
@@ -163,6 +201,14 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   if (ota) {
     strlcpy(ota->version, resp["otaVersion"] | "", sizeof(ota->version));
     strlcpy(ota->url,     resp["otaUrl"]     | "", sizeof(ota->url));
+  }
+
+  // Zusatz-WLANs vom Server übernehmen (Passwort wird serverseitig danach genullt).
+  JsonArray nets = resp["wifiNetworks"].as<JsonArray>();
+  for (JsonObject net : nets) {
+    const char* nssid = net["ssid"] | "";
+    const char* npass = net["pass"] | "";
+    if (nssid[0]) { NVS::saveExtraNet(nssid, npass); log_i("Neues WLAN: %s", nssid); }
   }
 
   NVS::savePolicy(policy);

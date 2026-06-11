@@ -84,3 +84,51 @@ void NVS::savePolicy(const BoxPolicy& in) {
   prefs.putInt("hardCap",  in.hardCapH);
   prefs.end();
 }
+
+// ── Zusatz-WLANs ─────────────────────────────────────────────────────────────
+int NVS::loadExtraNets(WifiNet* out, int maxN) {
+  prefs.begin("nets", true);
+  int count = prefs.getInt("count", 0);
+  if (count > maxN) count = maxN;
+  if (count > MAX_EXTRA_NETS) count = MAX_EXTRA_NETS;
+  char key[8];
+  for (int i = 0; i < count; i++) {
+    snprintf(key, sizeof(key), "s%d", i);
+    strlcpy(out[i].ssid, prefs.getString(key, "").c_str(), sizeof(out[i].ssid));
+    snprintf(key, sizeof(key), "p%d", i);
+    strlcpy(out[i].pass, prefs.getString(key, "").c_str(), sizeof(out[i].pass));
+  }
+  prefs.end();
+  return count;
+}
+
+void NVS::saveExtraNet(const char* ssid, const char* pass) {
+  if (!ssid || ssid[0] == '\0') return;
+  WifiNet nets[MAX_EXTRA_NETS];
+  int count = loadExtraNets(nets, MAX_EXTRA_NETS);
+
+  int idx = -1;
+  for (int i = 0; i < count; i++)
+    if (strcmp(nets[i].ssid, ssid) == 0) { idx = i; break; }
+
+  if (idx < 0) {                          // neues Netz
+    if (count >= MAX_EXTRA_NETS) {         // voll → ältestes verdrängen
+      for (int i = 1; i < count; i++) nets[i - 1] = nets[i];
+      count = MAX_EXTRA_NETS - 1;
+    }
+    idx = count++;
+    strlcpy(nets[idx].ssid, ssid, sizeof(nets[idx].ssid));
+  }
+  strlcpy(nets[idx].pass, pass ? pass : "", sizeof(nets[idx].pass));
+
+  prefs.begin("nets", false);
+  prefs.putInt("count", count);
+  char key[8];
+  for (int i = 0; i < count; i++) {
+    snprintf(key, sizeof(key), "s%d", i);
+    prefs.putString(key, nets[i].ssid);
+    snprintf(key, sizeof(key), "p%d", i);
+    prefs.putString(key, nets[i].pass);
+  }
+  prefs.end();
+}

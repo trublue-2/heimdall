@@ -28,6 +28,7 @@ const syncBodySchema = z.object({
     charging: z.boolean().optional(),
     ip: z.string().max(45).optional(),
   }),
+  knownSsids: z.array(z.string().max(64)).max(16).optional(), // WLANs, die die Box kennt
 });
 
 export async function POST(req: NextRequest) {
@@ -123,6 +124,20 @@ export async function POST(req: NextRequest) {
   const targetVersion = await getTargetVersion();
   const otaPending = !!targetVersion && targetVersion !== state.fwVersion;
 
+  // Multi-WLAN: Passwort nullen, sobald die Box die SSID als bekannt meldet
+  // (= ausgeliefert). Danach nur noch nicht-ausgelieferte Netze schicken.
+  const knownSsids = body.knownSsids ?? [];
+  if (knownSsids.length) {
+    await prisma.wifiNetwork.updateMany({
+      where: { deviceId: device.id, ssid: { in: knownSsids }, password: { not: null } },
+      data: { password: null },
+    });
+  }
+  const pendingNets = await prisma.wifiNetwork.findMany({
+    where: { deviceId: device.id, password: { not: null } },
+    select: { ssid: true, password: true },
+  });
+
   return NextResponse.json({
     name: device.name,
     lockUntil: lockUntil?.toISOString() ?? null,
@@ -130,6 +145,7 @@ export async function POST(req: NextRequest) {
     timeUTC: now.toISOString(),
     otaVersion: otaPending ? targetVersion : null,
     otaUrl: otaPending ? `${process.env.NEXTAUTH_URL ?? ""}/api/box/firmware` : null,
+    wifiNetworks: pendingNets.map((n) => ({ ssid: n.ssid, pass: n.password })),
     commands: [],
   });
 }
