@@ -75,6 +75,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # provenance/SBOM-Attestation abschalten — deren Push zur GHCR verursachte
+          # wiederholt 504-Fehler beim Deploy. Für ein privates Single-Image unnötig.
+          provenance: false
+          sbom: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
