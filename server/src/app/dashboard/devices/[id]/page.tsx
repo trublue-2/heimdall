@@ -84,14 +84,9 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
           <Info label="Boot-Grund" value={device.wakeReason ?? "—"} mono />
           <Info label="Firmware" value={device.fwVersion ? `v${device.fwVersion}` : "—"} mono />
           <Info
-            label="IP"
-            value={
-              device.boxIp ? (
-                <a href={`http://${device.boxIp}/`} target="_blank" rel="noreferrer" className="text-[var(--color-lock)] hover:underline font-mono">
-                  {device.boxIp} ↗
-                </a>
-              ) : "—"
-            }
+            label="IP (nur im selben WLAN, Box wach)"
+            value={device.boxIp ?? "—"}
+            mono
           />
         </Card>
       </section>
