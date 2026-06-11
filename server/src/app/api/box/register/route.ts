@@ -18,12 +18,12 @@ export async function POST(req: NextRequest) {
 
   const now = new Date();
 
-  // Ensure a default LockPolicy exists
+  // Ensure a default LockPolicy exists — und das erzeugte Objekt auch nutzen
+  // (vorher wurde der refetch verworfen → device.policy blieb null → lockUntil falsch).
   if (!device.policy) {
-    await prisma.lockPolicy.create({
+    device.policy = await prisma.lockPolicy.create({
       data: { deviceId: device.id },
     });
-    await prisma.device.findUnique({ where: { id: device.id }, include: { policy: true } });
   }
 
   const lockUntil = effectiveLockUntil(device.policy, now);

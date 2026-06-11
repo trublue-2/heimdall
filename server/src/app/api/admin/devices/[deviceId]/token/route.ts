@@ -13,12 +13,24 @@ export async function POST(
 
   const { deviceId } = await params;
   const rawToken = generateProvisioningToken();
-  const [tokenHash] = await Promise.all([
-    hashProvisioningToken(rawToken),
-  ]);
+  const tokenHash = await hashProvisioningToken(rawToken);
+
+  // Den bisherigen Token als Grace-Token für 1 h gültig lassen → eine laufende Box
+  // synct weiter, bis sie mit dem neuen Token re-provisioniert wurde (kein Lockout).
+  const existing = await prisma.device.findUnique({
+    where: { id: deviceId },
+    select: { tokenHash: true },
+  });
+  if (!existing) {
+    return NextResponse.json({ error: "Gerät nicht gefunden" }, { status: 404 });
+  }
+  const graceExpiry = new Date(Date.now() + 60 * 60 * 1000);
 
   try {
-    await prisma.device.update({ where: { id: deviceId }, data: { tokenHash } });
+    await prisma.device.update({
+      where: { id: deviceId },
+      data: { tokenHash, prevTokenHash: existing.tokenHash, prevTokenExpiry: graceExpiry },
+    });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
       return NextResponse.json({ error: "Gerät nicht gefunden" }, { status: 404 });

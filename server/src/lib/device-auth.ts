@@ -16,9 +16,18 @@ export async function authenticateDevice(
     include: { policy: true },
   });
 
+  const now = new Date();
   for (const device of devices) {
-    const match = await bcrypt.compare(normalized, device.tokenHash);
-    if (match) return device as DeviceWithPolicy;
+    if (await bcrypt.compare(normalized, device.tokenHash)) return device as DeviceWithPolicy;
+    // Grace: vorheriger Token noch innerhalb des Gültigkeitsfensters akzeptieren.
+    if (
+      device.prevTokenHash &&
+      device.prevTokenExpiry &&
+      device.prevTokenExpiry > now &&
+      (await bcrypt.compare(normalized, device.prevTokenHash))
+    ) {
+      return device as DeviceWithPolicy;
+    }
   }
 
   return null;

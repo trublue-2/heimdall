@@ -59,8 +59,10 @@ export async function POST(req: NextRequest) {
   if (!prevLocked && state.locked) {
     eventType = "LOCKED";
   } else if (prevLocked && !state.locked) {
+    // Exact-Match: Unbekanntes/abweichendes wakeReason → UNAUTHORIZED_OPEN (Safety:
+    // im Zweifel Tamper). Substring war spoofbar ("button_x" → fälschlich legitim).
     const reason = state.wakeReason ?? "";
-    const isLegitimate = LEGITIMATE_OPEN_REASONS.some((r) => reason.includes(r));
+    const isLegitimate = LEGITIMATE_OPEN_REASONS.includes(reason);
     eventType = isLegitimate ? "UNLOCKED" : "UNAUTHORIZED_OPEN";
   }
 

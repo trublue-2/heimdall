@@ -69,8 +69,8 @@ export function SetupQrModal({
         <>
           <p className="text-xs text-[var(--foreground-muted)]">
             Heim-WLAN eingeben. Der QR enthält WLAN-Zugang + einen frischen Geräte-Token.
-            Beim Erzeugen wird der <strong>alte Token ungültig</strong> — die Box synct erst
-            wieder, nachdem sie mit diesem QR eingerichtet wurde.
+            Der alte Token bleibt <strong>1 Stunde gültig</strong> (Grace) — eine laufende Box
+            synct weiter, bis sie mit diesem QR neu eingerichtet ist.
           </p>
           <Input id={`qr-ssid-${deviceId}`} label="WLAN-Name (SSID)" value={ssid} onChange={(e) => setSsid(e.target.value)} />
           <Input id={`qr-pass-${deviceId}`} label="WLAN-Passwort" type="password" value={pass} onChange={(e) => setPass(e.target.value)} />

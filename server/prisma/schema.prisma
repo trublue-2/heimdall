@@ -21,6 +21,10 @@ model User {
 model Device {
   id          String        @id @default(cuid())
   tokenHash   String        @unique
+  // Vorheriger Token bleibt nach Rotation kurz gültig (Grace) — verhindert, dass
+  // ein "Setup-QR erzeugen" eine laufende Box sofort aussperrt (Token-Footgun).
+  prevTokenHash   String?
+  prevTokenExpiry DateTime?
   name        String        @default("Heimdall")
   createdAt   DateTime      @default(now())
   // Last reported state (from sync)

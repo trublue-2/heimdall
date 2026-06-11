@@ -1,28 +1,43 @@
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
-// In-memory rate limiter for login endpoint
+// In-memory rate limiter (per Bucket). Login eng, Box-API großzügig: eine legitime
+// Box synct ~alle 5 min (< 1/min), ein Flut-Angreifer pro IP wird gekappt — schützt
+// die teure bcrypt-Token-Prüfung vor CPU-DoS (sonst → blockierte Syncs → Auto-Open).
 const loginBucket = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT = 10;
+const boxBucket = new Map<string, { count: number; resetAt: number }>();
 const RATE_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_LIMIT = 10;
+const BOX_LIMIT = 120; // ~8/min je IP — weit über legitimem Box-Traffic
 
-function isRateLimited(ip: string): boolean {
+function isRateLimited(
+  bucket: Map<string, { count: number; resetAt: number }>,
+  ip: string,
+  limit: number
+): boolean {
   const now = Date.now();
-  const entry = loginBucket.get(ip);
+  const entry = bucket.get(ip);
   if (!entry || entry.resetAt < now) {
-    loginBucket.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });
+    bucket.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });
     return false;
   }
   entry.count += 1;
-  return entry.count > RATE_LIMIT;
+  return entry.count > limit;
 }
 
 setInterval(() => {
   const now = Date.now();
-  for (const [ip, entry] of loginBucket.entries()) {
-    if (entry.resetAt < now) loginBucket.delete(ip);
-  }
+  for (const b of [loginBucket, boxBucket])
+    for (const [ip, entry] of b.entries()) if (entry.resetAt < now) b.delete(ip);
 }, 30 * 60 * 1000);
+
+function clientIp(req: { headers: Headers }): string {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() ??
+    req.headers.get("x-real-ip") ??
+    "unknown"
+  );
+}
 
 export default auth((req) => {
   // Next-Action header must be present for server action requests but its format
@@ -34,15 +49,18 @@ export default auth((req) => {
   }
 
   if (req.method === "POST" && req.nextUrl.pathname === "/api/auth/callback/credentials") {
-    const ip =
-      req.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() ??
-      req.headers.get("x-real-ip") ??
-      "unknown";
-    if (isRateLimited(ip)) {
+    if (isRateLimited(loginBucket, clientIp(req), LOGIN_LIMIT)) {
       return NextResponse.json(
         { error: "Zu viele Anmeldeversuche. Bitte warte 15 Minuten." },
         { status: 429, headers: { "Retry-After": "900" } }
       );
+    }
+  }
+
+  // Box-API: pro-IP-Limit schützt die teure Token-Prüfung (bcrypt) vor CPU-DoS.
+  if (req.nextUrl.pathname.startsWith("/api/box/")) {
+    if (isRateLimited(boxBucket, clientIp(req), BOX_LIMIT)) {
+      return NextResponse.json({ error: "Rate limit" }, { status: 429, headers: { "Retry-After": "60" } });
     }
   }
 
