@@ -26,6 +26,8 @@ export function SetupQrModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [qr, setQr] = useState<string | null>(null);
+  const [link, setLink] = useState<string>("");
+  const [copied, setCopied] = useState(false);
 
   async function generate() {
     if (!ssid) return;
@@ -43,12 +45,19 @@ export function SetupQrModal({
         `&url=${encodeURIComponent(window.location.origin)}` +
         `&token=${encodeURIComponent(token)}`;
 
+      setLink(url);
       setQr(await QRCode.toDataURL(url, { width: 320, margin: 1 }));
     } catch (e) {
       setError(String(e));
     } finally {
       setSaving(false);
     }
+  }
+
+  async function copyLink() {
+    await navigator.clipboard.writeText(link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   return (
@@ -71,13 +80,21 @@ export function SetupQrModal({
       ) : (
         <>
           <p className="text-xs text-[var(--foreground-muted)]">
-            1. Mit dem WLAN <strong>Heimdall-Setup-…</strong> der Box verbinden.<br />
-            2. Diesen QR scannen → die Box speichert und verbindet sich neu.
+            <strong>Einfachster Weg:</strong> Link kopieren → mit WLAN{" "}
+            <strong>Heimdall-Setup-…</strong> verbinden → auf der Setup-Seite der Box einfügen.
+          </p>
+          <Button onClick={copyLink} className="w-full">
+            {copied ? "✓ Kopiert" : "Setup-Link kopieren"}
+          </Button>
+
+          <p className="text-xs text-[var(--foreground-muted)] pt-2">
+            Oder QR scannen (am besten <em>vor</em> dem Verbinden mit dem Box-WLAN):
           </p>
           <div className="bg-white p-3 rounded-xl flex justify-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={qr} alt="Setup-QR" width={280} height={280} />
+            <img src={qr} alt="Setup-QR" width={240} height={240} />
           </div>
+
           <p className="text-[11px] text-center text-[var(--color-warn)]">
             ⚠️ Enthält WLAN-Passwort + Token — nicht weitergeben.
           </p>
