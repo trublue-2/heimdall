@@ -36,13 +36,13 @@ static void driveSteps(int direction, int steps) {
 
 void Stepper::lock() {
   log_i("Stepper: lock (%d steps)", STEPPER_LOCK_STEPS);
-  driveSteps(+1, STEPPER_LOCK_STEPS);
+  driveSteps(-1, STEPPER_LOCK_STEPS); // Richtung kalibriert: -1 fährt auf ZU
   powerOff();
 }
 
 void Stepper::unlock() {
   log_i("Stepper: unlock (%d steps)", STEPPER_LOCK_STEPS);
-  driveSteps(-1, STEPPER_LOCK_STEPS);
+  driveSteps(+1, STEPPER_LOCK_STEPS);
   powerOff();
 }
 

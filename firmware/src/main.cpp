@@ -274,6 +274,15 @@ void setup() {
   const uint8_t testPins[4] = {STEPPER_IN1, STEPPER_IN2, STEPPER_IN3, STEPPER_IN4};
   log_i("[GPIO_TEST] IN1=GPIO%d IN2=GPIO%d IN3=GPIO%d IN4=GPIO%d",
         STEPPER_IN1, STEPPER_IN2, STEPPER_IN3, STEPPER_IN4);
+#if defined(GPIO_TEST) && !defined(STEPPER_TEST)
+  // Reiner LED-Dauertest: IN1→IN4 endlos der Reihe nach (kein Motor).
+  for (;;) {
+    for (int i = 0; i < 4; i++) {
+      digitalWrite(testPins[i], HIGH); delay(400);
+      digitalWrite(testPins[i], LOW);  delay(150);
+    }
+  }
+#else
   for (int i = 0; i < 4; i++) {
     log_i("[GPIO_TEST] IN%d (GPIO%d) HIGH …", i+1, testPins[i]);
     digitalWrite(testPins[i], HIGH);
@@ -283,18 +292,21 @@ void setup() {
   }
   log_i("[GPIO_TEST] Fertig.");
 #endif
+#endif
 #ifdef STEPPER_TEST
+  pinMode(PIN_LED, OUTPUT);
   delay(1000);
-  log_i("[STEPPER_TEST] Steps=%d Delay=%dus", STEPPER_LOCK_STEPS, STEPPER_STEP_DELAY_US);
-  for (int round = 1; round <= 3; round++) {
-    log_i("[STEPPER_TEST] Runde %d — lock", round);
+  log_i("[STEPPER_TEST] DAUERSCHLEIFE Steps=%d Delay=%dus", STEPPER_LOCK_STEPS, STEPPER_STEP_DELAY_US);
+  for (uint32_t round = 1; ; round++) { // endlos
+    log_i("[STEPPER_TEST] %u — fahre auf ZU", round);
     Stepper::lock();
+    digitalWrite(PIN_LED, LED_ON);  // jetzt in ZU → blaue LED an
     delay(2000);
-    log_i("[STEPPER_TEST] Runde %d — unlock", round);
+    digitalWrite(PIN_LED, LED_OFF); // LED aus, DANN zurückfahren
+    log_i("[STEPPER_TEST] %u — fahre auf OFFEN", round);
     Stepper::unlock();
     delay(2000);
   }
-  log_i("[STEPPER_TEST] Fertig.");
 #endif
 #if defined(GPIO_TEST) || defined(STEPPER_TEST)
   return;

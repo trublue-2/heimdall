@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.1.30"
+#define FW_VERSION "0.1.39"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Boot-sichere GPIOs ohne Strapping-Konflikt.
@@ -9,9 +9,9 @@
 #define STEPPER_IN3 25
 #define STEPPER_IN4 26
 
-// Schritte pro Richtung — muss nach Bench-Test kalibriert werden.
-// 28BYJ-48 Half-Step: 4096 Steps/Umdrehung; echter Riegelweg < 1 Umdrehung.
-#define STEPPER_LOCK_STEPS  512   // TODO: Kalibrieren
+// Schritte pro Richtung — kalibriert am Bench.
+// 28BYJ-48 Half-Step: 4096 Steps/Umdrehung (~11,4 Steps/°). 1024 Steps = 90° Riegelweg.
+#define STEPPER_LOCK_STEPS  1024
 #define STEPPER_STEP_DELAY_US 3000 // µs — langsamer = mehr Drehmoment; mit Last ≥3000
 
 // ── Onboard LED ────────────────────────────────────────────────────────────
