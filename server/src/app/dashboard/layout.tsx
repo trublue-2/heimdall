@@ -28,6 +28,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
               Dashboard
             </Link>
             {isAdmin && (
+              <Link href="/dashboard/geraete" className="px-3 py-1.5 text-sm rounded-lg hover:bg-[var(--surface-raised)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">
+                Geräte
+              </Link>
+            )}
+            {isAdmin && (
               <Link href="/dashboard/konten" className="px-3 py-1.5 text-sm rounded-lg hover:bg-[var(--surface-raised)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">
                 Konten
               </Link>

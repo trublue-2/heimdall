@@ -3,24 +3,31 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Lock, Unlock, Loader2 } from "lucide-react";
-import { Card } from "./Card";
-import { Badge } from "./Badge";
-import { Button } from "./Button";
+import { Lock, Unlock, Loader2, Zap } from "lucide-react";
 import { LockModal } from "./LockModal";
 import { formatDateTime, formatDuration, pendingState, wantsClosed } from "@/lib/utils";
 
 export interface DeviceControlCardProps {
   id: string;
   name: string;
-  locked: boolean;            // Ist (gemeldet)
-  lockUntil: string | null;   // Soll
+  locked: boolean; // Ist (gemeldet)
+  lockUntil: string | null; // Soll
   lastSyncAt: string | null;
   battery: number | null;
   charging: boolean | null;
   fwVersion: string | null;
   wifiRssi: number | null;
   isOnline: boolean;
+}
+
+/** Verbleibende Zeit bis until, kompakt (z.B. "23 Min", "5 h 12 Min", "3 T 4 h"). */
+function timeLeft(until: string): string {
+  const min = Math.max(0, Math.round((new Date(until).getTime() - Date.now()) / 60000));
+  if (min < 60) return `${min} Min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return min % 60 ? `${h} h ${min % 60} Min` : `${h} h`;
+  const d = Math.floor(h / 24);
+  return h % 24 ? `${d} T ${h % 24} h` : `${d} T`;
 }
 
 export function DeviceControlCard(props: DeviceControlCardProps) {
@@ -30,6 +37,12 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
 
   const wantClosed = wantsClosed(props.lockUntil);
   const pending = pendingState(props.lockUntil, props.locked);
+  const locked = props.locked;
+
+  // Zustands-Farbe: gesperrt = ROT (warn), offen = GRÜN (ok).
+  const stateText = locked ? "text-[var(--color-warn)]" : "text-[var(--color-ok)]";
+  const stateBg = locked ? "bg-[var(--color-warn-bg)]" : "bg-[var(--color-ok-bg)]";
+  const stateBorder = locked ? "border-[var(--color-warn-border)]" : "border-[var(--color-ok-border)]";
 
   async function openDevice(e: React.MouseEvent) {
     e.preventDefault();
@@ -55,65 +68,69 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
 
   return (
     <>
-      <Link href={`/dashboard/devices/${props.id}`} className="block">
-        <Card className="space-y-4 hover:border-[var(--color-lock)] transition-colors">
-          {/* Header: Name + Status */}
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-xl ${props.locked ? "bg-[var(--color-lock-bg)]" : "bg-[var(--color-unlock-bg)]"}`}>
-                {props.locked
-                  ? <Lock   className="h-5 w-5 text-[var(--color-lock)]" />
-                  : <Unlock className="h-5 w-5 text-[var(--color-unlock)]" />}
-              </div>
-              <div>
-                <p className="font-semibold">{props.name}</p>
-                <p className="text-xs text-[var(--foreground-muted)]">
-                  {props.locked
-                    ? `Geschlossen${props.lockUntil ? ` bis ${formatDateTime(props.lockUntil)}` : ""}`
-                    : "Offen"}
-                </p>
-              </div>
-            </div>
-            <Badge variant={props.locked ? "lock" : "unlock"}>
-              {props.locked ? "Geschlossen" : "Offen"}
-            </Badge>
-          </div>
-
-          {/* Soll/Ist: ausstehende Änderung */}
-          {pending !== "none" && (
-            <div className="flex items-center gap-2 rounded-xl bg-[var(--color-warn-bg)] px-3 py-2 text-xs text-[var(--color-warn)]">
-              <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-              <span>
-                Wird {pending === "closing" ? "geschlossen" : "geöffnet"} ·
-                {" "}Button an der Box drücken zum Aktivieren
+      <Link href={`/dashboard/devices/${props.id}`} className="block group">
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden group-hover:border-[var(--foreground-faint)] transition-colors">
+          {/* Kopfzeile: Name + Telemetrie */}
+          <div className="flex items-center justify-between gap-3 px-4 pt-3.5">
+            <p className="font-semibold truncate">{props.name}</p>
+            <div className="flex items-center gap-3 text-xs text-[var(--foreground-faint)] shrink-0">
+              <span className="flex items-center gap-1.5">
+                <OnlineDot online={props.isOnline} />
+                {props.isOnline ? "online" : formatDuration(props.lastSyncAt)}
+              </span>
+              {props.wifiRssi != null && <RssiBars rssi={props.wifiRssi} />}
+              <span className="flex items-center gap-0.5">
+                {props.battery != null ? `${props.battery}%` : "—"}
+                {props.charging && <Zap className="h-3 w-3 text-[var(--color-ok)]" />}
               </span>
             </div>
-          )}
-
-          {/* Infos */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--foreground-faint)]">
-            <span className="flex items-center gap-1.5">
-              <OnlineDot online={props.isOnline} />
-              {props.isOnline ? "online" : `zuletzt ${formatDuration(props.lastSyncAt)}`}
-            </span>
-            {props.wifiRssi != null && <RssiBars rssi={props.wifiRssi} />}
-            <span>{props.battery != null ? `${props.battery}%` : "—"}{props.charging ? " ⚡" : ""}</span>
-            <span className="font-mono">{props.fwVersion ? `fw ${props.fwVersion}` : "fw ?"}</span>
           </div>
 
-          {/* Steuerung */}
-          <div className="pt-1 border-t border-[var(--border-subtle)]">
-            {wantClosed ? (
-              <Button variant="secondary" loading={saving} onClick={openDevice} className="w-full">
-                Öffnen
-              </Button>
-            ) : (
-              <Button onClick={openLockModal} className="w-full">
-                Verschliessen
-              </Button>
+          {/* Großer Zustandsblock */}
+          <div className={`mx-4 my-3 rounded-2xl border ${stateBg} ${stateBorder} px-5 py-6 text-center`}>
+            <div className={`mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl ${stateText} bg-[var(--surface)]`}>
+              {locked ? <Lock className="h-7 w-7" /> : <Unlock className="h-7 w-7" />}
+            </div>
+            <div className={`text-3xl font-extrabold tracking-tight ${stateText}`}>
+              {locked ? "GESCHLOSSEN" : "OFFEN"}
+            </div>
+            {locked && props.lockUntil && (
+              <>
+                <div className={`mt-1.5 text-lg font-semibold ${stateText}`}>noch {timeLeft(props.lockUntil)}</div>
+                <div className="text-xs text-[var(--foreground-muted)]">bis {formatDateTime(props.lockUntil)}</div>
+              </>
+            )}
+
+            {pending !== "none" && (
+              <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[var(--color-sperrzeit-bg)] border border-[var(--color-sperrzeit-border)] px-3 py-1 text-xs text-[var(--color-sperrzeit-text)]">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                wird {pending === "closing" ? "geschlossen" : "geöffnet"} · Box drücken
+              </div>
             )}
           </div>
-        </Card>
+
+          {/* Aktion */}
+          <div className="px-4 pb-4">
+            {wantClosed ? (
+              <button
+                onClick={openDevice}
+                disabled={saving}
+                className="w-full rounded-xl bg-[var(--color-ok)] py-3 font-semibold text-[var(--foreground-invert)] hover:opacity-90 disabled:opacity-50 transition flex items-center justify-center gap-2"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unlock className="h-4 w-4" />}
+                Öffnen
+              </button>
+            ) : (
+              <button
+                onClick={openLockModal}
+                className="w-full rounded-xl bg-[var(--color-warn)] py-3 font-semibold text-[var(--foreground-invert)] hover:opacity-90 transition flex items-center justify-center gap-2"
+              >
+                <Lock className="h-4 w-4" />
+                Verschliessen
+              </button>
+            )}
+          </div>
+        </div>
       </Link>
 
       {modalOpen && (
@@ -127,9 +144,9 @@ function OnlineDot({ online }: { online: boolean }) {
   return (
     <span className="relative flex h-2 w-2">
       {online && (
-        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--color-lock)] opacity-60" />
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--color-ok)] opacity-60" />
       )}
-      <span className={`relative inline-flex rounded-full h-2 w-2 ${online ? "bg-[var(--color-lock)]" : "bg-[var(--foreground-faint)]"}`} />
+      <span className={`relative inline-flex rounded-full h-2 w-2 ${online ? "bg-[var(--color-ok)]" : "bg-[var(--foreground-faint)]"}`} />
     </span>
   );
 }
@@ -141,7 +158,7 @@ function RssiBars({ rssi }: { rssi: number }) {
       {[1, 2, 3, 4].map((b) => (
         <span
           key={b}
-          className={`inline-block w-[3px] rounded-sm ${b <= bars ? "bg-[var(--color-lock)]" : "bg-[var(--border)]"}`}
+          className={`inline-block w-[3px] rounded-sm ${b <= bars ? "bg-[var(--color-ok)]" : "bg-[var(--border)]"}`}
           style={{ height: `${b * 25}%` }}
         />
       ))}

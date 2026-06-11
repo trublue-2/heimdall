@@ -2,8 +2,6 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { AccountManager } from "@/app/components/AccountManager";
-import { DeviceManager } from "@/app/components/DeviceManager";
-import { FirmwareManager } from "@/app/components/FirmwareManager";
 
 export const dynamic = "force-dynamic";
 
@@ -11,37 +9,15 @@ export default async function KontenPage() {
   const session = await auth();
   if ((session!.user as { role?: string }).role !== "admin") redirect("/dashboard");
 
-  const [users, devices] = await Promise.all([
-    prisma.user.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, username: true, role: true } }),
-    prisma.device.findMany({
-      orderBy: { createdAt: "asc" },
-      include: { users: { select: { id: true } } },
-    }),
-  ]);
+  const users = await prisma.user.findMany({
+    orderBy: { createdAt: "asc" },
+    select: { id: true, username: true, role: true },
+  });
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-3">
-        <h1 className="text-xl font-bold">Geräte</h1>
-        <DeviceManager
-          users={users.map((u) => ({ id: u.id, username: u.username }))}
-          devices={devices.map((d) => ({
-            id: d.id,
-            name: d.name,
-            assignedUserIds: d.users.map((u) => u.id),
-          }))}
-        />
-      </section>
-
-      <section className="space-y-3">
-        <h1 className="text-xl font-bold">Konten</h1>
-        <AccountManager users={users} />
-      </section>
-
-      <section className="space-y-3">
-        <h1 className="text-xl font-bold">Firmware (OTA)</h1>
-        <FirmwareManager />
-      </section>
+    <div className="space-y-3">
+      <h1 className="text-xl font-bold">Konten</h1>
+      <AccountManager users={users} />
     </div>
   );
 }
