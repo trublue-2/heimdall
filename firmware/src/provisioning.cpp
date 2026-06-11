@@ -116,11 +116,22 @@ void Provisioning::run() {
   server.begin();
 
   // Blockiert, bis provisioniert — dann Reboot in den Normalbetrieb.
+  // Blaue LED blinkt (~2,5 Hz) als Erkennung „Setup-Hotspot aktiv"
+  // (solid = ZU, aus = offen/Schlaf, blinkend = warte auf Einrichtung).
+  pinMode(PIN_LED, OUTPUT);
+  uint32_t lastBlink = 0;
+  bool ledOn = false;
   while (!gProvisioned) {
     dns.processNextRequest();
     server.handleClient();
+    if (millis() - lastBlink >= 200) {
+      lastBlink = millis();
+      ledOn = !ledOn;
+      digitalWrite(PIN_LED, ledOn ? LED_ON : LED_OFF);
+    }
     delay(5);
   }
+  digitalWrite(PIN_LED, LED_OFF);
   delay(1500); // Antwort noch ausliefern
   ESP.restart();
 }
