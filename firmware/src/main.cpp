@@ -164,9 +164,11 @@ static void handleStatus() {
                 ".m{color:#8a8a8a;font-size:.9rem;margin:.3rem}</style></head><body>"
                 "<h2>🔒 " + String(gBox.deviceName[0] ? gBox.deviceName : "Heimdall") + "</h2>";
   if (locked) {
-    html += "<div class='s lock'>GESCHLOSSEN</div>";
+    html += "<div class='s lock'>GESCHLOSSEN";
     if (gPolicy.lockUntil > 0)
-      html += "<p class=m>bis " + fmtLocal(gPolicy.lockUntil) + "</p>";
+      html += "<div style='font-size:1.3rem;font-weight:600;margin-top:.4rem'>bis "
+              + fmtLocal(gPolicy.lockUntil) + "</div>";
+    html += "</div>";
   } else {
     html += "<div class='s open'>OFFEN</div>";
   }
