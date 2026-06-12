@@ -43,6 +43,11 @@ model Device {
   charging    Boolean?
   boxIp       String?
   primarySsid String? // Provisioning-Netz (knownSsids[0] der Box)
+  // chastitytracker.ch-Anbindung (optional, pro Box). Box kennt den Tracker nicht —
+  // der Server ist die Brücke. trackerSync=Feature-Flag; trackerUserId/-DeviceId = Mapping.
+  trackerSync     Boolean @default(false)
+  trackerUserId   String? // Tracker-User-id (Ziel für Spur-2-Events + Sperrzeit-Pull)
+  trackerDeviceId String? // Tracker-Gerät am Schlüssel dieser Box (KG, Halsband, …)
   policy       LockPolicy?
   events       DeviceEvent[]
   users        User[]        @relation("DeviceAccess")
@@ -74,6 +79,10 @@ model LockPolicy {
   simpleLock       Boolean   @default(false)
   // Optionales Öffnungs-Passwort (bcrypt). Gesetzt → vorzeitiges Öffnen nur mit Passwort.
   openPasswordHash String?
+  // Aus dem Tracker gezogene Keyholder-Absicht (Hybrid: strengere Zeit gewinnt, gekappt
+  // durch hardCap). Getrennt von lockUntil, damit die Heimdall-eigene Zeit nicht überschrieben wird.
+  trackerLockUntil  DateTime? // timed Sperrzeit-Ende
+  trackerSimpleLock Boolean   @default(false) // indefinite Sperrzeit → zu bis Keyholder öffnet
   updatedAt        DateTime  @updatedAt
 }
 

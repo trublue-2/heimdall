@@ -3,7 +3,7 @@ import { requireDeviceAccess } from "@/lib/authGuards";
 import { prisma } from "@/lib/prisma";
 import { notifyDeviceChange } from "@/lib/events";
 
-// Gerät umbenennen. Zugriff: zugewiesenes Konto oder Admin.
+// Gerät umbenennen und/oder Tracker-Mapping setzen. Zugriff: zugewiesenes Konto oder Admin.
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ deviceId: string }> }
@@ -13,11 +13,30 @@ export async function PATCH(
   if (response) return response;
 
   const body = await req.json();
-  const name = (body.name as string)?.trim();
-  if (!name) return NextResponse.json({ error: "Name erforderlich" }, { status: 400 });
 
-  await prisma.device.update({ where: { id: deviceId }, data: { name } });
+  // Partielles Update: nur übergebene Felder ändern (Name oder Tracker-Anbindung).
+  const data: {
+    name?: string;
+    trackerSync?: boolean;
+    trackerUserId?: string | null;
+    trackerDeviceId?: string | null;
+  } = {};
+
+  if (body.name !== undefined) {
+    const name = (body.name as string)?.trim();
+    if (!name) return NextResponse.json({ error: "Name erforderlich" }, { status: 400 });
+    data.name = name;
+  }
+  if (body.trackerSync !== undefined) data.trackerSync = !!body.trackerSync;
+  if (body.trackerUserId !== undefined) data.trackerUserId = (body.trackerUserId as string)?.trim() || null;
+  if (body.trackerDeviceId !== undefined) data.trackerDeviceId = (body.trackerDeviceId as string)?.trim() || null;
+
+  if (Object.keys(data).length === 0) {
+    return NextResponse.json({ error: "Nichts zu ändern" }, { status: 400 });
+  }
+
+  await prisma.device.update({ where: { id: deviceId }, data });
   notifyDeviceChange();
 
-  return NextResponse.json({ deviceId, name });
+  return NextResponse.json({ deviceId, ...data });
 }

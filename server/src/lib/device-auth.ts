@@ -56,7 +56,11 @@ export function boxLocked(
   lockedSince: Date | null,
   now: Date
 ): boolean {
-  return !!policy?.simpleLock || effectiveLockUntil(policy, lockedSince, now) !== null;
+  return (
+    !!policy?.simpleLock ||
+    !!policy?.trackerSimpleLock ||
+    effectiveLockUntil(policy, lockedSince, now) !== null
+  );
 }
 
 /**
@@ -86,13 +90,18 @@ export function effectiveLockUntil(
   lockedSince: Date | null,
   now: Date
 ): Date | null {
-  if (!policy?.lockUntil) return null;
+  // Hybrid: Heimdall-eigene Zeit UND aus dem Tracker gezogene Sperrzeit — die
+  // strengere (spätere) gewinnt. hardCap kappt das Ergebnis IMMER, der Tracker kann
+  // also nie über die absolute Obergrenze hinaus verlängern (Safety-Invariante).
+  let until = policy?.lockUntil ?? null;
+  const tracker = policy?.trackerLockUntil ?? null;
+  if (tracker && (!until || tracker > until)) until = tracker;
+  if (!until) return null;
 
-  let until = policy.lockUntil;
-
-  if ((policy.hardCapHours ?? 0) > 0) {
+  const hardCapHours = policy?.hardCapHours ?? 0;
+  if (hardCapHours > 0) {
     const anchor = lockedSince ?? now;
-    const cap = new Date(anchor.getTime() + policy.hardCapHours! * 60 * 60 * 1000);
+    const cap = new Date(anchor.getTime() + hardCapHours * 60 * 60 * 1000);
     if (until > cap) until = cap;
   }
 

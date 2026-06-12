@@ -4,6 +4,7 @@ import { authenticateDevice, extractBearerToken, effectiveLockUntil, boxLocked }
 import { prisma } from "@/lib/prisma";
 import { notifyDeviceChange } from "@/lib/events";
 import { getTargetVersion, getFirmwareSig } from "@/lib/firmware";
+import { syncTrackerIntent, pushBoxEvent } from "@/lib/trackerClient";
 
 function ts() { return new Date().toISOString(); }
 
@@ -124,22 +125,41 @@ export async function POST(req: NextRequest) {
   notifyDeviceChange();
 
   // Reload policy after potential creation
-  const policy = device.policy ?? await prisma.lockPolicy.findUnique({ where: { deviceId: device.id } });
+  let policy = device.policy ?? await prisma.lockPolicy.findUnique({ where: { deviceId: device.id } });
+
+  // Tracker-Anbindung (P1): realen Übergang als Spur 2 pushen (fire-and-forget).
+  // trackerClient fängt alle Fehler/Timeouts — der Box-Sync darf davon nie abhängen.
+  const trackerOn = device.trackerSync && !!device.trackerUserId;
+  if (trackerOn && eventType) {
+    void pushBoxEvent({
+      trackerUserId: device.trackerUserId!,
+      trackerDeviceId: device.trackerDeviceId,
+      type: eventType,
+      wakeReason: state.wakeReason,
+      battery: state.battery,
+      fwVersion: state.fwVersion,
+      at: now,
+    });
+  }
+
+  // Keyholder-Sperrzeit ziehen (Absicht → trackerLockUntil, greift via Hybrid-Regel in
+  // effectiveLockUntil) parallel zu den OTA-Reads — kein serieller Remote-Call vor der Antwort.
+  const [policyAfterTracker, targetVersion, otaSig] = await Promise.all([
+    trackerOn ? syncTrackerIntent(device, policy) : Promise.resolve(policy),
+    getTargetVersion(),
+    getFirmwareSig(),
+  ]);
+  policy = policyAfterTracker;
+
   const lockUntil = effectiveLockUntil(policy, newLockedSince, now);
 
   if (eventType) {
     console.log(`${ts()} [box/sync] Device "${device.name}" → ${eventType} (reason: ${state.wakeReason ?? "—"})`);
   }
 
-  // TRACKER_SYNC stub — wire up when ready
-  if (process.env.TRACKER_SYNC_ENABLED === "true" && eventType) {
-    // TODO: push event to chastitytracker.ch
-  }
-
   // Server-Pull-OTA: Zielversion ≠ gemeldeter FW → Box zieht die neue Bin.
   // Nur anbieten, wenn auch eine Signatur vorliegt — sonst lehnt die Box (0.1.44+)
   // sie ohnehin ab (fail-closed) und würde jeden Sync sinnlos die Bin laden.
-  const [targetVersion, otaSig] = await Promise.all([getTargetVersion(), getFirmwareSig()]);
   const otaPending = !!targetVersion && targetVersion !== state.fwVersion && !!otaSig;
 
   // Multi-WLAN: Passwort nullen, sobald die Box die SSID als bekannt meldet
