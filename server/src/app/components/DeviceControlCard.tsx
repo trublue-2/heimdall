@@ -5,14 +5,19 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Lock, Unlock, Loader2, Zap } from "lucide-react";
 import { LockModal } from "./LockModal";
+import { Modal } from "./Modal";
+import { Input } from "./Input";
+import { Button } from "./Button";
 import { FormError } from "./FormError";
-import { formatDateTime, formatDuration, pendingState, wantsClosed } from "@/lib/utils";
+import { formatDateTime, formatDuration, wantsClosed } from "@/lib/utils";
 
 export interface DeviceControlCardProps {
   id: string;
   name: string;
   locked: boolean; // Ist (gemeldet)
   lockUntil: string | null; // Soll
+  simpleLock: boolean; // "ohne Zeit" verschlossen
+  hasOpenPassword: boolean; // Öffnen nur mit Passwort
   lastSyncAt: string | null;
   battery: number | null;
   charging: boolean | null;
@@ -34,36 +39,57 @@ function timeLeft(until: string): string {
 export function DeviceControlCard(props: DeviceControlCardProps) {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
+  const [pwOpen, setPwOpen] = useState(false);
+  const [pw, setPw] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const wantClosed = wantsClosed(props.lockUntil);
-  const pending = pendingState(props.lockUntil, props.locked);
+  // Soll-Zustand "zu": aktive Zeit ODER Simple-Lock (ohne Zeit).
+  const wantClosed = wantsClosed(props.lockUntil) || props.simpleLock;
+  const pending = wantClosed && !props.locked ? "closing" : !wantClosed && props.locked ? "opening" : "none";
   const locked = props.locked;
+  // Vorzeitig = noch Restzeit auf der Uhr (nur Zeit-Locks; Simple-Lock ist nie "vorzeitig").
+  const isEarly = !!props.lockUntil && new Date(props.lockUntil) > new Date();
 
   // Zustands-Farbe: gesperrt = ROT (warn), offen = GRÜN (ok).
   const stateText = locked ? "text-[var(--color-warn)]" : "text-[var(--color-ok)]";
   const stateBg = locked ? "bg-[var(--color-warn-bg)]" : "bg-[var(--color-ok-bg)]";
   const stateBorder = locked ? "border-[var(--color-warn-border)]" : "border-[var(--color-ok-border)]";
 
-  async function openDevice(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
+  // Öffnen: Server prüft hart; der Client wählt nur vorab den passenden Weg
+  // (Passwort-Eingabe / Vorzeitig-Warnung). extra = { password } | { confirmEarly }.
+  async function doOpen(extra: Record<string, unknown>) {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/devices/${props.id}/policy`, {
-        method: "PATCH",
+      const res = await fetch(`/api/devices/${props.id}/open`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lockUntil: null }),
+        body: JSON.stringify(extra),
       });
+      if (res.status === 403) { setError("Passwort falsch."); return; }
       if (!res.ok) throw new Error();
+      setPwOpen(false);
+      setPw("");
       router.refresh();
     } catch {
       setError("Öffnen fehlgeschlagen — bitte erneut versuchen.");
     } finally {
       setSaving(false);
     }
+  }
+
+  function openDevice(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setError(null);
+    if (isEarly && props.hasOpenPassword) { setPwOpen(true); return; }
+    if (isEarly && !props.hasOpenPassword) {
+      if (!confirm("Die Zeit ist noch nicht abgelaufen! Das Öffnen wird dokumentiert.\n\nWirklich öffnen?")) return;
+      doOpen({ confirmEarly: true });
+      return;
+    }
+    doOpen({}); // Simple-Lock / bereits abgelaufen → lautlos
   }
 
   function openLockModal(e: React.MouseEvent) {
@@ -106,6 +132,14 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
                 <div className="text-xs text-[var(--foreground-muted)]">bis {formatDateTime(props.lockUntil)}</div>
               </>
             )}
+            {locked && !props.lockUntil && props.simpleLock && (
+              <div className="mt-1.5 text-sm text-[var(--foreground-muted)]">ohne Zeitlimit</div>
+            )}
+            {locked && props.hasOpenPassword && (
+              <div className="mt-1 inline-flex items-center gap-1 text-xs text-[var(--foreground-muted)]">
+                <Lock className="h-3 w-3" /> Passwort zum Öffnen
+              </div>
+            )}
 
             {pending !== "none" && (
               <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[var(--color-sperrzeit-bg)] border border-[var(--color-sperrzeit-border)] px-3 py-1 text-xs text-[var(--color-sperrzeit-text)]">
@@ -142,6 +176,29 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
 
       {modalOpen && (
         <LockModal deviceId={props.id} deviceName={props.name} onClose={() => setModalOpen(false)} />
+      )}
+
+      {pwOpen && (
+        <Modal title={`${props.name} öffnen`} onClose={() => { setPwOpen(false); setPw(""); setError(null); }}>
+          <p className="text-sm text-[var(--foreground-muted)]">Öffnungs-Passwort eingeben.</p>
+          <Input
+            id={`open-pw-${props.id}`}
+            label="Passwort"
+            type="password"
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            autoFocus
+          />
+          {error && <FormError message={error} />}
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" onClick={() => { setPwOpen(false); setPw(""); setError(null); }} disabled={saving}>
+              Abbrechen
+            </Button>
+            <Button onClick={() => doOpen({ password: pw })} loading={saving} disabled={!pw}>
+              Öffnen
+            </Button>
+          </div>
+        </Modal>
       )}
     </>
   );

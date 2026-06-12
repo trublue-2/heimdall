@@ -48,10 +48,22 @@ export function extractBearerToken(authHeader: string | null): string | null {
 }
 
 /**
+ * Soll die Box (physisch) geschlossen sein? Autoritatives Signal für das Box-Protokoll:
+ * Simple-Lock (ohne Zeit) ODER ein aktives, gekapptes lockUntil.
+ */
+export function boxLocked(
+  policy: LockPolicy | null,
+  lockedSince: Date | null,
+  now: Date
+): boolean {
+  return !!policy?.simpleLock || effectiveLockUntil(policy, lockedSince, now) !== null;
+}
+
+/**
  * Ist das Gerät in einer aktiven Session? Während Verschluss dürfen Server/Token
  * und User-Zuweisung nicht geändert werden (kein Mid-Session-Takeover).
- * Session = ab Sperr-Zeitpunkt (effektives lockUntil gesetzt), nicht erst ab
- * physischem Schliessen — schliesst das Renn-Fenster "sperren → schnell tauschen".
+ * Session = ab Sperr-Zeitpunkt (Simple-Lock oder effektives lockUntil), nicht erst
+ * ab physischem Schliessen — schliesst das Renn-Fenster "sperren → schnell tauschen".
  */
 export async function isDeviceLocked(deviceId: string): Promise<boolean> {
   const d = await prisma.device.findUnique({
@@ -59,7 +71,7 @@ export async function isDeviceLocked(deviceId: string): Promise<boolean> {
     select: { locked: true, lockedSince: true, policy: true },
   });
   if (!d) return false;
-  return d.locked || effectiveLockUntil(d.policy, d.lockedSince, new Date()) !== null;
+  return d.locked || boxLocked(d.policy, d.lockedSince, new Date());
 }
 
 /**

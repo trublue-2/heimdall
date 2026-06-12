@@ -39,11 +39,14 @@ namespace Failsafe {
     return state.lockedSeconds >= (uint32_t)policy.hardCapH * 3600u;
   }
 
-  // Policy-Deadline: Server-Vorgabe abgelaufen. Öffnet NUR bei gültiger Uhr —
-  // sonst übernehmen Offline-Timeout/HardCap (sonst bliebe die Box bei 1970 ewig zu).
+  // "Soll offen": Server sagt offen ODER zeitliche Deadline abgelaufen.
+  // serverLocked ist autoritativ — Simple-Lock (lockUntil==0, aber serverLocked) bleibt zu.
+  // Zeit-Deadline öffnet NUR bei gültiger Uhr — sonst übernehmen Offline-Timeout/HardCap
+  // (sonst bliebe die Box bei 1970 ewig zu).
   inline bool isPolicyExpired(const BoxPolicy& policy) {
-    if (policy.lockUntil == 0) return true; // kein Lock → offen
-    if (!clockValid()) return false;        // Uhr ungültig → nicht hierauf öffnen
+    if (!policy.serverLocked) return true;  // Server sagt offen
+    if (policy.lockUntil == 0) return false; // Simple-Lock: zu, keine Deadline
+    if (!clockValid()) return false;         // Uhr ungültig → nicht hierauf öffnen
     return time(nullptr) >= policy.lockUntil;
   }
 

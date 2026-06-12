@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { authenticateDevice, extractBearerToken, effectiveLockUntil } from "@/lib/device-auth";
+import { authenticateDevice, extractBearerToken, effectiveLockUntil, boxLocked } from "@/lib/device-auth";
 import { prisma } from "@/lib/prisma";
 import { notifyDeviceChange } from "@/lib/events";
 import { getTargetVersion, getFirmwareSig } from "@/lib/firmware";
@@ -64,12 +64,21 @@ export async function POST(req: NextRequest) {
   if (!prevLocked && state.locked) {
     eventType = "LOCKED";
   } else if (prevLocked && !state.locked) {
-    // Exact-Match: Unbekanntes/abweichendes wakeReason → UNAUTHORIZED_OPEN (Safety:
-    // im Zweifel Tamper). Substring war spoofbar ("button_x" → fälschlich legitim).
-    const reason = state.wakeReason ?? "";
-    const isLegitimate = LEGITIMATE_OPEN_REASONS.includes(reason);
-    eventType = isLegitimate ? "UNLOCKED" : "UNAUTHORIZED_OPEN";
+    // Vom Menschen ausgelöste Öffnung? pendingOpenReason koppelt die Server-Aktion an
+    // genau dieses Box-Event: "early" → dokumentieren, "silent" → kein Eintrag.
+    if (device.pendingOpenReason === "early") {
+      eventType = "EARLY_OPEN";
+    } else if (device.pendingOpenReason === "silent") {
+      eventType = null; // Passwort-Öffnung / Simple-Lock / abgelaufen → kein Eintrag
+    } else {
+      // Box hat selbst geöffnet (Button/Failsafe/Tamper). Exact-Match: Unbekanntes
+      // wakeReason → UNAUTHORIZED_OPEN (Safety: im Zweifel Tamper).
+      const reason = state.wakeReason ?? "";
+      eventType = LEGITIMATE_OPEN_REASONS.includes(reason) ? "UNLOCKED" : "UNAUTHORIZED_OPEN";
+    }
   }
+  // Marker ist einmalig — bei jedem Lock-Wechsel verbrauchen/verwerfen.
+  const clearMarker = prevLocked !== state.locked;
 
   // Update device state + optionally create event in a transaction
   await prisma.$transaction(async (tx) => {
@@ -88,6 +97,7 @@ export async function POST(req: NextRequest) {
         charging: state.charging  ?? null,
         boxIp:    state.ip        ?? null,
         primarySsid: body.knownSsids?.[0] ?? device.primarySsid,
+        pendingOpenReason: clearMarker ? null : device.pendingOpenReason,
       },
     });
 
@@ -148,6 +158,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     name: device.name,
+    locked: boxLocked(policy, newLockedSince, now), // autoritativ: Simple-Lock ODER aktive Zeit
     lockUntil: lockUntil?.toISOString() ?? null,
     offlineOpenHours: policy?.offlineOpenHours ?? 24,
     hardCapHours: policy?.hardCapHours ?? 0, // lokal als absolute Obergrenze enforced

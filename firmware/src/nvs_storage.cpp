@@ -79,6 +79,8 @@ bool NVS::loadPolicy(BoxPolicy& out) {
   out.lockUntil    = (time_t)prefs.getLong64("lockUntil", 0);
   out.offlineOpenH = prefs.getInt("offlineH", OFFLINE_OPEN_H);
   out.hardCapH     = prefs.getInt("hardCap",  0);
+  // Fallback für Altbestand ohne Key: "zu" aus lockUntil ableiten (kein Fehl-Öffnen).
+  out.serverLocked = prefs.getBool("srvLocked", out.lockUntil > 0);
   prefs.end();
   return ok;
 }
@@ -88,6 +90,7 @@ void NVS::savePolicy(const BoxPolicy& in) {
   prefs.putLong64("lockUntil", (int64_t)in.lockUntil);
   prefs.putInt("offlineH", in.offlineOpenH);
   prefs.putInt("hardCap",  in.hardCapH);
+  prefs.putBool("srvLocked", in.serverLocked);
   prefs.end();
 }
 

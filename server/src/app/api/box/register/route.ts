@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateDevice, extractBearerToken, effectiveLockUntil } from "@/lib/device-auth";
+import { authenticateDevice, extractBearerToken, effectiveLockUntil, boxLocked } from "@/lib/device-auth";
 import { prisma } from "@/lib/prisma";
 
 function ts() { return new Date().toISOString(); }
@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
   console.log(`${ts()} [box/register] Device "${device.name}" registered`);
 
   return NextResponse.json({
+    locked: boxLocked(device.policy, device.lockedSince, now),
     lockUntil: lockUntil?.toISOString() ?? null,
     offlineOpenHours: device.policy?.offlineOpenHours ?? 24,
     hardCapHours: device.policy?.hardCapHours ?? 0, // 0 = kein Cap (wie sync, lokal enforced)

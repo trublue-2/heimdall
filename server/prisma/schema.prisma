@@ -30,6 +30,9 @@ model Device {
   // Last reported state (from sync)
   locked      Boolean       @default(false)
   lockedSince DateTime?
+  // Einmal-Marker: koppelt eine vom Menschen ausgelöste Öffnung an das nächste
+  // Box-Sync-Event (kein Doppel-Eintrag). "early" → EARLY_OPEN, "silent" → kein Event.
+  pendingOpenReason String?
   battery     Int? // 0–100
   boltPos     String? // "OPEN" | "CLOSED" | "UNKNOWN"
   fwVersion   String?
@@ -66,6 +69,11 @@ model LockPolicy {
   lockUntil        DateTime?
   offlineOpenHours Int       @default(24)
   hardCapHours     Int?
+  // "Einfach verschliessen" (ohne Zeit): zu, aber kein lockUntil. Box bleibt zu,
+  // bis serverseitig geöffnet wird (jederzeit, kein Event). Failsafes bleiben aktiv.
+  simpleLock       Boolean   @default(false)
+  // Optionales Öffnungs-Passwort (bcrypt). Gesetzt → vorzeitiges Öffnen nur mit Passwort.
+  openPasswordHash String?
   updatedAt        DateTime  @updatedAt
 }
 

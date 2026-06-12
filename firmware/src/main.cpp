@@ -416,18 +416,17 @@ void loop() {
       if (res == SyncResult::OK) {
         gAuthFails = 0; // erfolgreicher Sync → 401-Zähler zurücksetzen
         otaCommit();    // neue FW (falls OTA gerade lief) bestätigen
-        // (Re)Sperren nur mit GÜLTIGER Uhr — sonst könnte eine 1970-Uhr eine
-        // längst abgelaufene Policy fälschlich als "noch gültig" werten (S2).
-        bool shouldLock = (gPolicy.lockUntil > 0 && Failsafe::clockValid() &&
-                           time(nullptr) < gPolicy.lockUntil);
-        log_i("Entscheidung: locked=%d lockUntil=%ld shouldLock=%d expired=%d",
-              gBox.locked, (long)gPolicy.lockUntil, shouldLock,
-              Failsafe::isPolicyExpired(gPolicy));
+        // "Soll zu" = !isPolicyExpired (serverLocked autoritativ, deckt Simple-Lock +
+        // Zeit-Lock ab; öffnet bei serverLocked=false oder abgelaufener Zeit-Deadline).
+        // Nach erfolgreichem Sync ist die Uhr gültig (TLS-Cert-Check setzt das voraus).
+        bool shouldClose = !Failsafe::isPolicyExpired(gPolicy);
+        log_i("Entscheidung: locked=%d serverLocked=%d lockUntil=%ld shouldClose=%d",
+              gBox.locked, gPolicy.serverLocked, (long)gPolicy.lockUntil, shouldClose);
 
-        if (gBox.locked && Failsafe::isPolicyExpired(gPolicy)) {
+        if (gBox.locked && !shouldClose) {
           gState = State::OPENING;
-        } else if (!gBox.locked && shouldLock) {
-          log_i("Policy: Sperren bis %ld", (long)gPolicy.lockUntil);
+        } else if (!gBox.locked && shouldClose) {
+          log_i("Policy: Sperren (serverLocked, bis %ld)", (long)gPolicy.lockUntil);
           gBox.locked        = true;
           gBox.lockedSince   = time(nullptr);
           gBox.lockedSeconds = 0; // Sperrdauer-Zähler startet frisch (HardCap)

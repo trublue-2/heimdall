@@ -202,6 +202,8 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
 
   const char* lockUntilStr = resp["lockUntil"] | "";
   policy.lockUntil    = parseIso8601(lockUntilStr);
+  // Autoritatives "soll zu". Fallback (Altserver ohne Feld): aus lockUntil ableiten.
+  policy.serverLocked = resp["locked"] | (policy.lockUntil > 0);
   policy.offlineOpenH = resp["offlineOpenHours"] | OFFLINE_OPEN_H;
   policy.hardCapH     = resp["hardCapHours"] | 0;
   strlcpy(state.deviceName, resp["name"] | "", sizeof(state.deviceName));
@@ -226,7 +228,7 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   NVS::savePolicy(policy);
   NVS::saveState(state);
 
-  log_i("Policy: lockUntil=%ld offlineH=%d hardCap=%d",
-        (long)policy.lockUntil, policy.offlineOpenH, policy.hardCapH);
+  log_i("Policy: locked=%d lockUntil=%ld offlineH=%d hardCap=%d",
+        policy.serverLocked, (long)policy.lockUntil, policy.offlineOpenH, policy.hardCapH);
   return SyncResult::OK;
 }

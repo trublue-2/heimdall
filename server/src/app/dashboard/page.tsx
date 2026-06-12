@@ -49,6 +49,8 @@ export default async function DashboardPage() {
               name={device.name}
               locked={device.locked}
               lockUntil={device.policy?.lockUntil?.toISOString() ?? null}
+              simpleLock={device.policy?.simpleLock ?? false}
+              hasOpenPassword={!!device.policy?.openPasswordHash}
               lastSyncAt={device.lastSyncAt?.toISOString() ?? null}
               battery={device.battery}
               charging={device.charging ?? null}

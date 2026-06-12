@@ -35,7 +35,9 @@ struct BoxState {
 
 // Letzte vom Server empfangene Policy.
 struct BoxPolicy {
-  time_t lockUntil;    // Unix-Epoch; 0 = kein Lock gesetzt
+  bool   serverLocked; // Server-Vorgabe "soll zu sein" (Simple-Lock ODER aktive Zeit).
+                       // Autoritativ — entkoppelt "zu" von lockUntil (Simple-Lock: zu ohne Deadline).
+  time_t lockUntil;    // Unix-Epoch; 0 = keine Deadline (Failsafe-Grenze, NICHT "offen")
   int    offlineOpenH; // h — Standard: OFFLINE_OPEN_H
   int    hardCapH;     // 0 = kein absoluter Cap
 };
