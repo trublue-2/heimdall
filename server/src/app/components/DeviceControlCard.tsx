@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Lock, Unlock, Loader2, Zap } from "lucide-react";
 import { LockModal } from "./LockModal";
+import { FormError } from "./FormError";
 import { formatDateTime, formatDuration, pendingState, wantsClosed } from "@/lib/utils";
 
 export interface DeviceControlCardProps {
@@ -34,6 +35,7 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const wantClosed = wantsClosed(props.lockUntil);
   const pending = pendingState(props.lockUntil, props.locked);
@@ -48,13 +50,17 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
     e.preventDefault();
     e.stopPropagation();
     setSaving(true);
+    setError(null);
     try {
-      await fetch(`/api/devices/${props.id}/policy`, {
+      const res = await fetch(`/api/devices/${props.id}/policy`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lockUntil: null }),
       });
+      if (!res.ok) throw new Error();
       router.refresh();
+    } catch {
+      setError("Öffnen fehlgeschlagen — bitte erneut versuchen.");
     } finally {
       setSaving(false);
     }
@@ -110,7 +116,8 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
           </div>
 
           {/* Aktion */}
-          <div className="px-4 pb-4">
+          <div className="px-4 pb-4 space-y-2">
+            {error && <FormError message={error} />}
             {wantClosed ? (
               <button
                 onClick={openDevice}

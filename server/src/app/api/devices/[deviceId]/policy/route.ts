@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { requireDeviceAccess } from "@/lib/authGuards";
 import { prisma } from "@/lib/prisma";
 import { notifyDeviceChange } from "@/lib/events";
+
+// Safety-relevante Felder — strikt validieren, kein NaN/Invalid-Date in die DB.
+const policySchema = z.object({
+  lockUntil: z.string().datetime().nullable().optional(),
+  offlineOpenHours: z.number().int().min(1).max(168).optional(),
+  hardCapHours: z.number().int().min(0).max(8760).nullable().optional(), // 0/null = kein Cap
+});
 
 // Steuerung + Policy-Edit (lockUntil = sperren/öffnen, offlineOpenHours, hardCap).
 // Zugriff: zugewiesenes Konto oder Admin.
@@ -13,7 +21,11 @@ export async function PATCH(
   const { response } = await requireDeviceAccess(deviceId);
   if (response) return response;
 
-  const body = await req.json();
+  const parsed = policySchema.safeParse(await req.json());
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Ungültige Policy-Werte" }, { status: 400 });
+  }
+  const body = parsed.data;
 
   // Partielles Update: nur übergebene Felder ändern. So setzt das Sperren/Öffnen
   // (nur lockUntil) nicht versehentlich Failsafe/Hard-Cap zurück.
@@ -22,9 +34,9 @@ export async function PATCH(
     offlineOpenHours?: number;
     hardCapHours?: number | null;
   } = {};
-  if ("lockUntil" in body) data.lockUntil = body.lockUntil ? new Date(body.lockUntil) : null;
-  if ("offlineOpenHours" in body) data.offlineOpenHours = Number(body.offlineOpenHours) || 24;
-  if ("hardCapHours" in body) data.hardCapHours = body.hardCapHours != null ? Number(body.hardCapHours) : null;
+  if (body.lockUntil !== undefined) data.lockUntil = body.lockUntil ? new Date(body.lockUntil) : null;
+  if (body.offlineOpenHours !== undefined) data.offlineOpenHours = body.offlineOpenHours;
+  if (body.hardCapHours !== undefined) data.hardCapHours = body.hardCapHours || null; // 0 → null
 
   const policy = await prisma.lockPolicy.upsert({
     where: { deviceId },

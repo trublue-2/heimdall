@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
     headers: {
       "Content-Type": "application/octet-stream",
       "Content-Length": String(bin.length),
+      "Cache-Control": "no-store", // sonst könnte ein Proxy eine alte Bin ausliefern
     },
   });
 }

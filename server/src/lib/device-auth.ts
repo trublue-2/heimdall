@@ -18,7 +18,16 @@ export async function authenticateDevice(
 
   const now = new Date();
   for (const device of devices) {
-    if (await bcrypt.compare(normalized, device.tokenHash)) return device as DeviceWithPolicy;
+    if (await bcrypt.compare(normalized, device.tokenHash)) {
+      // Neuer Token bestätigt → Grace-Token sofort entwerten (nicht erst nach 1 h).
+      if (device.prevTokenHash) {
+        await prisma.device.update({
+          where: { id: device.id },
+          data: { prevTokenHash: null, prevTokenExpiry: null },
+        });
+      }
+      return device as DeviceWithPolicy;
+    }
     // Grace: vorheriger Token noch innerhalb des Gültigkeitsfensters akzeptieren.
     if (
       device.prevTokenHash &&
@@ -38,17 +47,25 @@ export function extractBearerToken(authHeader: string | null): string | null {
   return authHeader.slice(7).trim();
 }
 
-/** Compute the effective lockUntil the box should receive, capped by hardCapHours. */
+/**
+ * Effektives lockUntil für die Box, gekappt durch hardCapHours.
+ * HardCap ist eine absolute Obergrenze AB VERSCHLIESSEN (lockedSince) — nicht ab
+ * "jetzt". Sonst würde der Cap bei jedem Sync mitgleiten und nie ablaufen.
+ * 0/null = kein Cap. Ist die Box noch nicht zu (lockedSince null), wird ab jetzt
+ * gerechnet (der Lock beginnt gleich; die Firmware enforced ohnehin lokal ab Lock).
+ */
 export function effectiveLockUntil(
   policy: LockPolicy | null,
+  lockedSince: Date | null,
   now: Date
 ): Date | null {
   if (!policy?.lockUntil) return null;
 
   let until = policy.lockUntil;
 
-  if (policy.hardCapHours != null) {
-    const cap = new Date(now.getTime() + policy.hardCapHours * 60 * 60 * 1000);
+  if ((policy.hardCapHours ?? 0) > 0) {
+    const anchor = lockedSince ?? now;
+    const cap = new Date(anchor.getTime() + policy.hardCapHours! * 60 * 60 * 1000);
     if (until > cap) until = cap;
   }
 

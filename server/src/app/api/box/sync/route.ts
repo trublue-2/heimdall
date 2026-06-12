@@ -54,6 +54,11 @@ export async function POST(req: NextRequest) {
   const now = new Date();
   const prevLocked = device.locked;
 
+  // lockedSince server-autoritativ: beim Übergang offen→zu auf Server-"jetzt" setzen,
+  // danach stabil halten. Der Box-gemeldete `since` wird NICHT vertraut (sonst könnte
+  // die Box ihren HardCap-Anker manipulieren — der Cap rechnet ab lockedSince).
+  const newLockedSince = state.locked ? (prevLocked ? device.lockedSince : now) : null;
+
   // Determine event type from state transition
   let eventType: string | null = null;
   if (!prevLocked && state.locked) {
@@ -72,9 +77,7 @@ export async function POST(req: NextRequest) {
       where: { id: device.id },
       data: {
         locked: state.locked,
-        lockedSince: state.locked
-          ? (state.since ? new Date(state.since) : (prevLocked ? device.lockedSince : now))
-          : null,
+        lockedSince: newLockedSince,
         battery: state.battery ?? device.battery,
         boltPos: state.boltPos ?? device.boltPos,
         fwVersion: state.fwVersion ?? device.fwVersion,
@@ -112,7 +115,7 @@ export async function POST(req: NextRequest) {
 
   // Reload policy after potential creation
   const policy = device.policy ?? await prisma.lockPolicy.findUnique({ where: { deviceId: device.id } });
-  const lockUntil = effectiveLockUntil(policy, now);
+  const lockUntil = effectiveLockUntil(policy, newLockedSince, now);
 
   if (eventType) {
     console.log(`${ts()} [box/sync] Device "${device.name}" → ${eventType} (reason: ${state.wakeReason ?? "—"})`);
