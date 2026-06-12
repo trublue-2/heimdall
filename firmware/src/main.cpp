@@ -73,7 +73,7 @@ static void recordBoot() {
   p.end();
 }
 
-// Long-Press auf dem Button (GND↔27 ≥3 s gehalten) → Credentials löschen →
+// Long-Press auf dem Button (GND↔GPIO14 ≥3 s gehalten) → Credentials löschen →
 // Reboot in den Setup-Hotspot. Aufruf nach Button-pinMode, vor dem Cred-Load.
 static void checkFactoryReset() {
   if (digitalRead(PIN_BUTTON) != LOW) return; // nicht gedrückt
@@ -227,11 +227,11 @@ static void goDeepSleep() {
   Stepper::powerOff();
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
-  // GPIO27 hat keinen externen Pull-up → im Deep-Sleep RTC-Pull-up aktivieren,
+  // GPIO14 hat keinen externen Pull-up → im Deep-Sleep RTC-Pull-up aktivieren,
   // sonst floatet der Pin und EXT0 (Wake auf LOW) triggert spontan/unzuverlässig.
   rtc_gpio_pullup_en((gpio_num_t)PIN_BUTTON);
   rtc_gpio_pulldown_dis((gpio_num_t)PIN_BUTTON);
-  // Wake auf LOW: aufwachen wenn Taster GPIO27 auf GND zieht.
+  // Wake auf LOW: aufwachen wenn Taster GPIO14 auf GND zieht.
   esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_BUTTON, LOW);
   esp_sleep_enable_timer_wakeup(timerS * 1000000ULL);
   esp_deep_sleep_start();
@@ -252,7 +252,7 @@ void setup() {
   gWeb.on("/", handleStatus); // Statusseite-Route einmalig registrieren
   pinMode(PIN_LED, OUTPUT);
   digitalWrite(PIN_LED, LED_OFF);
-  pinMode(PIN_BUTTON, INPUT_PULLUP); // GPIO0: HIGH per Pull-up, LOW bei Druck
+  pinMode(PIN_BUTTON, INPUT_PULLUP); // GPIO14: HIGH per Pull-up, LOW bei Druck
   attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), onButtonIsr, FALLING);
   gLastActivityMs = millis();
 

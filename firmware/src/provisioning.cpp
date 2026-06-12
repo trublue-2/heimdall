@@ -149,6 +149,11 @@ void Provisioning::run() {
       uint32_t elapsed = (millis() - startMs) / 1000;
       st.offlineSeconds = baseOffline + elapsed;
       st.lockedSeconds  = baseLocked + elapsed;
+      // Fortschritt persistieren — sonst verliert ein Brownout/Reset im Hotspot
+      // den millis()-Zähler und der Timeout würde nie erreicht (Fail-closed!).
+      // lastTick mitschreiben, damit der Tick nach einem Reboot nicht doppelt zählt.
+      st.lastTick = time(nullptr);
+      NVS::saveState(st);
       log_i("Hotspot-Failsafe: offline %us/%us, locked %us, batt %d%%",
             st.offlineSeconds, (uint32_t)pol.offlineOpenH * 3600u,
             st.lockedSeconds, Failsafe::batteryPercent());

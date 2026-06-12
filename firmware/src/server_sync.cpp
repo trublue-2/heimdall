@@ -27,6 +27,14 @@ static time_t parseIso8601(const char* s) {
   if (sscanf(s, "%d-%d-%dT%d:%d:%dZ",
         &t.tm_year, &t.tm_mon, &t.tm_mday,
         &t.tm_hour, &t.tm_min, &t.tm_sec) != 6) return 0;
+  // Plausibilität: Müll-Response (z.B. "2026-99-99T..") darf keine valide-
+  // aussehende Epoch ergeben, die in lockUntil landet. 0 = "kein/ungültiges Datum".
+  if (t.tm_year < 2020 || t.tm_year > 2099 ||
+      t.tm_mon  < 1 || t.tm_mon  > 12 ||
+      t.tm_mday < 1 || t.tm_mday > 31 ||
+      t.tm_hour < 0 || t.tm_hour > 23 ||
+      t.tm_min  < 0 || t.tm_min  > 59 ||
+      t.tm_sec  < 0 || t.tm_sec  > 60) return 0;
   t.tm_year -= 1900;
   t.tm_mon  -= 1;
   return tmToUtc(t);
