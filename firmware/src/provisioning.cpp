@@ -1,6 +1,8 @@
 #include "provisioning.h"
 #include "config.h"
 #include "nvs_storage.h"
+#include "failsafe.h"
+#include "stepper.h"
 #include <WiFi.h>
 #include <DNSServer.h>
 #include <WebServer.h>
@@ -115,6 +117,17 @@ void Provisioning::run() {
   server.onNotFound(handleRoot);          // jede URL → Setup-Seite
   server.begin();
 
+  // ── Failsafe-Wache (SAFETY): Auch OHNE Credentials muss eine gesperrte Box zur
+  // Deadline öffnen. Sonst bliebe eine im Hotspot gelandete Box (Factory-Reset,
+  // GPIO14-Unfall, manuell) ewig zu. offlineSeconds/lockedSeconds laufen hier über
+  // millis() weiter, weil die State-Machine (und ihr Tick) im Hotspot nicht läuft.
+  BoxState  st = {};  bool hasState = NVS::loadState(st);
+  BoxPolicy pol = {}; NVS::loadPolicy(pol);
+  const uint32_t baseOffline = hasState ? st.offlineSeconds : 0;
+  const uint32_t baseLocked  = hasState ? st.lockedSeconds  : 0;
+  const uint32_t startMs = millis();
+  uint32_t lastFsMs = 0;
+
   // Blockiert, bis provisioniert — dann Reboot in den Normalbetrieb.
   // Blaue LED blinkt (~2,5 Hz) als Erkennung „Setup-Hotspot aktiv"
   // (solid = ZU, aus = offen/Schlaf, blinkend = warte auf Einrichtung).
@@ -128,6 +141,30 @@ void Provisioning::run() {
       lastBlink = millis();
       ledOn = !ledOn;
       digitalWrite(PIN_LED, ledOn ? LED_ON : LED_OFF);
+    }
+
+    // Failsafe-Check (alle 15 s), solange die Box gesperrt ist.
+    if (hasState && st.locked && (millis() - lastFsMs >= 15000)) {
+      lastFsMs = millis();
+      uint32_t elapsed = (millis() - startMs) / 1000;
+      st.offlineSeconds = baseOffline + elapsed;
+      st.lockedSeconds  = baseLocked + elapsed;
+      log_i("Hotspot-Failsafe: offline %us/%us, locked %us, batt %d%%",
+            st.offlineSeconds, (uint32_t)pol.offlineOpenH * 3600u,
+            st.lockedSeconds, Failsafe::batteryPercent());
+      if (Failsafe::isLowBattery() || Failsafe::isOfflineTimeout(st, pol) ||
+          Failsafe::isHardCapExceeded(st, pol)) {
+        log_w("FAILSAFE im Setup-Hotspot → ÖFFNEN (offline=%us locked=%us)",
+              st.offlineSeconds, st.lockedSeconds);
+        WiFi.softAPdisconnect(true); // AP aus → voller Strom für den Motor
+        WiFi.mode(WIFI_OFF);
+        delay(50);
+        Stepper::unlock();
+        st.locked = false;
+        NVS::saveState(st);          // offen persistieren
+        delay(500);
+        ESP.restart();               // sauberer Neustart → Hotspot wieder aktiv, jetzt offen
+      }
     }
     delay(5);
   }
