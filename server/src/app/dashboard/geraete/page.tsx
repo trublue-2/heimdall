@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { DeviceManager } from "@/app/components/DeviceManager";
+import { effectiveLockUntil } from "@/lib/device-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -13,10 +14,11 @@ export default async function GeraetePage() {
     prisma.user.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, username: true } }),
     prisma.device.findMany({
       orderBy: { createdAt: "asc" },
-      include: { users: { select: { id: true } } },
+      include: { users: { select: { id: true } }, policy: true },
     }),
   ]);
 
+  const now = new Date();
   return (
     <div className="space-y-3">
       <h1 className="text-xl font-bold">Geräte</h1>
@@ -26,6 +28,8 @@ export default async function GeraetePage() {
           id: d.id,
           name: d.name,
           assignedUserIds: d.users.map((u) => u.id),
+          // Verschluss = Server/Token + Zuweisung eingefroren (siehe isDeviceLocked).
+          locked: d.locked || effectiveLockUntil(d.policy, d.lockedSince, now) !== null,
         }))}
       />
     </div>

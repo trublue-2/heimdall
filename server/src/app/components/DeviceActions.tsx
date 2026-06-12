@@ -6,7 +6,7 @@ import { TokenDisplayModal } from "@/app/components/TokenDisplayModal";
 import { SetupQrModal } from "@/app/components/SetupQrModal";
 import { QrCode, RefreshCw, Trash2 } from "lucide-react";
 
-export function DeviceActions({ deviceId, deviceName }: { deviceId: string; deviceName: string }) {
+export function DeviceActions({ deviceId, deviceName, locked = false }: { deviceId: string; deviceName: string; locked?: boolean }) {
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
@@ -38,11 +38,11 @@ export function DeviceActions({ deviceId, deviceName }: { deviceId: string; devi
 
   return (
     <>
-      <Button variant="secondary" onClick={() => setQrOpen(true)} className="text-xs px-2 py-1 gap-1">
+      <Button variant="secondary" onClick={() => setQrOpen(true)} disabled={locked} title={locked ? "Während Verschluss gesperrt" : undefined} className="text-xs px-2 py-1 gap-1">
         <QrCode className="h-3 w-3" />
         Setup-QR
       </Button>
-      <Button variant="secondary" onClick={handleRegenerate} loading={regenerating} className="text-xs px-2 py-1 gap-1">
+      <Button variant="secondary" onClick={handleRegenerate} loading={regenerating} disabled={locked} title={locked ? "Während Verschluss gesperrt" : undefined} className="text-xs px-2 py-1 gap-1">
         <RefreshCw className="h-3 w-3" />
         Token
       </Button>

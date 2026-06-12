@@ -48,6 +48,21 @@ export function extractBearerToken(authHeader: string | null): string | null {
 }
 
 /**
+ * Ist das Gerät in einer aktiven Session? Während Verschluss dürfen Server/Token
+ * und User-Zuweisung nicht geändert werden (kein Mid-Session-Takeover).
+ * Session = ab Sperr-Zeitpunkt (effektives lockUntil gesetzt), nicht erst ab
+ * physischem Schliessen — schliesst das Renn-Fenster "sperren → schnell tauschen".
+ */
+export async function isDeviceLocked(deviceId: string): Promise<boolean> {
+  const d = await prisma.device.findUnique({
+    where: { id: deviceId },
+    select: { locked: true, lockedSince: true, policy: true },
+  });
+  if (!d) return false;
+  return d.locked || effectiveLockUntil(d.policy, d.lockedSince, new Date()) !== null;
+}
+
+/**
  * Effektives lockUntil für die Box, gekappt durch hardCapHours.
  * HardCap ist eine absolute Obergrenze AB VERSCHLIESSEN (lockedSince) — nicht ab
  * "jetzt". Sonst würde der Cap bei jedem Sync mitgleiten und nie ablaufen.

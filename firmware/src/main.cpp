@@ -442,10 +442,11 @@ void loop() {
           gState = gBox.locked ? State::LOCKED : State::IDLE_OPEN;
         }
 
-        // OTA (Server-Pull): nur wenn der Riegel ruht (kein Aktuieren ausstehend)
-        // und genug Akku da ist. Safety > Function: niemals mitten in OPENING.
+        // OTA (Server-Pull): NUR im offenen Ruhezustand. Während Verschluss NIE flashen
+        // — ein fehlgeschlagener/gebrickter Flash bei geschlossener Box wäre nicht mehr
+        // zu öffnen (Safety > Function). Updates passieren zwischen Sessions.
         if (ota.version[0] && strcmp(ota.version, FW_VERSION) != 0 &&
-            (gState == State::LOCKED || gState == State::IDLE_OPEN) &&
+            gState == State::IDLE_OPEN &&
             Failsafe::batteryPercent() >= 40) {
           log_w("OTA: Server bietet %s an (aktuell %s) → Update", ota.version, FW_VERSION);
           OTA::apply(ota.url, gCreds.deviceToken, ota.sig); // Erfolg → Reboot (kehrt nicht zurück)

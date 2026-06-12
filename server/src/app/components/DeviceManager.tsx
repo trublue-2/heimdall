@@ -11,7 +11,7 @@ import { DeviceActions } from "./DeviceActions";
 import { TokenDisplayModal } from "./TokenDisplayModal";
 
 interface U { id: string; username: string; }
-interface D { id: string; name: string; assignedUserIds: string[]; }
+interface D { id: string; name: string; assignedUserIds: string[]; locked: boolean; }
 
 export function DeviceManager({ devices, users }: { devices: D[]; users: U[] }) {
   const router = useRouter();
@@ -90,7 +90,7 @@ function DeviceRow({ device, users }: { device: D; users: U[] }) {
           {device.name}
         </Link>
         <div className="flex items-center gap-2">
-          <DeviceActions deviceId={device.id} deviceName={device.name} />
+          <DeviceActions deviceId={device.id} deviceName={device.name} locked={device.locked} />
         </div>
       </div>
 
@@ -101,8 +101,8 @@ function DeviceRow({ device, users }: { device: D; users: U[] }) {
         ) : (
           <div className="flex flex-wrap gap-2">
             {users.map((u) => (
-              <label key={u.id} className="inline-flex items-center gap-1.5 text-sm cursor-pointer">
-                <input type="checkbox" checked={selected.includes(u.id)} onChange={() => toggle(u.id)} />
+              <label key={u.id} className={`inline-flex items-center gap-1.5 text-sm ${device.locked ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
+                <input type="checkbox" checked={selected.includes(u.id)} onChange={() => toggle(u.id)} disabled={device.locked} />
                 {u.username}
               </label>
             ))}
@@ -110,7 +110,9 @@ function DeviceRow({ device, users }: { device: D; users: U[] }) {
         )}
       </div>
 
-      {dirty && (
+      {device.locked ? (
+        <p className="text-xs text-[var(--foreground-muted)]">🔒 Während Verschluss eingefroren — Zuweisung &amp; Token erst nach Öffnen änderbar.</p>
+      ) : dirty && (
         <Button onClick={saveAssign} loading={saving} className="text-xs px-3 py-1.5">
           Zuweisung speichern
         </Button>

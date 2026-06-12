@@ -3,6 +3,7 @@ import { requireAdminApi } from "@/lib/authGuards";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { generateProvisioningToken, hashProvisioningToken } from "@/lib/utils";
+import { isDeviceLocked } from "@/lib/device-auth";
 
 export async function POST(
   _req: NextRequest,
@@ -12,6 +13,15 @@ export async function POST(
   if (response) return response;
 
   const { deviceId } = await params;
+
+  // Während Verschluss eingefroren: kein Token-Wechsel in laufender Session.
+  if (await isDeviceLocked(deviceId)) {
+    return NextResponse.json(
+      { error: "Gerät ist gesperrt — Token erst nach Öffnen änderbar." },
+      { status: 409 }
+    );
+  }
+
   const rawToken = generateProvisioningToken();
   const tokenHash = await hashProvisioningToken(rawToken);
 

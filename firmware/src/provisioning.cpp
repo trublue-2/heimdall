@@ -86,18 +86,36 @@ void handleProvision() {
   } else {
     strlcpy(c.password, passArg.c_str(), sizeof(c.password));
   }
-  strlcpy(c.serverUrl,
-          server.hasArg("url") && !server.arg("url").isEmpty()
-            ? server.arg("url").c_str() : "https://heimdall.trublue.ch",
-          sizeof(c.serverUrl));
-  strlcpy(c.deviceToken, server.arg("token").c_str(), sizeof(c.deviceToken));
+  // Server-Bindung während Verschluss einfrieren: Eine gesperrte Box darf nicht auf
+  // einen anderen Server/Token umgebogen werden (sonst Bypass — der neue Server könnte
+  // öffnen). WLAN (oben) bleibt änderbar, damit die Box weiter syncen kann.
+  BoxState st = {};
+  WifiCredentials cur = {};
+  bool serverFrozen = NVS::loadState(st) && st.locked && NVS::loadCredentials(cur)
+                      && cur.serverUrl[0] && cur.deviceToken[0];
+  if (serverFrozen) {
+    strlcpy(c.serverUrl,   cur.serverUrl,   sizeof(c.serverUrl));
+    strlcpy(c.deviceToken, cur.deviceToken, sizeof(c.deviceToken));
+    log_w("Verschluss aktiv — Server/Token eingefroren, nur WLAN aktualisiert");
+  } else {
+    strlcpy(c.serverUrl,
+            server.hasArg("url") && !server.arg("url").isEmpty()
+              ? server.arg("url").c_str() : "https://heimdall.trublue.ch",
+            sizeof(c.serverUrl));
+    strlcpy(c.deviceToken, server.arg("token").c_str(), sizeof(c.deviceToken));
+  }
   NVS::saveCredentials(c);
 
   log_i("Provisioned: ssid=%s url=%s", c.ssid, c.serverUrl);
   server.send(200, "text/html",
               String(PAGE_HEAD) + "<h2>✅ Gespeichert</h2>"
               "<p class=m>Die Box startet neu und verbindet sich mit <b>" + c.ssid +
-              "</b>. Du kannst dieses WLAN verlassen.</p></body></html>");
+              "</b>. Du kannst dieses WLAN verlassen.</p>" +
+              (serverFrozen
+                ? "<p class=m>🔒 Verschluss aktiv — Server &amp; Token wurden "
+                  "<b>nicht</b> geändert (nur WLAN aktualisiert).</p>"
+                : "") +
+              "</body></html>");
   gProvisioned = true;
 }
 
