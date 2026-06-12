@@ -40,14 +40,25 @@ jobs:
           echo "FW=$FW" >> "$GITHUB_ENV"
           echo "Firmware-Version: $FW"
 
-      # .bin in den Home des Deploy-Users laden (dort hat er Schreibrecht)
-      - name: Copy .bin to server
+      # Signierte OTA: Ed25519-Signatur über sha256(.bin). Privater Key NUR hier
+      # (Secret OTA_SIGNING_KEY = base64 des 32-Byte-Seeds), nie im Repo. Die Box
+      # verifiziert mit dem eingebrannten Public Key und flasht nur bei Match.
+      - name: Sign firmware (Ed25519 over sha256)
+        env:
+          OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
+        run: |
+          pip install --quiet pynacl
+          python3 -c "import base64,hashlib,os,nacl.signing; sk=nacl.signing.SigningKey(base64.b64decode(os.environ['OTA_SIGNING_KEY'])); d=hashlib.sha256(open('firmware/.pio/build/lolin_d32/firmware.bin','rb').read()).digest(); open('firmware/.pio/build/lolin_d32/firmware.sig','w').write(sk.sign(d).signature.hex())"
+          echo "Signatur: $(cat firmware/.pio/build/lolin_d32/firmware.sig)"
+
+      # .bin + .sig in den Home des Deploy-Users laden (dort hat er Schreibrecht)
+      - name: Copy .bin + .sig to server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_SERVER }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
-          source: firmware/.pio/build/lolin_d32/firmware.bin
+          source: "firmware/.pio/build/lolin_d32/firmware.bin,firmware/.pio/build/lolin_d32/firmware.sig"
           target: heimdall-ota
           strip_components: 4
 
@@ -66,7 +77,10 @@ jobs:
             DEPLOY_PATH="$(printf '%s' "$DEPLOY_PATH" | tr -d '\n\r')"
             cd "$DEPLOY_PATH"
             docker compose exec -T app mkdir -p /app/data/firmware
+            # Reihenfolge: erst .sig + .bin, version.txt ZULETZT (sie ist der OTA-Trigger
+            # — so sieht die Box nie eine neue Version ohne passende Signatur).
+            docker compose cp "$HOME/heimdall-ota/firmware.sig" app:/app/data/firmware/latest.sig
             docker compose cp "$HOME/heimdall-ota/firmware.bin" app:/app/data/firmware/latest.bin
             printf '%s\n' "$FW" | docker compose exec -T app sh -c 'cat > /app/data/firmware/version.txt'
-            rm -f "$HOME/heimdall-ota/firmware.bin"
-            echo "Firmware $FW veroeffentlicht - Boxen ziehen beim naechsten Sync."
+            rm -f "$HOME/heimdall-ota/firmware.bin" "$HOME/heimdall-ota/firmware.sig"
+            echo "Firmware $FW (signiert) veroeffentlicht - Boxen ziehen beim naechsten Sync."

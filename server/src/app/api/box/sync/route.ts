@@ -3,7 +3,7 @@ import { z } from "zod";
 import { authenticateDevice, extractBearerToken, effectiveLockUntil } from "@/lib/device-auth";
 import { prisma } from "@/lib/prisma";
 import { notifyDeviceChange } from "@/lib/events";
-import { getTargetVersion } from "@/lib/firmware";
+import { getTargetVersion, getFirmwareSig } from "@/lib/firmware";
 
 function ts() { return new Date().toISOString(); }
 
@@ -127,8 +127,10 @@ export async function POST(req: NextRequest) {
   }
 
   // Server-Pull-OTA: Zielversion ≠ gemeldeter FW → Box zieht die neue Bin.
-  const targetVersion = await getTargetVersion();
-  const otaPending = !!targetVersion && targetVersion !== state.fwVersion;
+  // Nur anbieten, wenn auch eine Signatur vorliegt — sonst lehnt die Box (0.1.44+)
+  // sie ohnehin ab (fail-closed) und würde jeden Sync sinnlos die Bin laden.
+  const [targetVersion, otaSig] = await Promise.all([getTargetVersion(), getFirmwareSig()]);
+  const otaPending = !!targetVersion && targetVersion !== state.fwVersion && !!otaSig;
 
   // Multi-WLAN: Passwort nullen, sobald die Box die SSID als bekannt meldet
   // (= ausgeliefert). Danach nur noch nicht-ausgelieferte Netze schicken.
@@ -153,6 +155,7 @@ export async function POST(req: NextRequest) {
     timeUTC: now.toISOString(),
     otaVersion: otaPending ? targetVersion : null,
     otaUrl: otaPending ? `${process.env.NEXTAUTH_URL ?? ""}/api/box/firmware` : null,
+    otaSig: otaPending ? otaSig : null,
     wifiNetworks: pendingNets.map((n) => ({ ssid: n.ssid, pass: n.password })),
     commands: [],
   });

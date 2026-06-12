@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 // Cert-Pinning: Die Box vertraut NICHT dem üblichen ~150-CA-Store, sondern exakt
 // den Let's-Encrypt-Wurzeln. Damit kann ein Rogue-AP / Man-in-the-Middle keine
 // gefälschte Policy (lockUntil=null → Schloss auf) oder fremde Firmware unterschieben:
@@ -13,6 +15,17 @@
 //
 // Falls beide Roots mal ungültig werden: Handshake schlägt fehl → Box behandelt das
 // wie "offline" → Offline-Failsafe öffnet nach Deadline (fail-safe, nie stuck-locked).
+
+// OTA-Signatur (Release 2): Die Box flasht nur Firmware, die mit DEINEM privaten
+// Ed25519-Key signiert wurde. Der private Key lebt ausschliesslich im CI-Secret
+// OTA_SIGNING_KEY; hier steht nur der öffentliche (kann nur prüfen, nicht signieren).
+// Verfahren: CI signiert sha256(firmware.bin); Box rechnet denselben Hash beim
+// Download und verifiziert die 64-Byte-Signatur. Ungültig → kein Flash (fail-closed).
+// Schützt auch gegen kompromittierten Server / korrupte .bin (Integrität inklusive).
+static const uint8_t OTA_PUBKEY[32] = {
+  0x42, 0xce, 0x4f, 0xa0, 0x47, 0xa3, 0x01, 0xe8, 0x5e, 0x48, 0x99, 0xcf, 0x11, 0xe5, 0xeb, 0x58,
+  0xa2, 0x9c, 0x41, 0xea, 0x16, 0x98, 0xe1, 0x5e, 0xb4, 0x25, 0x42, 0xbe, 0xf1, 0xea, 0xad, 0x78,
+};
 
 static const char ROOT_CA_BUNDLE[] = R"CERT(-----BEGIN CERTIFICATE-----
 MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw

@@ -448,7 +448,7 @@ void loop() {
             (gState == State::LOCKED || gState == State::IDLE_OPEN) &&
             Failsafe::batteryPercent() >= 40) {
           log_w("OTA: Server bietet %s an (aktuell %s) → Update", ota.version, FW_VERSION);
-          OTA::apply(ota.url, gCreds.deviceToken); // Erfolg → Reboot (kehrt nicht zurück)
+          OTA::apply(ota.url, gCreds.deviceToken, ota.sig); // Erfolg → Reboot (kehrt nicht zurück)
           log_e("OTA fehlgeschlagen — weiter mit aktueller FW");
         }
       } else {

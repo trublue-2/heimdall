@@ -4,5 +4,7 @@
 // in den inaktiven App-Slot. Bei Erfolg Reboot (kehrt dann nicht zurück).
 // Sicherheits-Gating (Akku, nicht während Aktuierung) macht der Aufrufer.
 namespace OTA {
-  bool apply(const char* url, const char* token); // true→Reboot, false→Fehler
+  // sigHex: Ed25519-Signatur (128 Hex-Zeichen) über sha256(.bin). Leer/ungültig →
+  // kein Flash (fail-closed). true→Reboot, false→Fehler/abgelehnt.
+  bool apply(const char* url, const char* token, const char* sigHex);
 }

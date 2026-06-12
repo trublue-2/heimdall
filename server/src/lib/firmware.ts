@@ -8,6 +8,7 @@ import path from "path";
 const FIRMWARE_DIR = process.env.FIRMWARE_DIR || path.join(process.cwd(), "data", "firmware");
 const BIN_PATH = path.join(FIRMWARE_DIR, "latest.bin");
 const VERSION_PATH = path.join(FIRMWARE_DIR, "version.txt");
+const SIG_PATH = path.join(FIRMWARE_DIR, "latest.sig");
 
 export async function saveFirmware(version: string, bytes: Buffer): Promise<void> {
   await fs.mkdir(FIRMWARE_DIR, { recursive: true });
@@ -18,6 +19,16 @@ export async function saveFirmware(version: string, bytes: Buffer): Promise<void
 export async function getTargetVersion(): Promise<string | null> {
   try {
     return (await fs.readFile(VERSION_PATH, "utf8")).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+// Ed25519-Signatur (128 Hex-Zeichen) der latest.bin, von der CI abgelegt.
+// Ohne Signatur bietet der Sync kein OTA an → Box lädt nichts Unsigniertes.
+export async function getFirmwareSig(): Promise<string | null> {
+  try {
+    return (await fs.readFile(SIG_PATH, "utf8")).trim() || null;
   } catch {
     return null;
   }

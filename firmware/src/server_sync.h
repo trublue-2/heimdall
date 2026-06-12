@@ -12,6 +12,7 @@ enum class SyncResult {
 struct OtaInfo {
   char version[16];
   char url[256];
+  char sig[129]; // Ed25519-Signatur als 128 Hex-Zeichen (+ '\0')
 };
 
 namespace ServerSync {

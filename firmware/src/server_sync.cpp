@@ -212,6 +212,7 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   if (ota) {
     strlcpy(ota->version, resp["otaVersion"] | "", sizeof(ota->version));
     strlcpy(ota->url,     resp["otaUrl"]     | "", sizeof(ota->url));
+    strlcpy(ota->sig,     resp["otaSig"]     | "", sizeof(ota->sig));
   }
 
   // Zusatz-WLANs vom Server übernehmen (Passwort wird serverseitig danach genullt).
