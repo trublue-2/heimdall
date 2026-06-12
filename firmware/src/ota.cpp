@@ -1,5 +1,6 @@
 #include "ota.h"
 #include "config.h"
+#include "certs.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <Update.h>
@@ -7,7 +8,7 @@
 
 bool OTA::apply(const char* url, const char* token) {
   WiFiClientSecure client;
-  client.setInsecure(); // TODO: Zertifikat-Pinning (wie server_sync)
+  client.setCACert(ROOT_CA_BUNDLE); // Cert-Pinning (siehe certs.h) — nur echter Server
 
   HTTPClient http;
   if (!http.begin(client, url)) { log_e("OTA: begin fehlgeschlagen"); return false; }

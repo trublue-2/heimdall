@@ -1,5 +1,6 @@
 #include "server_sync.h"
 #include "config.h"
+#include "certs.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -135,8 +136,9 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   syncNtp();
 
   WiFiClientSecure client;
-  // TODO: Zertifikat-Pinning nach erster Validierung
-  client.setInsecure();
+  // Cert-Pinning: nur Let's-Encrypt-Roots vertrauen (siehe certs.h). Verhindert,
+  // dass ein Rogue-AP eine gefälschte Policy (Schloss auf) unterschiebt.
+  client.setCACert(ROOT_CA_BUNDLE);
 
   HTTPClient http;
   String url = String(creds.serverUrl) + SERVER_PATH_SYNC;
