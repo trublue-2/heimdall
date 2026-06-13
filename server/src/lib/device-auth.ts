@@ -56,6 +56,9 @@ export function boxLocked(
   lockedSince: Date | null,
   now: Date
 ): boolean {
+  // Reinigungspause: bis cleaningUntil darf die Box trotz Sperrzeit offen sein. Öffnet nur
+  // FRÜHER (sichere Richtung), danach greift die Sperre wieder. hardCap/Failsafes unberührt.
+  if (policy?.cleaningUntil && policy.cleaningUntil > now) return false;
   return (
     !!policy?.simpleLock ||
     !!policy?.trackerSimpleLock ||

@@ -98,6 +98,10 @@ model LockPolicy {
   // durch hardCap). Getrennt von lockUntil, damit die Heimdall-eigene Zeit nicht überschrieben wird.
   trackerLockUntil  DateTime? // timed Sperrzeit-Ende
   trackerSimpleLock Boolean   @default(false) // indefinite Sperrzeit → zu bis Keyholder öffnet
+  // Reinigungspause: bis hierhin darf die Box TROTZ Sperrzeit offen sein (temporäre, vom
+  // Tracker gewährte Öffnung; danach greift trackerLockUntil wieder). Öffnet nur FRÜHER →
+  // sichere Richtung, hardCap/Failsafes bleiben unberührt (Safety-Invariante gewahrt).
+  cleaningUntil     DateTime?
   updatedAt        DateTime  @updatedAt
 }
 
