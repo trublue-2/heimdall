@@ -49,8 +49,8 @@ model Device {
   trackerSync       Boolean @default(false)
   trackerInstanceId String? // welche Tracker-Instanz (multi-tenant: viele Sub/KH-Paare)
   trackerInstance   TrackerInstance? @relation(fields: [trackerInstanceId], references: [id], onDelete: SetNull)
-  trackerUserId   String? // Tracker-User-id (Ziel für Spur-2-Events + Sperrzeit-Pull)
-  trackerDeviceId String? // Tracker-Gerät am Schlüssel dieser Box (KG, Halsband, …)
+  trackerUsername   String? // Tracker-Username (Ziel für Spur-2-Events + Sperrzeit-Pull)
+  trackerDeviceName String? // Tracker-Gerät am Schlüssel dieser Box (KG, Halsband, …)
   policy       LockPolicy?
   events       DeviceEvent[]
   users        User[]        @relation("DeviceAccess")

@@ -30,12 +30,12 @@ export type TrackerConfig = {
  *  trackerSimpleLock. Schreibt NUR bei Änderung (Steady-State-Sync = kein DB-Write). Ohne
  *  Instanz/Mapping oder bei Fehler/Timeout bleibt die Policy unverändert. Gibt sie zurück. */
 export async function syncTrackerIntent(
-  device: { id: string; trackerUserId: string | null },
+  device: { id: string; trackerUsername: string | null },
   instance: Target | null,
   policy: LockPolicy | null
 ): Promise<LockPolicy | null> {
-  if (!policy || !device.trackerUserId || !instance) return policy;
-  const cfg = await fetchTrackerConfig(instance, device.trackerUserId);
+  if (!policy || !device.trackerUsername || !instance) return policy;
+  const cfg = await fetchTrackerConfig(instance, device.trackerUsername);
   if (!cfg) return policy;
 
   const sz = cfg.sperrzeit;
@@ -54,10 +54,10 @@ export async function syncTrackerIntent(
 }
 
 /** Absicht ziehen: aktive Keyholder-Sperrzeit für den gemappten Tracker-User auf einer Instanz. */
-async function fetchTrackerConfig(target: Target, trackerUserId: string): Promise<TrackerConfig | null> {
+async function fetchTrackerConfig(target: Target, username: string): Promise<TrackerConfig | null> {
   try {
     const r = await withTimeout(
-      `${target.baseUrl}/api/integration/box/config?userId=${encodeURIComponent(trackerUserId)}`,
+      `${target.baseUrl}/api/integration/box/config?username=${encodeURIComponent(username)}`,
       { headers: { authorization: `Bearer ${target.apiKey}` } }
     );
     if (!r.ok) return null;
@@ -71,8 +71,8 @@ async function fetchTrackerConfig(target: Target, trackerUserId: string): Promis
 export async function pushBoxEvent(
   target: Target,
   p: {
-    trackerUserId: string;
-    trackerDeviceId?: string | null;
+    username: string;
+    deviceName?: string | null;
     type: string;
     wakeReason?: string | null;
     battery?: number | null;
@@ -85,8 +85,8 @@ export async function pushBoxEvent(
       method: "POST",
       headers: { authorization: `Bearer ${target.apiKey}`, "content-type": "application/json" },
       body: JSON.stringify({
-        userId: p.trackerUserId,
-        deviceId: p.trackerDeviceId ?? undefined,
+        username: p.username,
+        deviceName: p.deviceName ?? undefined,
         type: p.type,
         wakeReason: p.wakeReason ?? undefined,
         battery: p.battery ?? undefined,

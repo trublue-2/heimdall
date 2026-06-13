@@ -13,22 +13,22 @@ export function TrackerLinkForm({
   deviceId,
   trackerSync,
   trackerInstanceId,
-  trackerUserId,
-  trackerDeviceId,
+  trackerUsername,
+  trackerDeviceName,
   instances,
 }: {
   deviceId: string;
   trackerSync: boolean;
   trackerInstanceId: string | null;
-  trackerUserId: string | null;
-  trackerDeviceId: string | null;
+  trackerUsername: string | null;
+  trackerDeviceName: string | null;
   instances: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const [sync, setSync] = useState(trackerSync);
   const [instanceId, setInstanceId] = useState(trackerInstanceId ?? "");
-  const [userIdVal, setUserIdVal] = useState(trackerUserId ?? "");
-  const [deviceIdVal, setDeviceIdVal] = useState(trackerDeviceId ?? "");
+  const [usernameVal, setUsernameVal] = useState(trackerUsername ?? "");
+  const [deviceNameVal, setDeviceNameVal] = useState(trackerDeviceName ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
@@ -45,8 +45,8 @@ export function TrackerLinkForm({
         body: JSON.stringify({
           trackerSync: sync,
           trackerInstanceId: instanceId || null,
-          trackerUserId: userIdVal.trim() || null,
-          trackerDeviceId: deviceIdVal.trim() || null,
+          trackerUsername: usernameVal.trim() || null,
+          trackerDeviceName: deviceNameVal.trim() || null,
         }),
       });
       if (!r.ok) throw new Error(await r.text());
@@ -90,15 +90,15 @@ export function TrackerLinkForm({
       </label>
       <Input
         id={`tracker-user-${deviceId}`}
-        label="Tracker-User-ID (Ziel für Events + Sperrzeit)"
-        value={userIdVal}
-        onChange={(e) => setUserIdVal(e.target.value)}
+        label="Tracker-Username (Ziel für Events + Sperrzeit)"
+        value={usernameVal}
+        onChange={(e) => setUsernameVal(e.target.value)}
       />
       <Input
         id={`tracker-device-${deviceId}`}
-        label="Tracker-Geräte-ID am Schlüssel (KG, Halsband, … — optional)"
-        value={deviceIdVal}
-        onChange={(e) => setDeviceIdVal(e.target.value)}
+        label="Tracker-Geräte-Name am Schlüssel (z.B. Flatty — optional)"
+        value={deviceNameVal}
+        onChange={(e) => setDeviceNameVal(e.target.value)}
       />
       <FormError message={error} />
       {ok && <FormSuccess message="Gespeichert." />}

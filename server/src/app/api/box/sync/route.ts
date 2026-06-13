@@ -134,10 +134,10 @@ export async function POST(req: NextRequest) {
     device.trackerSync && device.trackerInstanceId
       ? await prisma.trackerInstance.findUnique({ where: { id: device.trackerInstanceId } })
       : null;
-  if (eventType && device.trackerUserId && trackerInstance) {
+  if (eventType && device.trackerUsername && trackerInstance) {
     void pushBoxEvent(trackerInstance, {
-      trackerUserId: device.trackerUserId,
-      trackerDeviceId: device.trackerDeviceId,
+      username: device.trackerUsername,
+      deviceName: device.trackerDeviceName,
       type: eventType,
       wakeReason: state.wakeReason,
       battery: state.battery,
