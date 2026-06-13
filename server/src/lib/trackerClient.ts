@@ -60,9 +60,13 @@ async function fetchTrackerConfig(target: Target, username: string): Promise<Tra
       `${target.baseUrl}/api/integration/box/config?username=${encodeURIComponent(username)}`,
       { headers: { authorization: `Bearer ${target.apiKey}` } }
     );
-    if (!r.ok) return null;
+    if (!r.ok) {
+      console.warn(`[trackerClient] fetchTrackerConfig → HTTP ${r.status} (${target.baseUrl})`);
+      return null;
+    }
     return (await r.json()) as TrackerConfig;
-  } catch {
+  } catch (e) {
+    console.warn(`[trackerClient] fetchTrackerConfig fehlgeschlagen: ${(e as Error).message}`);
     return null;
   }
 }
@@ -81,7 +85,7 @@ export async function pushBoxEvent(
   }
 ): Promise<void> {
   try {
-    await withTimeout(`${target.baseUrl}/api/integration/box/event`, {
+    const r = await withTimeout(`${target.baseUrl}/api/integration/box/event`, {
       method: "POST",
       headers: { authorization: `Bearer ${target.apiKey}`, "content-type": "application/json" },
       body: JSON.stringify({
@@ -94,7 +98,13 @@ export async function pushBoxEvent(
         at: p.at.toISOString(),
       }),
     });
-  } catch {
-    // Tracker-Ausfall darf den Box-Sync nie beeinträchtigen — bewusst verschluckt.
+    // Fehler nie still verschlucken — sonst gehen Fakten unsichtbar verloren (z.B. falscher
+    // deviceName → 404). Der Box-Sync bleibt davon unberührt (kein throw).
+    if (!r.ok) {
+      const body = await r.text().catch(() => "");
+      console.warn(`[trackerClient] pushBoxEvent ${p.type} → HTTP ${r.status} ${body.slice(0, 200)}`);
+    }
+  } catch (e) {
+    console.warn(`[trackerClient] pushBoxEvent ${p.type} fehlgeschlagen: ${(e as Error).message}`);
   }
 }
