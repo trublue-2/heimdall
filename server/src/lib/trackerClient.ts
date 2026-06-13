@@ -106,3 +106,57 @@ export async function pushBoxEvent(
     console.warn(`[trackerClient] pushBoxEvent ${p.type} fehlgeschlagen: ${(e as Error).message}`);
   }
 }
+
+export type BoxCommand = { pendingCommand: string | null; relockBy: string | null };
+
+/** Live-Status pushen: der aktuelle Box-Zustand (Soll-Sperre + Telemetrie) an eine Instanz,
+ *  damit der Tracker die Box anzeigen kann. Quittiert ein erledigtes Kommando (lastAppliedCommand)
+ *  und liefert das aktuell anstehende zurück. Fehler werden geloggt, nie verschluckt. */
+export async function pushBoxStatus(
+  target: Target,
+  p: {
+    username: string;
+    boxId: string;
+    name: string;
+    locked: boolean;
+    lockUntil: Date | null;
+    simpleLock: boolean;
+    keyholderLocked: boolean;
+    battery?: number | null;
+    charging?: boolean | null;
+    boltPos?: string | null;
+    fwVersion?: string | null;
+    lastSyncAt: Date | null;
+    lastAppliedCommand?: string;
+  }
+): Promise<BoxCommand | null> {
+  try {
+    const r = await withTimeout(`${target.baseUrl}/api/integration/box/status`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${target.apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        username: p.username,
+        boxId: p.boxId,
+        name: p.name,
+        locked: p.locked,
+        lockUntil: p.lockUntil?.toISOString() ?? null,
+        simpleLock: p.simpleLock,
+        keyholderLocked: p.keyholderLocked,
+        battery: p.battery ?? undefined,
+        charging: p.charging ?? undefined,
+        boltPos: p.boltPos ?? undefined,
+        fwVersion: p.fwVersion ?? undefined,
+        lastSyncAt: p.lastSyncAt?.toISOString() ?? null,
+        lastAppliedCommand: p.lastAppliedCommand,
+      }),
+    });
+    if (!r.ok) {
+      console.warn(`[trackerClient] pushBoxStatus → HTTP ${r.status}`);
+      return null;
+    }
+    return (await r.json()) as BoxCommand;
+  } catch (e) {
+    console.warn(`[trackerClient] pushBoxStatus fehlgeschlagen: ${(e as Error).message}`);
+    return null;
+  }
+}

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { authenticateDevice, extractBearerToken, effectiveLockUntil, boxLocked } from "@/lib/device-auth";
+import { authenticateDevice, extractBearerToken, effectiveLockUntil, boxLocked, deviceLockView } from "@/lib/device-auth";
 import { prisma } from "@/lib/prisma";
 import { notifyDeviceChange } from "@/lib/events";
 import { getTargetVersion, getFirmwareSig } from "@/lib/firmware";
-import { syncTrackerIntent, pushBoxEvent } from "@/lib/trackerClient";
+import { syncTrackerIntent, pushBoxEvent, pushBoxStatus } from "@/lib/trackerClient";
 
 function ts() { return new Date().toISOString(); }
 
@@ -155,6 +155,26 @@ export async function POST(req: NextRequest) {
   policy = policyAfterTracker;
 
   const lockUntil = effectiveLockUntil(policy, newLockedSince, now);
+
+  // Live-Box-Status an den Tracker pushen (für die Box-Anzeige dort). Fire-and-forget;
+  // Kommando-Anwendung (verschliessen/öffnen aus dem Tracker) folgt im nächsten Schritt.
+  if (trackerInstance && device.trackerUsername) {
+    const view = deviceLockView(policy, newLockedSince, now);
+    void pushBoxStatus(trackerInstance, {
+      username: device.trackerUsername,
+      boxId: device.id,
+      name: device.name,
+      locked: boxLocked(policy, newLockedSince, now),
+      lockUntil: view.lockUntil,
+      simpleLock: view.simpleLock,
+      keyholderLocked: view.keyholderLocked,
+      battery: state.battery ?? device.battery,
+      charging: state.charging,
+      boltPos: state.boltPos,
+      fwVersion: state.fwVersion ?? device.fwVersion,
+      lastSyncAt: now,
+    });
+  }
 
   if (eventType) {
     console.log(`${ts()} [box/sync] Device "${device.name}" → ${eventType} (reason: ${state.wakeReason ?? "—"})`);
