@@ -11,6 +11,7 @@ import { DeviceActions } from "@/app/components/DeviceActions";
 import { WifiNetworksManager } from "@/app/components/WifiNetworksManager";
 import { TrackerLinkForm } from "@/app/components/TrackerLinkForm";
 import { LiveRefresh } from "@/app/components/LiveRefresh";
+import { deviceLockView } from "@/lib/device-auth";
 import { formatDateTime, isOnline, EVENT_CONFIG } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +44,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
     : [];
 
   const online = isOnline(device.lastSyncAt);
+  const lockView = deviceLockView(device.policy, device.lockedSince, new Date());
 
   return (
     <div className="space-y-6">
@@ -57,8 +59,9 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
         id={device.id}
         name={device.name}
         locked={device.locked}
-        lockUntil={device.policy?.lockUntil?.toISOString() ?? null}
-        simpleLock={device.policy?.simpleLock ?? false}
+        lockUntil={lockView.lockUntil?.toISOString() ?? null}
+        simpleLock={lockView.simpleLock}
+        keyholderLocked={lockView.keyholderLocked}
         hasOpenPassword={!!device.policy?.openPasswordHash}
         lastSyncAt={device.lastSyncAt?.toISOString() ?? null}
         battery={device.battery}

@@ -110,3 +110,19 @@ export function effectiveLockUntil(
 
   return until;
 }
+
+/** Anzeige-Sicht für die Geräte-Karte: die EFFEKTIVE Sperre (eigene + aus dem Tracker gezogene
+ *  Sperrzeit, gekappt durch hardCap) statt nur der eigenen lockUntil — damit „geschlossen bis"
+ *  die real gültige Zeit zeigt, auch wenn der Tracker sie verändert hat. keyholderLocked = eine
+ *  Tracker-Sperrzeit hält die Box, die der Sub lokal nicht öffnen kann (nur Keyholderin/Ablauf). */
+export function deviceLockView(
+  policy: LockPolicy | null,
+  lockedSince: Date | null,
+  now: Date
+): { lockUntil: Date | null; simpleLock: boolean; keyholderLocked: boolean } {
+  return {
+    lockUntil: effectiveLockUntil(policy, lockedSince, now),
+    simpleLock: !!policy?.simpleLock || !!policy?.trackerSimpleLock,
+    keyholderLocked: !!policy?.trackerSimpleLock || !!(policy?.trackerLockUntil && policy.trackerLockUntil > now),
+  };
+}

@@ -15,8 +15,9 @@ export interface DeviceControlCardProps {
   id: string;
   name: string;
   locked: boolean; // Ist (gemeldet)
-  lockUntil: string | null; // Soll
-  simpleLock: boolean; // "ohne Zeit" verschlossen
+  lockUntil: string | null; // Soll — EFFEKTIVE Sperre (eigene + Tracker-Sperrzeit, gekappt)
+  simpleLock: boolean; // "ohne Zeit" verschlossen (eigen oder Tracker)
+  keyholderLocked: boolean; // durch Tracker-Sperrzeit gehalten — lokal nicht öffenbar
   hasOpenPassword: boolean; // Öffnen nur mit Passwort
   lastSyncAt: string | null;
   battery: number | null;
@@ -153,14 +154,22 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
           <div className="px-4 pb-4 space-y-2">
             {error && <FormError message={error} />}
             {wantClosed ? (
-              <button
-                onClick={openDevice}
-                disabled={saving}
-                className="w-full rounded-xl bg-[var(--color-ok)] py-3 font-semibold text-[var(--foreground-invert)] hover:opacity-90 disabled:opacity-50 transition flex items-center justify-center gap-2"
-              >
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unlock className="h-4 w-4" />}
-                Öffnen
-              </button>
+              props.keyholderLocked ? (
+                // Tracker-Sperrzeit hält die Box — lokal nicht öffenbar (nur Keyholderin/Ablauf).
+                <div className="w-full rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] py-3 text-center text-sm text-[var(--foreground-muted)] flex items-center justify-center gap-2">
+                  <Lock className="h-4 w-4 shrink-0" />
+                  Durch Sperrzeit gehalten — öffnet die Keyholderin oder bei Ablauf
+                </div>
+              ) : (
+                <button
+                  onClick={openDevice}
+                  disabled={saving}
+                  className="w-full rounded-xl bg-[var(--color-ok)] py-3 font-semibold text-[var(--foreground-invert)] hover:opacity-90 disabled:opacity-50 transition flex items-center justify-center gap-2"
+                >
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unlock className="h-4 w-4" />}
+                  Öffnen
+                </button>
+              )
             ) : (
               <button
                 onClick={openLockModal}

@@ -5,6 +5,7 @@ import { LiveRefresh } from "@/app/components/LiveRefresh";
 import { Lock } from "lucide-react";
 import { Card } from "@/app/components/Card";
 import { isOnline } from "@/lib/utils";
+import { deviceLockView } from "@/lib/device-auth";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -42,14 +43,17 @@ export default async function DashboardPage() {
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          {devices.map((device) => (
+          {devices.map((device) => {
+            const lv = deviceLockView(device.policy, device.lockedSince, new Date());
+            return (
             <DeviceControlCard
               key={device.id}
               id={device.id}
               name={device.name}
               locked={device.locked}
-              lockUntil={device.policy?.lockUntil?.toISOString() ?? null}
-              simpleLock={device.policy?.simpleLock ?? false}
+              lockUntil={lv.lockUntil?.toISOString() ?? null}
+              simpleLock={lv.simpleLock}
+              keyholderLocked={lv.keyholderLocked}
               hasOpenPassword={!!device.policy?.openPasswordHash}
               lastSyncAt={device.lastSyncAt?.toISOString() ?? null}
               battery={device.battery}
@@ -58,7 +62,8 @@ export default async function DashboardPage() {
               wifiRssi={device.wifiRssi ?? null}
               isOnline={isOnline(device.lastSyncAt)}
             />
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
