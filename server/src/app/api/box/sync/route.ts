@@ -69,6 +69,8 @@ export async function POST(req: NextRequest) {
     // genau dieses Box-Event: "early" → dokumentieren, "silent" → kein Eintrag.
     if (device.pendingOpenReason === "early") {
       eventType = "EARLY_OPEN";
+    } else if (device.pendingOpenReason === "tracker") {
+      eventType = "UNLOCKED"; // vom Sub im Tracker ausgelöstes Öffnen (eigene "ohne Zeit"-Sperre)
     } else if (device.pendingOpenReason === "silent") {
       eventType = null; // Passwort-Öffnung / Simple-Lock / abgelaufen → kein Eintrag
     } else {
@@ -173,9 +175,13 @@ export async function POST(req: NextRequest) {
       fwVersion: state.fwVersion ?? device.fwVersion,
       lastSyncAt: now,
     });
-    // "lock" = Sub will verschliessen → Simple-Lock (zu, ohne Zeit). Öffnen folgt.
+    // "lock" → Simple-Lock (zu, ohne Zeit). "open" → eigene Sperre lösen (Simple-Lock + lockUntil);
+    // eine Tracker-Sperrzeit (trackerLockUntil) bleibt unangetastet → bindet weiter (nicht Sub-Hoheit).
     if (cmd?.pendingCommand === "lock") {
       policy = await prisma.lockPolicy.update({ where: { deviceId: device.id }, data: { simpleLock: true } });
+    } else if (cmd?.pendingCommand === "open") {
+      policy = await prisma.lockPolicy.update({ where: { deviceId: device.id }, data: { simpleLock: false, lockUntil: null } });
+      await prisma.device.update({ where: { id: device.id }, data: { pendingOpenReason: "tracker" } });
     }
   }
 
