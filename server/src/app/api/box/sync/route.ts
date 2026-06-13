@@ -154,13 +154,12 @@ export async function POST(req: NextRequest) {
   ]);
   policy = policyAfterTracker;
 
-  const lockUntil = effectiveLockUntil(policy, newLockedSince, now);
-
-  // Live-Box-Status an den Tracker pushen (für die Box-Anzeige dort). Fire-and-forget;
-  // Kommando-Anwendung (verschliessen/öffnen aus dem Tracker) folgt im nächsten Schritt.
-  if (trackerInstance && device.trackerUsername) {
+  // Live-Box-Status an den Tracker pushen (für die Box-Anzeige dort) und ein vom Sub im
+  // Tracker ausgelöstes Kommando ziehen (consume-on-read) + anwenden — VOR der lockUntil-
+  // Berechnung, damit die Box das Kommando schon in DIESER Sync-Antwort vollzieht.
+  if (trackerInstance && device.trackerUsername && policy) {
     const view = deviceLockView(policy, newLockedSince, now);
-    void pushBoxStatus(trackerInstance, {
+    const cmd = await pushBoxStatus(trackerInstance, {
       username: device.trackerUsername,
       boxId: device.id,
       name: device.name,
@@ -174,7 +173,13 @@ export async function POST(req: NextRequest) {
       fwVersion: state.fwVersion ?? device.fwVersion,
       lastSyncAt: now,
     });
+    // "lock" = Sub will verschliessen → Simple-Lock (zu, ohne Zeit). Öffnen folgt.
+    if (cmd?.pendingCommand === "lock") {
+      policy = await prisma.lockPolicy.update({ where: { deviceId: device.id }, data: { simpleLock: true } });
+    }
   }
+
+  const lockUntil = effectiveLockUntil(policy, newLockedSince, now);
 
   if (eventType) {
     console.log(`${ts()} [box/sync] Device "${device.name}" → ${eventType} (reason: ${state.wakeReason ?? "—"})`);
