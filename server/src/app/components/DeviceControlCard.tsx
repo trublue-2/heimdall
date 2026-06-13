@@ -37,11 +37,16 @@ function timeLeft(until: string): string {
   return h % 24 ? `${d} T ${h % 24} h` : `${d} T`;
 }
 
+// Reibungs-Satz für das vorzeitige Öffnen ohne Passwort: bewusst tippen, kein Ein-Klick.
+const EMERGENCY_PHRASE = "ich muss sofort hier raus: es ist ein Notfall!";
+
 export function DeviceControlCard(props: DeviceControlCardProps) {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
   const [pw, setPw] = useState("");
+  const [emergencyOpen, setEmergencyOpen] = useState(false);
+  const [emergencyText, setEmergencyText] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -72,6 +77,8 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
       if (!res.ok) throw new Error();
       setPwOpen(false);
       setPw("");
+      setEmergencyOpen(false);
+      setEmergencyText("");
       router.refresh();
     } catch {
       setError("Öffnen fehlgeschlagen — bitte erneut versuchen.");
@@ -85,11 +92,7 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
     e.stopPropagation();
     setError(null);
     if (isEarly && props.hasOpenPassword) { setPwOpen(true); return; }
-    if (isEarly && !props.hasOpenPassword) {
-      if (!confirm("Die Zeit ist noch nicht abgelaufen! Das Öffnen wird dokumentiert.\n\nWirklich öffnen?")) return;
-      doOpen({ confirmEarly: true });
-      return;
-    }
+    if (isEarly && !props.hasOpenPassword) { setEmergencyText(""); setEmergencyOpen(true); return; }
     doOpen({}); // Simple-Lock / bereits abgelaufen → lautlos
   }
 
@@ -205,6 +208,34 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
             </Button>
             <Button onClick={() => doOpen({ password: pw })} loading={saving} disabled={!pw}>
               Öffnen
+            </Button>
+          </div>
+        </Modal>
+      )}
+
+      {emergencyOpen && (
+        <Modal title={`${props.name} vorzeitig öffnen`} onClose={() => { setEmergencyOpen(false); setEmergencyText(""); setError(null); }}>
+          <p className="text-sm font-medium text-[var(--color-warn)]">
+            Die Zeit ist noch nicht abgelaufen. Das Öffnen wird im Strafbuch dokumentiert.
+          </p>
+          <p className="text-sm text-[var(--foreground-muted)]">Zum Bestätigen tippe exakt diesen Satz:</p>
+          <p className="rounded-lg bg-[var(--surface-raised)] border border-[var(--border)] px-3 py-2 text-sm font-mono text-[var(--foreground)] select-all">
+            {EMERGENCY_PHRASE}
+          </p>
+          <Input
+            id={`emergency-${props.id}`}
+            label="Bestätigungssatz"
+            value={emergencyText}
+            onChange={(e) => setEmergencyText(e.target.value)}
+            autoFocus
+          />
+          {error && <FormError message={error} />}
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" onClick={() => { setEmergencyOpen(false); setEmergencyText(""); setError(null); }} disabled={saving}>
+              Abbrechen
+            </Button>
+            <Button variant="danger" onClick={() => doOpen({ confirmEarly: true })} loading={saving} disabled={emergencyText.trim() !== EMERGENCY_PHRASE}>
+              Trotzdem öffnen
             </Button>
           </div>
         </Modal>
