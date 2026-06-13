@@ -121,8 +121,8 @@ ADMIN_PASSWORD=
 
 **Tracker-Anbindung:** kein globales Env mehr — multi-tenant über die DB. Jede
 `TrackerInstance` {name, baseUrl, apiKey} wird unter „Tracker" angelegt; eine Box wird
-ihr auf der Geräte-Detailseite zugeordnet (`trackerInstanceId` + `trackerUsername` +
-`trackerDeviceName` — Mapping per Name, kein cuid-Lookup). `apiKey` == das
+ihr auf der Geräte-Detailseite zugeordnet (`trackerInstanceId` + `trackerUsername`, per
+Name — kein cuid-Lookup). Die Box ist generisch (keine feste KG-Zuordnung). `apiKey` == das
 `HEIMDALL_SYNC_SECRET` der jeweiligen Tracker-Instanz.
 
 `DATABASE_URL` wird im Container via Entrypoint auf `file:/app/data/prod.db` gesetzt.

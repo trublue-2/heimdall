@@ -45,12 +45,12 @@ model Device {
   primarySsid String? // Provisioning-Netz (knownSsids[0] der Box)
   // chastitytracker.ch-Anbindung (optional, pro Box). Box kennt den Tracker nicht —
   // der Server ist die Brücke. trackerSync=Feature-Flag; Instanz = welche Tracker-Deployment,
-  // trackerUserId/-DeviceId = Ziel auf dieser Instanz.
+  // trackerUsername = Ziel-User. KEINE feste KG-Zuordnung: die Box ist generisch, welches KG
+  // getragen wird weiss der Tracker aus der laufenden Session.
   trackerSync       Boolean @default(false)
   trackerInstanceId String? // welche Tracker-Instanz (multi-tenant: viele Sub/KH-Paare)
   trackerInstance   TrackerInstance? @relation(fields: [trackerInstanceId], references: [id], onDelete: SetNull)
   trackerUsername   String? // Tracker-Username (Ziel für Spur-2-Events + Sperrzeit-Pull)
-  trackerDeviceName String? // Tracker-Gerät am Schlüssel dieser Box (KG, Halsband, …)
   policy       LockPolicy?
   events       DeviceEvent[]
   users        User[]        @relation("DeviceAccess")

@@ -76,7 +76,6 @@ export async function pushBoxEvent(
   target: Target,
   p: {
     username: string;
-    deviceName?: string | null;
     type: string;
     wakeReason?: string | null;
     battery?: number | null;
@@ -90,7 +89,6 @@ export async function pushBoxEvent(
       headers: { authorization: `Bearer ${target.apiKey}`, "content-type": "application/json" },
       body: JSON.stringify({
         username: p.username,
-        deviceName: p.deviceName ?? undefined,
         type: p.type,
         wakeReason: p.wakeReason ?? undefined,
         battery: p.battery ?? undefined,

@@ -20,7 +20,6 @@ export async function PATCH(
     trackerSync?: boolean;
     trackerInstanceId?: string | null;
     trackerUsername?: string | null;
-    trackerDeviceName?: string | null;
   } = {};
 
   if (body.name !== undefined) {
@@ -31,7 +30,6 @@ export async function PATCH(
   if (body.trackerSync !== undefined) data.trackerSync = !!body.trackerSync;
   if (body.trackerInstanceId !== undefined) data.trackerInstanceId = (body.trackerInstanceId as string)?.trim() || null;
   if (body.trackerUsername !== undefined) data.trackerUsername = (body.trackerUsername as string)?.trim() || null;
-  if (body.trackerDeviceName !== undefined) data.trackerDeviceName = (body.trackerDeviceName as string)?.trim() || null;
 
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: "Nichts zu ändern" }, { status: 400 });

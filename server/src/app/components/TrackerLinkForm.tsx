@@ -7,28 +7,25 @@ import { Input } from "./Input";
 import { FormError } from "./FormError";
 import { FormSuccess } from "./FormSuccess";
 
-/** chastitytracker.ch-Anbindung pro Box: Sync-Flag + Instanz + Mapping (User + Gerät am
- *  Schlüssel). Admin-only. Die Box selbst kennt den Tracker nicht — der Server ist die Brücke. */
+/** chastitytracker.ch-Anbindung pro Box: Sync-Flag + Instanz + Ziel-User. Admin-only. Die Box
+ *  ist generisch (keine feste KG-Zuordnung) — welches KG getragen wird, weiss der Tracker. */
 export function TrackerLinkForm({
   deviceId,
   trackerSync,
   trackerInstanceId,
   trackerUsername,
-  trackerDeviceName,
   instances,
 }: {
   deviceId: string;
   trackerSync: boolean;
   trackerInstanceId: string | null;
   trackerUsername: string | null;
-  trackerDeviceName: string | null;
   instances: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const [sync, setSync] = useState(trackerSync);
   const [instanceId, setInstanceId] = useState(trackerInstanceId ?? "");
   const [usernameVal, setUsernameVal] = useState(trackerUsername ?? "");
-  const [deviceNameVal, setDeviceNameVal] = useState(trackerDeviceName ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
@@ -46,7 +43,6 @@ export function TrackerLinkForm({
           trackerSync: sync,
           trackerInstanceId: instanceId || null,
           trackerUsername: usernameVal.trim() || null,
-          trackerDeviceName: deviceNameVal.trim() || null,
         }),
       });
       if (!r.ok) throw new Error(await r.text());
@@ -93,12 +89,6 @@ export function TrackerLinkForm({
         label="Tracker-Username (Ziel für Events + Sperrzeit)"
         value={usernameVal}
         onChange={(e) => setUsernameVal(e.target.value)}
-      />
-      <Input
-        id={`tracker-device-${deviceId}`}
-        label="Tracker-Geräte-Name am Schlüssel (z.B. Flatty — optional)"
-        value={deviceNameVal}
-        onChange={(e) => setDeviceNameVal(e.target.value)}
       />
       <FormError message={error} />
       {ok && <FormSuccess message="Gespeichert." />}

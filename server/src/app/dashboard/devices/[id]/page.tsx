@@ -146,7 +146,6 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
               trackerSync={device.trackerSync}
               trackerInstanceId={device.trackerInstanceId}
               trackerUsername={device.trackerUsername}
-              trackerDeviceName={device.trackerDeviceName}
               instances={trackerInstances}
             />
           </Card>

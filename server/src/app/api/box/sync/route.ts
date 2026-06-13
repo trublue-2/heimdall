@@ -137,7 +137,6 @@ export async function POST(req: NextRequest) {
   if (eventType && device.trackerUsername && trackerInstance) {
     void pushBoxEvent(trackerInstance, {
       username: device.trackerUsername,
-      deviceName: device.trackerDeviceName,
       type: eventType,
       wakeReason: state.wakeReason,
       battery: state.battery,
