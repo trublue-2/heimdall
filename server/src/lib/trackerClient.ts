@@ -2,17 +2,15 @@ import { prisma } from "@/lib/prisma";
 import type { LockPolicy } from "@prisma/client";
 
 // Brücke Heimdall-Server → chastitytracker.ch (Maschinen-Auth via Shared-Secret).
-// Die Box kennt den Tracker nicht; nur der Server spricht ihn an. Alle Aufrufe sind
-// no-op/null, wenn TRACKER_URL/TRACKER_API_KEY fehlen — und dürfen den Box-Sync NIE
-// brechen (Safety > Function): Fehler werden gefangen, kurzer Timeout.
+// Multi-tenant: jede Box zeigt auf EINE TrackerInstance {baseUrl, apiKey} — es gibt kein
+// globales Tracker-Env mehr. Die Box kennt den Tracker nicht; nur der Server spricht ihn an.
+// Alle Aufrufe sind no-op/null bei fehlender Instanz und dürfen den Box-Sync NIE brechen
+// (Safety > Function): Fehler werden gefangen, kurzer Timeout.
 
-const BASE = () => process.env.TRACKER_URL?.replace(/\/$/, "") ?? "";
-const KEY = () => process.env.TRACKER_API_KEY ?? "";
 const TIMEOUT_MS = 3000;
 
-function configured(): boolean {
-  return !!BASE() && !!KEY();
-}
+// baseUrl wird beim Anlegen der Instanz ohne Trailing-Slash gespeichert.
+type Target = { baseUrl: string; apiKey: string };
 
 async function withTimeout(url: string, init: RequestInit): Promise<Response> {
   const ctrl = new AbortController();
@@ -29,14 +27,15 @@ export type TrackerConfig = {
 };
 
 /** Absicht ziehen + in die Policy falten: aktive Keyholder-Sperrzeit → trackerLockUntil /
- *  trackerSimpleLock. Schreibt NUR bei Änderung (Steady-State-Sync = kein DB-Write). Bei
- *  Fehler/Timeout/keinem Mapping bleibt die Policy unverändert. Gibt die (ggf. neue) Policy zurück. */
+ *  trackerSimpleLock. Schreibt NUR bei Änderung (Steady-State-Sync = kein DB-Write). Ohne
+ *  Instanz/Mapping oder bei Fehler/Timeout bleibt die Policy unverändert. Gibt sie zurück. */
 export async function syncTrackerIntent(
   device: { id: string; trackerUserId: string | null },
+  instance: Target | null,
   policy: LockPolicy | null
 ): Promise<LockPolicy | null> {
-  if (!policy || !device.trackerUserId) return policy;
-  const cfg = await fetchTrackerConfig(device.trackerUserId);
+  if (!policy || !device.trackerUserId || !instance) return policy;
+  const cfg = await fetchTrackerConfig(instance, device.trackerUserId);
   if (!cfg) return policy;
 
   const sz = cfg.sperrzeit;
@@ -54,13 +53,12 @@ export async function syncTrackerIntent(
   });
 }
 
-/** Absicht ziehen: aktive Keyholder-Sperrzeit für den gemappten Tracker-User. */
-async function fetchTrackerConfig(trackerUserId: string): Promise<TrackerConfig | null> {
-  if (!configured()) return null;
+/** Absicht ziehen: aktive Keyholder-Sperrzeit für den gemappten Tracker-User auf einer Instanz. */
+async function fetchTrackerConfig(target: Target, trackerUserId: string): Promise<TrackerConfig | null> {
   try {
     const r = await withTimeout(
-      `${BASE()}/api/integration/box/config?userId=${encodeURIComponent(trackerUserId)}`,
-      { headers: { authorization: `Bearer ${KEY()}` } }
+      `${target.baseUrl}/api/integration/box/config?userId=${encodeURIComponent(trackerUserId)}`,
+      { headers: { authorization: `Bearer ${target.apiKey}` } }
     );
     if (!r.ok) return null;
     return (await r.json()) as TrackerConfig;
@@ -69,21 +67,23 @@ async function fetchTrackerConfig(trackerUserId: string): Promise<TrackerConfig 
   }
 }
 
-/** Fakten pushen: ein realer Box-Übergang als Spur 2 (Hardware-Wahrheit). */
-export async function pushBoxEvent(p: {
-  trackerUserId: string;
-  trackerDeviceId?: string | null;
-  type: string;
-  wakeReason?: string | null;
-  battery?: number | null;
-  fwVersion?: string | null;
-  at: Date;
-}): Promise<void> {
-  if (!configured()) return;
+/** Fakten pushen: ein realer Box-Übergang als Spur 2 (Hardware-Wahrheit) an eine Instanz. */
+export async function pushBoxEvent(
+  target: Target,
+  p: {
+    trackerUserId: string;
+    trackerDeviceId?: string | null;
+    type: string;
+    wakeReason?: string | null;
+    battery?: number | null;
+    fwVersion?: string | null;
+    at: Date;
+  }
+): Promise<void> {
   try {
-    await withTimeout(`${BASE()}/api/integration/box/event`, {
+    await withTimeout(`${target.baseUrl}/api/integration/box/event`, {
       method: "POST",
-      headers: { authorization: `Bearer ${KEY()}`, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${target.apiKey}`, "content-type": "application/json" },
       body: JSON.stringify({
         userId: p.trackerUserId,
         deviceId: p.trackerDeviceId ?? undefined,

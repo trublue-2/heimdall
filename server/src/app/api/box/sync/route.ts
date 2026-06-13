@@ -127,12 +127,16 @@ export async function POST(req: NextRequest) {
   // Reload policy after potential creation
   let policy = device.policy ?? await prisma.lockPolicy.findUnique({ where: { deviceId: device.id } });
 
-  // Tracker-Anbindung (P1): realen Übergang als Spur 2 pushen (fire-and-forget).
-  // trackerClient fängt alle Fehler/Timeouts — der Box-Sync darf davon nie abhängen.
-  const trackerOn = device.trackerSync && !!device.trackerUserId;
-  if (trackerOn && eventType) {
-    void pushBoxEvent({
-      trackerUserId: device.trackerUserId!,
+  // Tracker-Anbindung (P1): die gemappte Instanz nur hier laden (nicht in authenticateDevice,
+  // sonst läge das apiKey jeder Box bei jeder Auth im Speicher). Realen Übergang als Spur 2
+  // pushen (fire-and-forget); trackerClient fängt alle Fehler/Timeouts — der Sync hängt nie daran.
+  const trackerInstance =
+    device.trackerSync && device.trackerInstanceId
+      ? await prisma.trackerInstance.findUnique({ where: { id: device.trackerInstanceId } })
+      : null;
+  if (eventType && device.trackerUserId && trackerInstance) {
+    void pushBoxEvent(trackerInstance, {
+      trackerUserId: device.trackerUserId,
       trackerDeviceId: device.trackerDeviceId,
       type: eventType,
       wakeReason: state.wakeReason,
@@ -145,7 +149,7 @@ export async function POST(req: NextRequest) {
   // Keyholder-Sperrzeit ziehen (Absicht → trackerLockUntil, greift via Hybrid-Regel in
   // effectiveLockUntil) parallel zu den OTA-Reads — kein serieller Remote-Call vor der Antwort.
   const [policyAfterTracker, targetVersion, otaSig] = await Promise.all([
-    trackerOn ? syncTrackerIntent(device, policy) : Promise.resolve(policy),
+    syncTrackerIntent(device, trackerInstance, policy),
     getTargetVersion(),
     getFirmwareSig(),
   ]);

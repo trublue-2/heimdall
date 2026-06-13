@@ -46,6 +46,7 @@ Middleware: `src/proxy.ts` — öffentliche Routen: `/login`, `/api/auth/*`, `/a
 | `DeviceEvent` | Zustandsübergänge: `LOCKED` / `UNLOCKED` / `FAILSAFE_OPEN` / `UNAUTHORIZED_OPEN` |
 | `RateLimit` | Login-Rate-Limiting |
 | `AppMeta` | KV-Store für Metadaten |
+| `TrackerInstance` | chastitytracker.ch-Deployment (name/baseUrl/apiKey); N Boxen : 1 Instanz |
 
 Alle Relations mit `onDelete: Cascade`.
 
@@ -116,9 +117,11 @@ NEXTAUTH_SECRET=
 NEXTAUTH_URL=https://heimdall.trublue.ch
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=
-TRACKER_SYNC_ENABLED=false
-TRACKER_URL=
-TRACKER_API_KEY=
 ```
+
+**Tracker-Anbindung:** kein globales Env mehr — multi-tenant über die DB. Jede
+`TrackerInstance` {name, baseUrl, apiKey} wird unter „Tracker" angelegt; eine Box wird
+ihr auf der Geräte-Detailseite zugeordnet (`trackerInstanceId` + `trackerUserId` +
+`trackerDeviceId`). `apiKey` == das `HEIMDALL_SYNC_SECRET` der jeweiligen Tracker-Instanz.
 
 `DATABASE_URL` wird im Container via Entrypoint auf `file:/app/data/prod.db` gesetzt.

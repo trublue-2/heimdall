@@ -18,6 +18,7 @@ export async function PATCH(
   const data: {
     name?: string;
     trackerSync?: boolean;
+    trackerInstanceId?: string | null;
     trackerUserId?: string | null;
     trackerDeviceId?: string | null;
   } = {};
@@ -28,6 +29,7 @@ export async function PATCH(
     data.name = name;
   }
   if (body.trackerSync !== undefined) data.trackerSync = !!body.trackerSync;
+  if (body.trackerInstanceId !== undefined) data.trackerInstanceId = (body.trackerInstanceId as string)?.trim() || null;
   if (body.trackerUserId !== undefined) data.trackerUserId = (body.trackerUserId as string)?.trim() || null;
   if (body.trackerDeviceId !== undefined) data.trackerDeviceId = (body.trackerDeviceId as string)?.trim() || null;
 

@@ -37,6 +37,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 Konten
               </Link>
             )}
+            {isAdmin && (
+              <Link href="/dashboard/tracker" className="px-3 py-1.5 text-sm rounded-lg hover:bg-[var(--surface-raised)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">
+                Tracker
+              </Link>
+            )}
             <div className="pl-2">
               <AvatarMenu username={user.name ?? "?"} />
             </div>

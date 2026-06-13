@@ -44,14 +44,29 @@ model Device {
   boxIp       String?
   primarySsid String? // Provisioning-Netz (knownSsids[0] der Box)
   // chastitytracker.ch-Anbindung (optional, pro Box). Box kennt den Tracker nicht —
-  // der Server ist die Brücke. trackerSync=Feature-Flag; trackerUserId/-DeviceId = Mapping.
-  trackerSync     Boolean @default(false)
+  // der Server ist die Brücke. trackerSync=Feature-Flag; Instanz = welche Tracker-Deployment,
+  // trackerUserId/-DeviceId = Ziel auf dieser Instanz.
+  trackerSync       Boolean @default(false)
+  trackerInstanceId String? // welche Tracker-Instanz (multi-tenant: viele Sub/KH-Paare)
+  trackerInstance   TrackerInstance? @relation(fields: [trackerInstanceId], references: [id], onDelete: SetNull)
   trackerUserId   String? // Tracker-User-id (Ziel für Spur-2-Events + Sperrzeit-Pull)
   trackerDeviceId String? // Tracker-Gerät am Schlüssel dieser Box (KG, Halsband, …)
   policy       LockPolicy?
   events       DeviceEvent[]
   users        User[]        @relation("DeviceAccess")
   wifiNetworks WifiNetwork[]
+}
+
+// Eine chastitytracker.ch-Deployment, die dieser Heimdall-Server anspricht. Reine
+// Verbindung: viele Boxen können auf dieselbe Instanz zeigen (KG- + Halsband-Box eines
+// Paares). apiKey = das HEIMDALL_SYNC_SECRET dieser Instanz (Klartext — Server muss es senden).
+model TrackerInstance {
+  id        String   @id @default(cuid())
+  name      String   // frei wählbarer Anzeigename (z.B. "trublue" / Paar-Name)
+  baseUrl   String   // z.B. https://chastitytracker.ch
+  apiKey    String   // Shared-Secret dieser Instanz
+  createdAt DateTime @default(now())
+  devices   Device[]
 }
 
 // Zusätzliche WLAN-Zugänge (über das Provisioning-Primärnetz hinaus).

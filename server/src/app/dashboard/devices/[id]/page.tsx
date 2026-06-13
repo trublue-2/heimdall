@@ -37,6 +37,11 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
     take: 50,
   });
 
+  // Tracker-Instanzen nur für Admins (für das Mapping-Dropdown).
+  const trackerInstances = isAdmin
+    ? await prisma.trackerInstance.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } })
+    : [];
+
   const online = isOnline(device.lastSyncAt);
 
   return (
@@ -136,8 +141,10 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
             <TrackerLinkForm
               deviceId={device.id}
               trackerSync={device.trackerSync}
+              trackerInstanceId={device.trackerInstanceId}
               trackerUserId={device.trackerUserId}
               trackerDeviceId={device.trackerDeviceId}
+              instances={trackerInstances}
             />
           </Card>
         </section>
