@@ -47,6 +47,10 @@
 #define AUTH_FAIL_LIMIT          10                 // N×401 in Folge → Setup-Hotspot (Selbstheilung)
 #define OTA_VALIDATE_SYNCS       1                  // erfolgreiche Syncs bis OTA bestätigt (sonst Rollback)
 
+// Debug-Mode (server-aktiviert): Box bleibt wach + serviert lokale Debug-Seite.
+#define DEBUG_RESYNC_MS          (30UL * 1000)      // alle 30 s re-syncen (Flag/IP frisch, Fernabschaltung)
+#define DEBUG_MAX_MS             (20UL * 60 * 1000) // harte Obergrenze: nach 20 min Debug → Sleep (Drain-Schutz)
+
 // WLAN-Sendeleistung: 8,5 dBm — wieder hoch für bessere Reichweite/Stabilität
 // (Multi-WLAN, schwächere APs). Der Brownout-Fix war primär ein gutes Kabel, nicht
 // diese Drosselung. Etwas unter Maximum (19,5) als LDO-Marge. MUSS nach jedem

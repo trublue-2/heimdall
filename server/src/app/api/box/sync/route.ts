@@ -236,6 +236,7 @@ export async function POST(req: NextRequest) {
     otaVersion: otaPending ? targetVersion : null,
     otaUrl: otaPending ? `${process.env.NEXTAUTH_URL ?? ""}/api/box/firmware` : null,
     otaSig: otaPending ? otaSig : null,
+    debugMode: device.debugMode, // Box bleibt wach + serviert lokale Debug-Seite
     wifiNetworks: pendingNets.map((n) => ({ ssid: n.ssid, pass: n.password })),
     commands: [],
   });

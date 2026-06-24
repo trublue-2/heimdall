@@ -40,6 +40,9 @@ model Device {
   // OTA-Freeze: Server lässt die OTA-Felder im Sync weg → Box updatet nicht. Not-Aus
   // für den Multi-Board-Rollout (verhindert versehentliches Flashen eines falschen Profils).
   otaDisabled Boolean  @default(false)
+  // Debug-Mode: Box bleibt wach + serviert lokale Debug-Seite (Pin-Test ohne Reflash).
+  // Nicht persistent auf der Box — endet bei Server-Aus oder Zeit-Obergrenze.
+  debugMode   Boolean  @default(false)
   lastSyncAt  DateTime?
   wakeReason  String?
   wifiSsid    String?

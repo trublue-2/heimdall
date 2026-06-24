@@ -18,6 +18,7 @@ export async function PATCH(
   const data: {
     name?: string;
     otaDisabled?: boolean;
+    debugMode?: boolean;
     trackerSync?: boolean;
     trackerInstanceId?: string | null;
     trackerUsername?: string | null;
@@ -29,6 +30,7 @@ export async function PATCH(
     data.name = name;
   }
   if (body.otaDisabled !== undefined) data.otaDisabled = !!body.otaDisabled;
+  if (body.debugMode !== undefined) data.debugMode = !!body.debugMode;
   if (body.trackerSync !== undefined) data.trackerSync = !!body.trackerSync;
   if (body.trackerInstanceId !== undefined) data.trackerInstanceId = (body.trackerInstanceId as string)?.trim() || null;
   if (body.trackerUsername !== undefined) data.trackerUsername = (body.trackerUsername as string)?.trim() || null;

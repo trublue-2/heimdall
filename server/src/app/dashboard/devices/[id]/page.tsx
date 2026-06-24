@@ -81,6 +81,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
             offlineOpenHours={device.policy?.offlineOpenHours ?? 24}
             hardCapHours={device.policy?.hardCapHours ?? null}
             otaDisabled={device.otaDisabled}
+            debugMode={device.debugMode}
           />
         </Card>
       </section>
@@ -99,9 +100,16 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
           <Info label="OTA" value={device.otaDisabled ? "🧊 eingefroren" : "aktiv"} />
           <Info
             label="IP (nur im selben WLAN, Box wach)"
-            value={device.boxIp ?? "—"}
+            value={
+              device.boxIp
+                ? device.debugMode
+                  ? <a className="text-[var(--color-warn)] underline" href={`http://${device.boxIp}/debug`} target="_blank" rel="noopener noreferrer">{device.boxIp} → /debug</a>
+                  : device.boxIp
+                : "—"
+            }
             mono
           />
+          {device.debugMode && <Info label="Debug-Mode" value="🔧 aktiv (Box bleibt wach)" />}
         </Card>
       </section>
 

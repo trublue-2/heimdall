@@ -21,6 +21,7 @@ namespace ServerSync {
   // keepWifi=false: WiFi nach dem Call abschalten (Standard, akkuschonend).
   // keepWifi=true:  WiFi anlassen (z.B. wenn die Statusseite weiterläuft).
   // ota (optional): füllt version/url, wenn der Server eine neue FW anbietet.
+  // debugMode (optional): true, wenn der Server den Debug-Mode für diese Box aktiviert.
   SyncResult run(const WifiCredentials& creds, BoxState& state, BoxPolicy& policy,
-                 bool keepWifi = false, OtaInfo* ota = nullptr);
+                 bool keepWifi = false, OtaInfo* ota = nullptr, bool* debugMode = nullptr);
 }

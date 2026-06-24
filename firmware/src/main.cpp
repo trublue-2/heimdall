@@ -33,6 +33,12 @@ static unsigned long   gLastActivityMs = 0;
 RTC_DATA_ATTR static uint32_t gAuthFails = 0;
 static bool            gOtaPending     = false; // läuft eine OTA-Validierung? (S14)
 
+// Debug-Mode (server-aktiviert): Box bleibt wach + serviert die lokale Debug-Seite
+// zum Pin-Testen ohne Reflash. Nicht persistent — endet bei Server-Aus oder Obergrenze.
+static bool            gDebugMode      = false;
+static unsigned long   gDebugStartMs   = 0; // Start des Debug-Fensters (Drain-Obergrenze)
+static unsigned long   gLastDebugSync  = 0; // letzter Re-Sync im Debug
+
 // Knopfdruck wird per Interrupt gelatcht — so geht keine Flanke verloren,
 // auch nicht während SYNCING/Boot/Actuation, wo der Loop nicht pollt.
 static volatile bool   gBtnLatched     = false;
@@ -185,6 +191,76 @@ static void handleStatus() {
   gWeb.send(200, "text/html", html);
 }
 
+// ── Debug-Mode: lokale Pin-Test-Seite (nur aktiv wenn der Server debugMode setzt) ──
+// Aktionen treiben den Motor → nur erlaubt, solange die Box OFFEN ist.
+static bool dbgGuard() {
+  if (gBox.locked) { gWeb.send(409, "text/plain", "Box ist ZU — Debug-Aktion abgelehnt"); return false; }
+  return true;
+}
+
+static void handleDbgPins() {
+  if (!dbgGuard()) return;
+  Stepper::setPins(gWeb.arg("a").toInt(), gWeb.arg("b").toInt(),
+                   gWeb.arg("c").toInt(), gWeb.arg("d").toInt());
+  gWeb.send(200, "text/plain", "Pins gesetzt: " + Stepper::pinsCsv());
+}
+
+static void handleDbgTest() {
+  if (!dbgGuard()) return;
+  String dir = gWeb.arg("dir");
+  if (dir == "lock") Stepper::lock(); else Stepper::unlock();
+  gWeb.send(200, "text/plain", "Testfahrt " + dir + " ok (Pins " + Stepper::pinsCsv() + ")");
+}
+
+static void handleDbgPulse() {
+  if (!dbgGuard()) return;
+  uint16_t ms = gWeb.arg("ms").toInt();
+  if (ms == 0 || ms > 3000) ms = 600; // Schutz vor Dauer-Bestromung einer Spule
+  uint8_t pin = gWeb.arg("pin").toInt();
+  Stepper::pulse(pin, ms);
+  gWeb.send(200, "text/plain", "Puls GPIO" + String(pin) + " " + ms + "ms ok");
+}
+
+static void handleDebugPage() {
+  String h =
+    "<!DOCTYPE html><html lang=de><head><meta charset=utf-8>"
+    "<meta name=viewport content='width=device-width,initial-scale=1'>"
+    "<title>Heimdall Debug</title><style>"
+    "body{font-family:system-ui,sans-serif;margin:0;padding:1.2rem;max-width:30rem;"
+    "background:#0f1115;color:#e6e6e6}h2{margin:.2rem 0}h3{margin:1.1rem 0 .4rem;font-size:.85rem;"
+    "color:#8a8a8a;text-transform:uppercase}input{width:3.4rem;padding:.4rem;border-radius:.4rem;"
+    "border:1px solid #333;background:#1a1d23;color:#e6e6e6;font-size:1rem}"
+    "button{margin:.2rem;padding:.5rem .8rem;border:0;border-radius:.5rem;background:#2a3340;"
+    "color:#e6e6e6;font-size:.95rem}button.go{background:#4ade80;color:#04130a;font-weight:700}"
+    "#st{margin-top:1rem;padding:.7rem;border-radius:.5rem;background:#1a1d23;font-family:monospace}"
+    "</style></head><body><h2>🔧 Heimdall Debug</h2>"
+    "<p style='color:#8a8a8a;font-size:.85rem'>Box muss OFFEN sein. Aktionen treiben den Motor.</p>"
+    "<h3>Stepper-Pins setzen</h3>"
+    "IN1 <input id=a value=32> IN2 <input id=b value=33> IN3 <input id=c value=25> IN4 <input id=d value=26>"
+    "<div><button class=go onclick=setpins()>Pins übernehmen</button></div>"
+    "<h3>Testfahrt (gesetzte Pins)</h3>"
+    "<button class=go onclick=\"mv('lock')\">▶ ZU</button>"
+    "<button class=go onclick=\"mv('unlock')\">▶ AUF</button>"
+    "<h3>Einzel-Pin Puls — welcher GPIO ruckt?</h3>"
+    "GPIO <input id=p value=32> ms <input id=ms value=600>"
+    "<button onclick=pulse()>Puls</button>"
+    "<h3>Auto-Sweep (alle Kandidaten)</h3>"
+    "<button class=go onclick=sweep()>Sweep starten</button><button onclick=\"stop=1\">Stop</button>"
+    "<div id=st>bereit</div>"
+    "<script>"
+    "var stop=0;function S(t){document.getElementById('st').textContent=t}"
+    "function g(i){return document.getElementById(i).value}"
+    "async function setpins(){S((await(await fetch(`/dbg/pins?a=${g('a')}&b=${g('b')}&c=${g('c')}&d=${g('d')}`)).text()))}"
+    "async function mv(d){S('fahre '+d+'…');S(await(await fetch('/dbg/test?dir='+d)).text())}"
+    "async function pulse(){let p=g('p');S('Puls GPIO'+p+'…');S(await(await fetch(`/dbg/pulse?pin=${p}&ms=${g('ms')}`)).text())}"
+    "async function sweep(){stop=0;let c=[2,4,5,12,13,15,16,17,18,19,21,22,23,25,26,27,32,33];"
+    "for(let i=0;i<c.length&&!stop;i++){S('Sweep: GPIO'+c[i]+' ('+(i+1)+'/'+c.length+')');"
+    "await fetch(`/dbg/pulse?pin=${c[i]}&ms=${g('ms')}`);await new Promise(r=>setTimeout(r,300));}"
+    "S(stop?'Sweep gestoppt':'Sweep fertig');}"
+    "</script></body></html>";
+  gWeb.send(200, "text/html", h);
+}
+
 // Stellt WiFi + Web-Server sicher (für die Statusseite am Strom).
 static void ensureStatusServer() {
   if (WiFi.status() != WL_CONNECTED) {
@@ -250,6 +326,10 @@ void setup() {
   NVS::begin();
   Stepper::begin();
   gWeb.on("/", handleStatus); // Statusseite-Route einmalig registrieren
+  gWeb.on("/debug",    handleDebugPage); // Debug-Mode-Routen (nur wirksam, wenn debugMode aktiv)
+  gWeb.on("/dbg/pins", handleDbgPins);
+  gWeb.on("/dbg/test", handleDbgTest);
+  gWeb.on("/dbg/pulse",handleDbgPulse);
   pinMode(PIN_LED, OUTPUT);
   digitalWrite(PIN_LED, LED_OFF);
   pinMode(PIN_BUTTON, INPUT_PULLUP); // GPIO14: HIGH per Pull-up, LOW bei Druck
@@ -411,7 +491,7 @@ void loop() {
       log_i("SYNCING …");
       OtaInfo ota = {};
       // keepWifi=true: WiFi bleibt an für Statusseite + mögliches OTA (kein Re-Connect).
-      SyncResult res = ServerSync::run(gCreds, gBox, gPolicy, true, &ota);
+      SyncResult res = ServerSync::run(gCreds, gBox, gPolicy, true, &ota, &gDebugMode);
 
       if (res == SyncResult::OK) {
         gAuthFails = 0; // erfolgreicher Sync → 401-Zähler zurücksetzen
@@ -448,7 +528,7 @@ void loop() {
         // Tiefstand <40% blockiert (Flash bei echt leerem Akku könnte abbrechen).
         const int otaBatt = Failsafe::batteryPercent();
         if (ota.version[0] && strcmp(ota.version, FW_VERSION) != 0 &&
-            gState == State::IDLE_OPEN &&
+            gState == State::IDLE_OPEN && !gDebugMode && // im Debug-Mode nie mitten im Test flashen
             (otaBatt == BATT_UNKNOWN || otaBatt >= 40)) {
           log_w("OTA: Server bietet %s an (aktuell %s) → Update", ota.version, FW_VERSION);
           OTA::apply(ota.url, gCreds.deviceToken, ota.sig); // Erfolg → Reboot (kehrt nicht zurück)
@@ -511,10 +591,32 @@ void loop() {
       ensureStatusServer();
       gWeb.handleClient();
 
-      if (millis() - gLastActivityMs > IDLE_SLEEP_MS) {
-        goDeepSleep();
+      if (gDebugMode) {
+        // Debug-Mode: NICHT schlafen, lokale Seite bedienen. Periodisch re-syncen
+        // (hält Flag/IP frisch, erlaubt Fern-Aus im Dashboard); harte Obergrenze
+        // gegen Dauer-Wach-Drain, falls der Server-Kontakt verloren geht.
+        if (gDebugStartMs == 0) {
+          gDebugStartMs = gLastDebugSync = millis();
+          log_w("DEBUG-MODE aktiv → kein Sleep · http://%s/debug",
+                WiFi.localIP().toString().c_str());
+        }
+        if (millis() - gDebugStartMs > DEBUG_MAX_MS) {
+          log_w("DEBUG-MODE: %lu-min-Obergrenze erreicht → Deep-Sleep", DEBUG_MAX_MS / 60000);
+          gDebugMode = false; gDebugStartMs = 0;
+          goDeepSleep();
+        } else if (millis() - gLastDebugSync > DEBUG_RESYNC_MS) {
+          gLastDebugSync = millis();
+          gState = State::SYNCING; // refresht gDebugMode → „Aus" im Dashboard greift
+        } else {
+          delay(5);
+        }
       } else {
-        delay(10);
+        gDebugStartMs = 0;
+        if (millis() - gLastActivityMs > IDLE_SLEEP_MS) {
+          goDeepSleep();
+        } else {
+          delay(10);
+        }
       }
       break;
     }
