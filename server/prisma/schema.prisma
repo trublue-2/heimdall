@@ -36,6 +36,10 @@ model Device {
   battery     Int? // 0–100
   boltPos     String? // "OPEN" | "CLOSED" | "UNKNOWN"
   fwVersion   String?
+  mac         String?  // WiFi-MAC der Box (Hardware-ID, von der Box im Sync gemeldet)
+  // OTA-Freeze: Server lässt die OTA-Felder im Sync weg → Box updatet nicht. Not-Aus
+  // für den Multi-Board-Rollout (verhindert versehentliches Flashen eines falschen Profils).
+  otaDisabled Boolean  @default(false)
   lastSyncAt  DateTime?
   wakeReason  String?
   wifiSsid    String?

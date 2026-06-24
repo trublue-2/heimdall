@@ -17,6 +17,7 @@ export async function PATCH(
   // Partielles Update: nur übergebene Felder ändern (Name oder Tracker-Anbindung).
   const data: {
     name?: string;
+    otaDisabled?: boolean;
     trackerSync?: boolean;
     trackerInstanceId?: string | null;
     trackerUsername?: string | null;
@@ -27,6 +28,7 @@ export async function PATCH(
     if (!name) return NextResponse.json({ error: "Name erforderlich" }, { status: 400 });
     data.name = name;
   }
+  if (body.otaDisabled !== undefined) data.otaDisabled = !!body.otaDisabled;
   if (body.trackerSync !== undefined) data.trackerSync = !!body.trackerSync;
   if (body.trackerInstanceId !== undefined) data.trackerInstanceId = (body.trackerInstanceId as string)?.trim() || null;
   if (body.trackerUsername !== undefined) data.trackerUsername = (body.trackerUsername as string)?.trim() || null;

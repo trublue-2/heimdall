@@ -168,7 +168,7 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
     strftime(sinceStr, sizeof(sinceStr), "%Y-%m-%dT%H:%M:%SZ", &tm_info);
     s["since"] = sinceStr;
   }
-  s["battery"]    = state.batteryPct;
+  if (state.batteryPct >= 0) s["battery"] = state.batteryPct; // <0 = unbekannt → weglassen (Server zeigt „—")
   s["charging"]   = state.charging;
   s["boltPos"]    = "UNKNOWN"; // TODO: Endlagensensor
   s["fwVersion"]  = FW_VERSION;
@@ -176,6 +176,7 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   s["wifiSsid"]   = WiFi.SSID().c_str();
   s["wifiRssi"]   = WiFi.RSSI();
   s["ip"]         = WiFi.localIP().toString();
+  s["mac"]        = WiFi.macAddress(); // Hardware-ID → Server-Anzeige (Board-Zuordnung)
 
   // Bekannte WLANs melden → Server nullt gelieferte Passwörter.
   JsonArray ks = req["knownSsids"].to<JsonArray>();

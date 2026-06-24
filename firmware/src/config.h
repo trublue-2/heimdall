@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.1.46"
+#define FW_VERSION "0.1.49"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Boot-sichere GPIOs ohne Strapping-Konflikt.
@@ -32,6 +32,12 @@
 #define PIN_BATT_ADC      35
 #define BATT_LOW_PERCENT  15  // % Warnung / LED
 #define BATT_CRITICAL_PCT  8  // % → Auto-Open Failsafe
+// Plausibilität: ein laufendes 1S-LiPo-Board liegt bei ~3.0–4.2 V. Liest der ADC
+// ausserhalb 2.5–4.5 V, ist kein echter Akku-Sensor am Pin (z.B. LMB-Board ohne
+// Teiler auf GPIO35) → BATT_UNKNOWN statt fälschlich "0% = kritisch leer".
+#define BATT_UNKNOWN        (-1)
+#define BATT_PLAUSIBLE_MIN_V 2.5f
+#define BATT_PLAUSIBLE_MAX_V 4.5f
 
 // ── Timeouts ───────────────────────────────────────────────────────────────
 #define IDLE_SLEEP_MS            (1UL * 60 * 1000) // 1 min → Deep-Sleep

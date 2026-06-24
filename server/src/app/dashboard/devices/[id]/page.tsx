@@ -80,6 +80,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
             name={device.name}
             offlineOpenHours={device.policy?.offlineOpenHours ?? 24}
             hardCapHours={device.policy?.hardCapHours ?? null}
+            otaDisabled={device.otaDisabled}
           />
         </Card>
       </section>
@@ -94,6 +95,8 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
           <Info label="Letzter Sync" value={formatDateTime(device.lastSyncAt)} />
           <Info label="Boot-Grund" value={device.wakeReason ?? "—"} mono />
           <Info label="Firmware" value={device.fwVersion ? `v${device.fwVersion}` : "—"} mono />
+          <Info label="MAC (Hardware-ID)" value={device.mac ?? "—"} mono />
+          <Info label="OTA" value={device.otaDisabled ? "🧊 eingefroren" : "aktiv"} />
           <Info
             label="IP (nur im selben WLAN, Box wach)"
             value={device.boxIp ?? "—"}

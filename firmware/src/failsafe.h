@@ -10,9 +10,12 @@ namespace Failsafe {
 
   // Akkustand in Prozent (LOLIN D32: GPIO35, 100k/100k Teiler, 4.2V=100%, 3.2V=0%).
   // Messung ist bei WIFI_OFF genauer (ESP32 ADC beeinflusst durch WiFi-Rauschen).
+  // Gibt BATT_UNKNOWN (-1) zurück, wenn die Spannung unplausibel ist (kein Sensor am
+  // Pin) — sonst würde "kein Sensor" als "0% = kritisch" fehlinterpretiert (Auto-Open).
   inline int batteryPercent() {
     int raw = analogRead(PIN_BATT_ADC);
     float vBat = (raw / 4095.0f) * 3.3f * 2.0f; // Teiler 1:2
+    if (vBat < BATT_PLAUSIBLE_MIN_V || vBat > BATT_PLAUSIBLE_MAX_V) return BATT_UNKNOWN;
     int pct = (int)((vBat - 3.2f) / (4.2f - 3.2f) * 100.0f);
     return constrain(pct, 0, 100);
   }
@@ -22,8 +25,11 @@ namespace Failsafe {
   inline bool clockValid() { return time(nullptr) > 1700000000; } // ~2023-11
 
   // Low-Battery: Öffnen solange noch genug Energie für den Stepper da ist.
+  // Unbekannter Akku (kein Sensor) feuert NICHT — sonst öffnete ein Board ohne
+  // Akku-Messung bei jedem Wake. Schutz übernimmt dann Offline-Timeout/HardCap.
   inline bool isLowBattery() {
-    return batteryPercent() <= BATT_CRITICAL_PCT;
+    int p = batteryPercent();
+    return p != BATT_UNKNOWN && p <= BATT_CRITICAL_PCT;
   }
 
   // Offline-Timeout: zu lange kein erfolgreicher Sync. CLOCK-UNABHÄNGIG über den

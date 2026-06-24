@@ -28,6 +28,7 @@ const syncBodySchema = z.object({
     wifiRssi: z.number().int().min(-120).max(0).optional(),
     charging: z.boolean().optional(),
     ip: z.string().max(45).optional(),
+    mac: z.string().max(32).optional(),
   }),
   knownSsids: z.array(z.string().max(64)).max(16).optional(), // WLANs, die die Box kennt
 });
@@ -101,6 +102,7 @@ export async function POST(req: NextRequest) {
         wifiRssi: state.wifiRssi  ?? null,
         charging: state.charging  ?? null,
         boxIp:    state.ip        ?? null,
+        mac:      state.mac       ?? device.mac,
         primarySsid: body.knownSsids?.[0] ?? device.primarySsid,
         pendingOpenReason: clearMarker ? null : device.pendingOpenReason,
       },
@@ -205,7 +207,9 @@ export async function POST(req: NextRequest) {
   // Server-Pull-OTA: Zielversion ≠ gemeldeter FW → Box zieht die neue Bin.
   // Nur anbieten, wenn auch eine Signatur vorliegt — sonst lehnt die Box (0.1.44+)
   // sie ohnehin ab (fail-closed) und würde jeden Sync sinnlos die Bin laden.
-  const otaPending = !!targetVersion && targetVersion !== state.fwVersion && !!otaSig;
+  // otaDisabled = Server-seitiger Freeze: OTA-Felder weglassen → Box hat nichts zu flashen.
+  // Wirkt sofort (auch auf bestehender Firmware); die Signaturprüfung bleibt die Schutzgrenze.
+  const otaPending = !!targetVersion && targetVersion !== state.fwVersion && !!otaSig && !device.otaDisabled;
 
   // Multi-WLAN: Passwort nullen, sobald die Box die SSID als bekannt meldet
   // (= ausgeliefert). Danach nur noch nicht-ausgelieferte Netze schicken.

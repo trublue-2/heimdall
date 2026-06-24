@@ -173,7 +173,7 @@ static void handleStatus() {
     html += "<div class='s open'>OFFEN</div>";
   }
   html += "<p class=m>Zeit: " + fmtLocal(time(nullptr)) + "</p>";
-  html += "<p class=m>Akku: " + String(gBox.batteryPct) + "% · "
+  html += "<p class=m>Akku: " + (gBox.batteryPct < 0 ? String("—") : String(gBox.batteryPct) + "%") + " · "
           + String(WiFi.RSSI()) + " dBm · fw " + FW_VERSION + "</p>";
   // Diagnose: gUnexpected > Boot-Power-On = Brownout-Verdacht (über WLAN sichtbar).
   html += "<p class=m>Boots: " + String(gBootCount)
@@ -444,9 +444,12 @@ void loop() {
         // OTA (Server-Pull): NUR im offenen Ruhezustand. Während Verschluss NIE flashen
         // — ein fehlgeschlagener/gebrickter Flash bei geschlossener Box wäre nicht mehr
         // zu öffnen (Safety > Function). Updates passieren zwischen Sessions.
+        // Akku-Gate: unbekannt (kein Sensor, z.B. LMB) → erlaubt; nur ein BEKANNTER
+        // Tiefstand <40% blockiert (Flash bei echt leerem Akku könnte abbrechen).
+        const int otaBatt = Failsafe::batteryPercent();
         if (ota.version[0] && strcmp(ota.version, FW_VERSION) != 0 &&
             gState == State::IDLE_OPEN &&
-            Failsafe::batteryPercent() >= 40) {
+            (otaBatt == BATT_UNKNOWN || otaBatt >= 40)) {
           log_w("OTA: Server bietet %s an (aktuell %s) → Update", ota.version, FW_VERSION);
           OTA::apply(ota.url, gCreds.deviceToken, ota.sig); // Erfolg → Reboot (kehrt nicht zurück)
           log_e("OTA fehlgeschlagen — weiter mit aktueller FW");
