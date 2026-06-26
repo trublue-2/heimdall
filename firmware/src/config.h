@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.1.50"
+#define FW_VERSION "0.1.51"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Boot-sichere GPIOs ohne Strapping-Konflikt.
@@ -23,15 +23,14 @@
 // ── Button ─────────────────────────────────────────────────────────────────
 // Externer Lockbox-Taster gegen GND. Der LOLIN D32 hat KEINEN BOOT/IO0-Knopf
 // (nur RESET), darum eigener GPIO. GPIO14: RTC-fähig (→ EXT0-Wake aus Deep-Sleep),
-// interner Pull-Up (HIGH idle, LOW bei Druck), KEIN Strapping-Pin. Auf dem Board
-// der zweitunterste Pin der linken Reihe. Taster: GPIO14 ↔ GND.
+// interner Pull-Up (HIGH idle, LOW bei Druck), KEIN Strapping-Pin. Taster: GPIO14 ↔ GND.
 #define PIN_BUTTON 14
 
 // ── Batterie ADC ───────────────────────────────────────────────────────────
 // LOLIN D32: GPIO35 mit 100k/100k Teiler → misst Vbat/2.
 #define PIN_BATT_ADC      35
 #define BATT_LOW_PERCENT  15  // % Warnung / LED
-#define BATT_CRITICAL_PCT  8  // % → Auto-Open Failsafe
+#define BATT_CRITICAL_PCT  15 // % → Auto-Open Failsafe (Notöffnung mit Reserve fürs Drehmoment)
 // Plausibilität: ein laufendes 1S-LiPo-Board liegt bei ~3.0–4.2 V. Liest der ADC
 // ausserhalb 2.5–4.5 V, ist kein echter Akku-Sensor am Pin (z.B. LMB-Board ohne
 // Teiler auf GPIO35) → BATT_UNKNOWN statt fälschlich "0% = kritisch leer".

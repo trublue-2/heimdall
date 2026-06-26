@@ -303,7 +303,7 @@ static void goDeepSleep() {
   Stepper::powerOff();
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
-  // GPIO14 hat keinen externen Pull-up → im Deep-Sleep RTC-Pull-up aktivieren,
+  // Button-Pin hat keinen externen Pull-up → im Deep-Sleep RTC-Pull-up aktivieren,
   // sonst floatet der Pin und EXT0 (Wake auf LOW) triggert spontan/unzuverlässig.
   rtc_gpio_pullup_en((gpio_num_t)PIN_BUTTON);
   rtc_gpio_pulldown_dis((gpio_num_t)PIN_BUTTON);
@@ -316,6 +316,11 @@ static void goDeepSleep() {
 // ── setup: läuft einmal nach jedem Wake / Power-On ──────────────────────────
 void setup() {
   Serial.begin(115200);
+  // Sofort-Quittung bei Button-Wake — GANZ am Anfang, VOR der schweren Init
+  // (delay/NVS/OTA), damit das Ack ~sofort kommt statt erst ~0.5 s nach dem Boot.
+  pinMode(PIN_LED, OUTPUT);
+  digitalWrite(PIN_LED, LED_OFF);
+  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) ledAck();
   delay(200); // Sicherstellen dass UART-Buffer geleert wird vor erstem Log
   // CPU auf 160 MHz: schneller (TLS/Sync) als das frühere 80-MHz-Sparmodell.
   // Der eigentliche Brownout-Fix war ein gutes Kabel; etwas LDO-Marge bleibt
@@ -330,15 +335,9 @@ void setup() {
   gWeb.on("/dbg/pins", handleDbgPins);
   gWeb.on("/dbg/test", handleDbgTest);
   gWeb.on("/dbg/pulse",handleDbgPulse);
-  pinMode(PIN_LED, OUTPUT);
-  digitalWrite(PIN_LED, LED_OFF);
-  pinMode(PIN_BUTTON, INPUT_PULLUP); // GPIO14: HIGH per Pull-up, LOW bei Druck
+  pinMode(PIN_BUTTON, INPUT_PULLUP); // HIGH per Pull-up, LOW bei Druck (PIN_BUTTON)
   attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), onButtonIsr, FALLING);
   gLastActivityMs = millis();
-
-  // Sofort-Quittung bei Knopfdruck aus dem Schlaf: 3× blinken, bevor WiFi/Sync.
-  // Der User vor Ort sieht innerhalb ~0.3 s, dass der Druck angekommen ist.
-  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) ledAck();
 
   // Button beim Boot ≥3 s gehalten → Factory-Reset in den Setup-Hotspot.
   checkFactoryReset();
