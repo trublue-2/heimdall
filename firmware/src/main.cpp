@@ -573,6 +573,20 @@ void loop() {
     case State::IDLE_OPEN: {
       digitalWrite(PIN_LED, (gState == State::LOCKED) ? LED_ON : LED_OFF);
 
+      // Polling-Entprellung ZUSÄTZLICH zum ISR — robust bei floatendem GPIO14
+      // (ohne externen Pull-up): 40 ms anhaltendes LOW = Druck, statt auf eine
+      // saubere Flanke zu warten (die kam oft nicht → Aussetzer). Release-Guard
+      // (btnConsumed) verhindert Dauerauslösung beim Gedrückthalten.
+      static unsigned long btnLowSince = 0;
+      static bool          btnConsumed = false;
+      if (digitalRead(PIN_BUTTON) == LOW) {
+        if (btnLowSince == 0) btnLowSince = millis();
+        if (!btnConsumed && millis() - btnLowSince > 40) { gBtnLatched = true; btnConsumed = true; }
+      } else {
+        btnLowSince = 0;
+        btnConsumed = false;
+      }
+
       // Per ISR gelatchter Druck — auch dann gesetzt, wenn er während eines
       // anderen Zustands (SYNCING/Boot) kam. Flag konsumieren und syncen.
       if (gBtnLatched) {
