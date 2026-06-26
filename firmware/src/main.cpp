@@ -5,6 +5,7 @@
 #include <esp_system.h>
 #include <esp_ota_ops.h>
 #include <driver/rtc_io.h>
+#include <soc/gpio_struct.h> // direkter LED-Registerzugriff im Button-ISR (IRAM-sicher)
 #include <time.h>
 #include "config.h"
 #include "nvs_storage.h"
@@ -42,7 +43,14 @@ static unsigned long   gLastDebugSync  = 0; // letzter Re-Sync im Debug
 // Knopfdruck wird per Interrupt gelatcht — so geht keine Flanke verloren,
 // auch nicht während SYNCING/Boot/Actuation, wo der Loop nicht pollt.
 static volatile bool   gBtnLatched     = false;
-static void IRAM_ATTR onButtonIsr() { gBtnLatched = true; }
+// LED SOFORT an (instant Feedback, auch während eines blockierenden Syncs) — direkter
+// Registerzugriff ist IRAM-sicher (digitalWrite wäre es nicht). PIN_LED<32, active-low
+// (LED_ON=LOW): out_w1tc zieht den Pin auf LOW = LED an. Die volle 3×-Blink-Quittung
+// (ledAck) + Restore folgt im Loop.
+static void IRAM_ATTR onButtonIsr() {
+  gBtnLatched = true;
+  GPIO.out_w1tc = (1UL << PIN_LED);
+}
 
 // ── Diagnose (über WLAN sichtbar, kein Serial nötig) ────────────────────────
 // Persistente Zähler in NVS: Brownouts zeigen sich als Resets, die KEIN
