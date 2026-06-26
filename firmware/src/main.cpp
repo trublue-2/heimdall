@@ -414,10 +414,12 @@ void setup() {
     NVS::saveState(gBox); // persistieren — überlebt Brownout
   }
 
-  // Lade-Status: Vergleich aktueller Messwert vs. gespeicherter Vorwert (≥2% Schwelle)
-  int prevBatt = gBox.batteryPct; // aus NVS (-1 = noch nie gespeichert)
   gBox.batteryPct = batt;
-  gBox.charging = (prevBatt >= 0) && (batt >= prevBatt + 2);
+  // Lade-Status NICHT mehr aus dem Akku-Trend raten: nach Deep-Sleep/Lastwegfall
+  // erholt sich die Spannung + ADC-Rauschen → falsches "lädt" OHNE USB. Der
+  // LOLIN-D32-Laderegler (TP4054) hat keine Status-Leitung an einem GPIO →
+  // ohne USB-/VBUS-Sense-Pin nicht zuverlässig erkennbar, also gar nicht melden.
+  gBox.charging = false;
 
   // LED zeigt Lock-Status NUR während die Box wach ist (Knopfdruck → Status auf Abruf).
   // Bewusst KEIN gpio_hold im Deep-Sleep: spart Akku, LED erlischt im Schlaf.
