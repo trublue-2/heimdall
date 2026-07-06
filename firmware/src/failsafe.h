@@ -13,7 +13,9 @@ namespace Failsafe {
   // Gibt BATT_UNKNOWN (-1) zurück, wenn die Spannung unplausibel ist (kein Sensor am
   // Pin) — sonst würde "kein Sensor" als "0% = kritisch" fehlinterpretiert (Auto-Open).
   inline int batteryPercent() {
-    int raw = analogRead(PIN_BATT_ADC);
+    uint32_t acc = 0;                                    // 16× mitteln gegen ADC-Rauschen (wie der Debug-Scan)
+    for (int i = 0; i < 16; i++) acc += analogRead(PIN_BATT_ADC);
+    int raw = (int)(acc / 16);
     float vBat = (raw / 4095.0f) * 3.3f * BATT_DIVIDER; // board-konfig (BATT_DIVIDER)
     if (vBat < BATT_PLAUSIBLE_MIN_V || vBat > BATT_PLAUSIBLE_MAX_V) return BATT_UNKNOWN;
     int pct = (int)((vBat - 3.2f) / (4.2f - 3.2f) * 100.0f);
