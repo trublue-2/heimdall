@@ -286,16 +286,23 @@ static void handleDbgAdc() {
   gWeb.send(200, "text/plain", out);
 }
 
+// GPIO26 (USB/VBUS) frisch lesen → gBox.charging. Muss bei JEDEM Sync laufen, nicht nur
+// beim Boot — sonst friert "lädt" auf dem Boot-Zustand ein (Box bootet im Debug nie neu).
+static void readChargeState() {
+#if PIN_CHARGE_DETECT >= 0
+  pinMode(PIN_CHARGE_DETECT, INPUT_PULLDOWN); // idle LOW, HIGH = USB/VBUS da
+  gBox.charging = (digitalRead(PIN_CHARGE_DETECT) == HIGH);
+#else
+  gBox.charging = false;
+#endif
+}
+
 // Info-Panel (JSON, alle ~2 s gepollt): FW, Akku, USB/Laden, MAC/IP/WLAN, Lock, Uptime.
 static void handleDbgInfo() {
   uint32_t acc = 0; for (int i = 0; i < 16; i++) acc += analogRead(PIN_BATT_ADC);
   float vbat = (acc / 16 / 4095.0f) * 3.3f * BATT_DIVIDER;
-#if PIN_CHARGE_DETECT >= 0
-  pinMode(PIN_CHARGE_DETECT, INPUT_PULLDOWN);
-  int usb = digitalRead(PIN_CHARGE_DETECT);
-#else
-  int usb = 0;
-#endif
+  readChargeState();
+  int usb = gBox.charging ? 1 : 0;
   String j = "{";
   j += "\"fw\":\"" FW_VERSION "\",";
   j += "\"batt\":" + String(gBox.batteryPct) + ",";
@@ -554,15 +561,9 @@ void setup() {
   }
 
   gBox.batteryPct = batt;
-  // Lade-Status: früher gar nicht gemeldet — LOLIN hat keine Status-Leitung, und aus
-  // dem Akku-Trend zu raten gab falsches "lädt" OHNE USB. Die LMB-PCB hat einen echten
-  // USB-/VBUS-Sense-Pin (PIN_CHARGE_DETECT, active-HIGH) → jetzt zuverlässig lesbar.
-#if PIN_CHARGE_DETECT >= 0
-  pinMode(PIN_CHARGE_DETECT, INPUT_PULLDOWN); // Original-FW: idle LOW, HIGH = USB/VBUS da
-  gBox.charging = (digitalRead(PIN_CHARGE_DETECT) == HIGH);
-#else
-  gBox.charging = false;
-#endif
+  // Lade-Status frisch lesen (GPIO26). Wird zusätzlich bei jedem Sync aktualisiert,
+  // damit "lädt" auch ohne Reboot dem echten USB-Zustand folgt.
+  readChargeState();
 
   // LED zeigt Lock-Status NUR während die Box wach ist (Knopfdruck → Status auf Abruf).
   // Bewusst KEIN gpio_hold im Deep-Sleep: spart Akku, LED erlischt im Schlaf.
@@ -656,6 +657,8 @@ void loop() {
     // ── SYNCING ───────────────────────────────────────────────────────────
     case State::SYNCING: {
       log_i("SYNCING …");
+      readChargeState();                              // Lade-Status frisch (folgt USB ohne Reboot)
+      gBox.batteryPct = Failsafe::batteryPercent();   // Akku-% frisch (friert im Debug sonst ein)
       OtaInfo ota = {};
       // keepWifi=true: WiFi bleibt an für Statusseite + mögliches OTA (kein Re-Connect).
       SyncResult res = ServerSync::run(gCreds, gBox, gPolicy, true, &ota, &gDebugMode);
