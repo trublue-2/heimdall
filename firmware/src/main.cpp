@@ -231,6 +231,22 @@ static void handleDbgPulse() {
   gWeb.send(200, "text/plain", "Puls GPIO" + String(pin) + " " + ms + "ms ok");
 }
 
+// Bench: OTA manuell anstoßen — umgeht das !gDebugMode-Gate der Loop, damit man im
+// Debug-Mode bleiben und trotzdem updaten kann. Verschluss-Sperre BLEIBT bestehen:
+// bei geschlossener Box nie flashen (gebrickter Flash = nicht mehr öffenbar; Safety > Function).
+static void handleDbgOta() {
+  if (gBox.locked) { gWeb.send(409, "text/plain", "Box ist ZU — OTA abgelehnt (Brick-Gefahr)"); return; }
+  OtaInfo ota = {};
+  SyncResult res = ServerSync::run(gCreds, gBox, gPolicy, true, &ota, &gDebugMode);
+  if (res != SyncResult::OK)                { gWeb.send(502, "text/plain", "Sync fehlgeschlagen (code=" + String((int)res) + ")"); return; }
+  if (!ota.version[0])                       { gWeb.send(200, "text/plain", "Kein Update angeboten (Server hat keine neue FW)"); return; }
+  if (strcmp(ota.version, FW_VERSION) == 0)  { gWeb.send(200, "text/plain", "Bereits aktuell (" FW_VERSION ")"); return; }
+  gWeb.send(200, "text/plain", "Flashe " + String(ota.version) + " … Box rebootet bei Erfolg.");
+  delay(200); // Response rausschicken, bevor der blockierende Flash + Reboot startet
+  OTA::apply(ota.url, gCreds.deviceToken, ota.sig); // Erfolg → Reboot (kehrt nicht zurück)
+  log_e("Manuelle OTA fehlgeschlagen — weiter mit aktueller FW");
+}
+
 static void handleDebugPage() {
   String h =
     "<!DOCTYPE html><html lang=de><head><meta charset=utf-8>"
@@ -256,6 +272,8 @@ static void handleDebugPage() {
     "<button onclick=pulse()>Puls</button>"
     "<h3>Auto-Sweep (alle Kandidaten)</h3>"
     "<button class=go onclick=sweep()>Sweep starten</button><button onclick=\"stop=1\">Stop</button>"
+    "<h3>Firmware</h3>"
+    "<button class=go onclick=ota()>⬇ Neue FW flashen</button>"
     "<div id=st>bereit</div>"
     "<script>"
     "var stop=0;function S(t){document.getElementById('st').textContent=t}"
@@ -267,6 +285,9 @@ static void handleDebugPage() {
     "for(let i=0;i<c.length&&!stop;i++){S('Sweep: GPIO'+c[i]+' ('+(i+1)+'/'+c.length+')');"
     "await fetch(`/dbg/pulse?pin=${c[i]}&ms=${g('ms')}`);await new Promise(r=>setTimeout(r,300));}"
     "S(stop?'Sweep gestoppt':'Sweep fertig');}"
+    "async function ota(){S('OTA: prüfe & flashe…');"
+    "try{S(await(await fetch('/dbg/ota')).text())}"
+    "catch(e){S('Verbindung weg — vermutlich Reboot nach erfolgreichem Flash ✓')}}"
     "</script></body></html>";
   gWeb.send(200, "text/html", h);
 }
@@ -345,6 +366,7 @@ void setup() {
   gWeb.on("/dbg/pins", handleDbgPins);
   gWeb.on("/dbg/test", handleDbgTest);
   gWeb.on("/dbg/pulse",handleDbgPulse);
+  gWeb.on("/dbg/ota",  handleDbgOta);
   pinMode(PIN_BUTTON, INPUT_PULLUP); // HIGH per Pull-up, LOW bei Druck (PIN_BUTTON)
   attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), onButtonIsr, FALLING);
   gLastActivityMs = millis();
