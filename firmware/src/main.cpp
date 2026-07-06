@@ -6,7 +6,6 @@
 #include <esp_ota_ops.h>
 #include <driver/rtc_io.h>
 #include <soc/gpio_struct.h> // direkter LED-Registerzugriff im Button-ISR (IRAM-sicher)
-#include <esp_log.h>         // Log-Hook für die Browser-Serial (Ring-Buffer)
 #include <time.h>
 #include "config.h"
 #include "nvs_storage.h"
@@ -42,24 +41,29 @@ static unsigned long   gDebugStartMs   = 0; // Start des Debug-Fensters (Drain-O
 static unsigned long   gLastDebugSync  = 0; // letzter Re-Sync im Debug
 
 // ── Log-Ringpuffer für die Browser-Serial ───────────────────────────────────
-// Fängt alle log_* ab (esp_log_set_vprintf), stellt eine lesbare [HH:MM:SS] voran und
-// schreibt weiterhin auf UART. /dbg/log liefert neue Bytes ab einem Cursor (= gLogHead).
+// Arduinos log_* landen via log_printf → ets_printf → putc1. Wir hängen uns per
+// ets_install_putc1 in DIESEN Zeichenstrom (fängt damit ALLE Logs), schreiben jedes
+// Zeichen in den Ringpuffer UND weiterhin auf UART. Am Zeilenanfang eine lesbare
+// [HH:MM:SS]. /dbg/log liefert neue Bytes ab einem Cursor (= gLogHead).
+extern "C" {
+  void ets_install_putc1(void (*p)(char));
+  void ets_write_char_uart(char c);
+}
 static const uint32_t  LOG_CAP = 6144;
 static char            gLog[LOG_CAP];
 static volatile uint32_t gLogHead = 0;          // total je geschriebene Bytes (monoton)
-static vprintf_like_t  gPrevVprintf = nullptr;
-static int logVprintf(const char* fmt, va_list ap) {
-  va_list ap2; va_copy(ap2, ap);
-  char buf[300]; int p = 0;
-  time_t now = time(nullptr);
-  if (now > 1700000000) { struct tm t; localtime_r(&now, &t);
-    p = snprintf(buf, sizeof(buf), "[%02d:%02d:%02d] ", t.tm_hour, t.tm_min, t.tm_sec); }
-  int m = vsnprintf(buf + p, sizeof(buf) - p, fmt, ap);
-  int total = p + (m > 0 ? m : 0); if (total > (int)sizeof(buf)) total = sizeof(buf);
-  for (int i = 0; i < total; i++) { gLog[gLogHead % LOG_CAP] = buf[i]; gLogHead++; }
-  int r = gPrevVprintf ? gPrevVprintf(fmt, ap2) : vprintf(fmt, ap2);
-  va_end(ap2);
-  return r;
+static bool            gLineStart = true;
+static void logPutc(char c) {
+  if (gLineStart && c != '\n' && c != '\r') {
+    time_t now = time(nullptr);
+    if (now > 1700000000) { struct tm t; localtime_r(&now, &t);
+      char ts[14]; int n = snprintf(ts, sizeof(ts), "[%02d:%02d:%02d] ", t.tm_hour, t.tm_min, t.tm_sec);
+      for (int i = 0; i < n; i++) { gLog[gLogHead % LOG_CAP] = ts[i]; gLogHead++; } }
+    gLineStart = false;
+  }
+  gLog[gLogHead % LOG_CAP] = c; gLogHead++;
+  if (c == '\n') { gLineStart = true; ets_write_char_uart('\r'); }
+  ets_write_char_uart(c);
 }
 
 // Knopfdruck wird per Interrupt gelatcht — so geht keine Flanke verloren,
@@ -457,7 +461,7 @@ static void goDeepSleep() {
 // ── setup: läuft einmal nach jedem Wake / Power-On ──────────────────────────
 void setup() {
   Serial.begin(115200);
-  gPrevVprintf = esp_log_set_vprintf(logVprintf); // Logs zusätzlich in den Browser-Serial-Ringpuffer
+  ets_install_putc1(logPutc); // Logs zusätzlich in den Browser-Serial-Ringpuffer (putc1-Hook)
   // Sofort-Quittung bei Button-Wake — GANZ am Anfang, VOR der schweren Init
   // (delay/NVS/OTA), damit das Ack ~sofort kommt statt erst ~0.5 s nach dem Boot.
   pinMode(PIN_LED, OUTPUT);

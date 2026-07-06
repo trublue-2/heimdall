@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.1.66"
+#define FW_VERSION "0.1.67"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Original-LMB-PCB (KSM-HW-V10): ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
