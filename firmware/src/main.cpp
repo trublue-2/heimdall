@@ -247,6 +247,22 @@ static void handleDbgOta() {
   log_e("Manuelle OTA fehlgeschlagen — weiter mit aktueller FW");
 }
 
+// Bench: alle WiFi-tauglichen ADC1-Pins lesen, um Akku-Sense-Pin + Teiler der LMB zu finden.
+// LiPo dran → echte VBAT messen → welcher Pin geht proportional mit → PIN_BATT_ADC + Teiler.
+// (ADC2-Pins fehlen bewusst: mit aktivem WLAN nicht nutzbar.)
+static void handleDbgAdc() {
+  static const uint8_t ADC1[] = {32, 33, 34, 35, 36, 39};
+  String out = "ADC1 (16x gemittelt):\n";
+  for (uint8_t p : ADC1) {
+    uint32_t acc = 0;
+    for (int i = 0; i < 16; i++) acc += analogRead(p);
+    int raw = (int)(acc / 16);
+    float v = (raw / 4095.0f) * 3.3f;
+    out += "GPIO" + String(p) + ": raw " + String(raw) + " -> " + String(v, 3) + " V  (x2=" + String(v * 2.0f, 2) + " V)\n";
+  }
+  gWeb.send(200, "text/plain", out);
+}
+
 static void handleDebugPage() {
   String h =
     "<!DOCTYPE html><html lang=de><head><meta charset=utf-8>"
@@ -258,7 +274,7 @@ static void handleDebugPage() {
     "border:1px solid #333;background:#1a1d23;color:#e6e6e6;font-size:1rem}"
     "button{margin:.2rem;padding:.5rem .8rem;border:0;border-radius:.5rem;background:#2a3340;"
     "color:#e6e6e6;font-size:.95rem}button.go{background:#4ade80;color:#04130a;font-weight:700}"
-    "#st{margin-top:1rem;padding:.7rem;border-radius:.5rem;background:#1a1d23;font-family:monospace}"
+    "#st{margin-top:1rem;padding:.7rem;border-radius:.5rem;background:#1a1d23;font-family:monospace;white-space:pre-wrap}"
     "</style></head><body><h2>🔧 Heimdall Debug</h2>"
     "<p style='color:#8a8a8a;font-size:.85rem'>⚠️ BENCH-MODE: Sperre aus, Aktionen treiben den Motor auch bei ZU. Sweep = 2 s/GPIO.</p>"
     "<h3>Stepper-Pins setzen</h3>"
@@ -272,6 +288,8 @@ static void handleDebugPage() {
     "<button onclick=pulse()>Puls</button>"
     "<h3>Auto-Sweep (alle Kandidaten)</h3>"
     "<button class=go onclick=sweep()>Sweep starten</button><button onclick=\"stop=1\">Stop</button>"
+    "<h3>ADC / Batterie-Pin finden</h3>"
+    "<button class=go onclick=adc()>ADC1-Pins lesen</button>"
     "<h3>Firmware</h3>"
     "<button class=go onclick=ota()>⬇ Neue FW flashen</button>"
     "<div id=st>bereit</div>"
@@ -285,6 +303,7 @@ static void handleDebugPage() {
     "for(let i=0;i<c.length&&!stop;i++){S('Sweep: GPIO'+c[i]+' ('+(i+1)+'/'+c.length+')');"
     "await fetch(`/dbg/pulse?pin=${c[i]}&ms=${g('ms')}`);await new Promise(r=>setTimeout(r,300));}"
     "S(stop?'Sweep gestoppt':'Sweep fertig');}"
+    "async function adc(){S('ADC lesen…');S(await(await fetch('/dbg/adc')).text())}"
     "async function ota(){S('OTA: prüfe & flashe…');"
     "try{S(await(await fetch('/dbg/ota')).text())}"
     "catch(e){S('Verbindung weg — vermutlich Reboot nach erfolgreichem Flash ✓')}}"
@@ -367,6 +386,7 @@ void setup() {
   gWeb.on("/dbg/test", handleDbgTest);
   gWeb.on("/dbg/pulse",handleDbgPulse);
   gWeb.on("/dbg/ota",  handleDbgOta);
+  gWeb.on("/dbg/adc",  handleDbgAdc);
   pinMode(PIN_BUTTON, INPUT_PULLUP); // HIGH per Pull-up, LOW bei Druck (PIN_BUTTON)
   attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), onButtonIsr, FALLING);
   gLastActivityMs = millis();
