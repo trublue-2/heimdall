@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.1.62"
+#define FW_VERSION "0.1.63"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Original-LMB-PCB (KSM-HW-V10): ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
@@ -34,9 +34,9 @@
 // LMB-PCB: Akkuspannung auf GPIO32, 1:2-Teiler (per ADC-Scan ermittelt: 2,06 V → 4,12 V).
 // LOLIN-Dev war GPIO35 — Teiler bei beiden 1:2 (der ×2 in failsafe.h bleibt).
 #define PIN_BATT_ADC      32
-// Skalierung: V_batt = V_adc × BATT_DIVIDER. Original-LMB-FW nutzte ~2,2625 (+ ADC-Kurve);
-// 2,0 ist die naive Annahme. GEGEN MULTIMETER KALIBRIEREN und hier eintragen.
-#define BATT_DIVIDER      2.0f
+// Skalierung: V_batt = V_adc × BATT_DIVIDER. Am Multimeter kalibriert (2026-07-06):
+// 4,10 V real ÷ 1,990 V (GPIO32-Node) = 2,06. (Original-FW nutzte ~2,2625 + ADC-Kurve.)
+#define BATT_DIVIDER      2.06f
 // USB-/Lade-Erkennung: GPIO26, active-HIGH (HIGH = USB dran/lädt; per Pin-Scan ermittelt).
 // -1 = kein Sense-Pin (z.B. LOLIN → charging wird nie gemeldet).
 #define PIN_CHARGE_DETECT 26
