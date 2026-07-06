@@ -187,7 +187,8 @@ static void handleStatus() {
     html += "<div class='s open'>OFFEN</div>";
   }
   html += "<p class=m>Zeit: " + fmtLocal(time(nullptr)) + "</p>";
-  html += "<p class=m>Akku: " + (gBox.batteryPct < 0 ? String("—") : String(gBox.batteryPct) + "%") + " · "
+  html += "<p class=m>Akku: " + (gBox.batteryPct < 0 ? String("—") : String(gBox.batteryPct) + "%")
+          + (gBox.charging ? String(" ⚡lädt") : String("")) + " · "
           + String(WiFi.RSSI()) + " dBm · fw " + FW_VERSION + "</p>";
   // Diagnose: gUnexpected > Boot-Power-On = Brownout-Verdacht (über WLAN sichtbar).
   html += "<p class=m>Boots: " + String(gBootCount)
@@ -471,7 +472,7 @@ void setup() {
   // dem Akku-Trend zu raten gab falsches "lädt" OHNE USB. Die LMB-PCB hat einen echten
   // USB-/VBUS-Sense-Pin (PIN_CHARGE_DETECT, active-HIGH) → jetzt zuverlässig lesbar.
 #if PIN_CHARGE_DETECT >= 0
-  pinMode(PIN_CHARGE_DETECT, INPUT_PULLUP);
+  pinMode(PIN_CHARGE_DETECT, INPUT_PULLDOWN); // Original-FW: idle LOW, HIGH = USB/VBUS da
   gBox.charging = (digitalRead(PIN_CHARGE_DETECT) == HIGH);
 #else
   gBox.charging = false;

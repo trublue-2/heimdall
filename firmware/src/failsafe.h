@@ -14,7 +14,7 @@ namespace Failsafe {
   // Pin) — sonst würde "kein Sensor" als "0% = kritisch" fehlinterpretiert (Auto-Open).
   inline int batteryPercent() {
     int raw = analogRead(PIN_BATT_ADC);
-    float vBat = (raw / 4095.0f) * 3.3f * 2.0f; // Teiler 1:2
+    float vBat = (raw / 4095.0f) * 3.3f * BATT_DIVIDER; // board-konfig (BATT_DIVIDER)
     if (vBat < BATT_PLAUSIBLE_MIN_V || vBat > BATT_PLAUSIBLE_MAX_V) return BATT_UNKNOWN;
     int pct = (int)((vBat - 3.2f) / (4.2f - 3.2f) * 100.0f);
     return constrain(pct, 0, 100);
