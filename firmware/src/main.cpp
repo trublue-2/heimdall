@@ -293,6 +293,38 @@ static void handleDbgOta() {
   log_e("Manuelle OTA fehlgeschlagen — weiter mit aktueller FW");
 }
 
+// Slot-Switch (Fallback): Boot-Zeiger auf den inaktiven OTA-Slot legen und neu starten.
+// Nach einer BLE-OTA-Übernahme liegt dort die Original-LMB-Firmware → „zurück ins Original"
+// ohne UART. BEWUSST KEIN Lock-Gate (anders als OTA, das bei ZU wegen Brick-Gefahr sperrt):
+//  · zeigt nur auf die box-EIGENE, bereits gültige FW (set_boot_partition prüft das) → kein Brick;
+//  · der automatische Rollback in otaCheckBoot schaltet den Slot ohnehin ungated um;
+//  · es ist ein Recovery-Werkzeug — gerade bei zickendem Heimdall + ZU willst du zurückkönnen.
+// Absicherung ist deliberate, nicht sperrend: confirm() im Browser + Ziel-Slot-Anzeige. Einbahn
+// aus dieser UI (zurück nur via BLE-OTA/UART). Leitplanke: eigenes Gerät, Recovery vor
+// Früh-Öffnungs-Schutz — „zu" ist damit keine harte Garantie gegen lokalen Debug-Zugang.
+static void handleDbgSwitch() {
+  const esp_partition_t* other = esp_ota_get_next_update_partition(NULL);
+  if (!other) { gWeb.send(500, "text/plain", "Kein zweiter OTA-Slot gefunden"); return; }
+  // Ziel-Slot beschriften, damit sichtbar ist, ob dort das Original oder eine alte
+  // Heimdall-Version liegt (nach dem ersten Heimdall-Selbst-OTA ist das Original weg).
+  esp_app_desc_t desc = {};
+  String tgt = "0x" + String(other->address, HEX);
+  if (esp_ota_get_partition_description(other, &desc) == ESP_OK)
+    tgt += " (" + String(desc.project_name) + " " + String(desc.version) + ")";
+  else
+    tgt += " (leer/unlesbar)";
+  esp_err_t err = esp_ota_set_boot_partition(other);
+  if (err != ESP_OK) {
+    gWeb.send(409, "text/plain", "Umschalten abgelehnt: " + String(esp_err_to_name(err)) +
+              " — Ziel-Slot " + tgt + " enthält keine gültige FW");
+    return;
+  }
+  log_w("Slot-Switch → %s, reboot", tgt.c_str());
+  gWeb.send(200, "text/plain", "Schalte auf Slot " + tgt + " … Box rebootet.");
+  delay(200);
+  esp_restart();
+}
+
 // GPIO26 (USB/VBUS) + GPIO13 (STDBY/voll) frisch lesen. Muss bei JEDEM Sync laufen, nicht
 // nur beim Boot — sonst friert "lädt" auf dem Boot-Zustand ein (Box bootet im Debug nie neu).
 static void readChargeState() {
@@ -367,6 +399,7 @@ static void handleDebugPage() {
     "<div id=info>lade…</div>"
     "<h3>Firmware</h3>"
     "<button class=go onclick=ota()>⬇ Neue FW flashen</button>"
+    "<button onclick=revert()>⟲ Zurück ins Original</button>"
     "<div id=st>bereit</div>"
     "<h3>Serial (live)</h3>"
     "<p style='color:#8a8a8a;font-size:.78rem;margin:.2rem 0'>Live-Remote am Mac (auch OTA-Fortschritt): "
@@ -380,6 +413,9 @@ static void handleDebugPage() {
     "async function ota(){S('OTA: prüfe & flashe…');"
     "try{S(await(await fetch('/dbg/ota')).text())}"
     "catch(e){S('Verbindung weg — vermutlich Reboot nach erfolgreichem Flash ✓')}}"
+    "async function revert(){if(!confirm('⚠️ Bootet die FW im anderen Slot (nach Übernahme: Original-LMB) und übergibt ihr die Kontrolle — Heimdalls Sperre & Failsafes gelten dann nicht mehr. Einbahn aus dieser Oberfläche. Fortfahren?'))return;S('Slot-Switch…');"
+    "try{S(await(await fetch('/dbg/switch')).text())}"
+    "catch(e){S('Verbindung weg — vermutlich Reboot in den anderen Slot ✓')}}"
     "async function refreshInfo(){try{let d=await(await fetch('/dbg/info')).json();"
     "document.getElementById('info').innerHTML="
     "'<span class=k>FW</span> <b>'+d.fw+'</b> · <span class=k>MAC</span> '+d.mac+'<br>'+"
@@ -502,6 +538,7 @@ void setup() {
   gWeb.on("/", handleStatus); // Statusseite-Route einmalig registrieren
   gWeb.on("/debug",    handleDebugPage); // Debug-Mode-Routen (nur wirksam, wenn debugMode aktiv)
   gWeb.on("/dbg/ota",  handleDbgOta);
+  gWeb.on("/dbg/switch", handleDbgSwitch); // Fallback: Boot-Zeiger auf anderen Slot (Original)
   gWeb.on("/dbg/info", handleDbgInfo);
   gWeb.on("/dbg/log",  handleDbgLog);
   pinMode(PIN_BUTTON, INPUT_PULLUP); // HIGH per Pull-up, LOW bei Druck (PIN_BUTTON)
