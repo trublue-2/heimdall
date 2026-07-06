@@ -52,18 +52,24 @@ extern "C" {
 static const uint32_t  LOG_CAP = 6144;
 static char            gLog[LOG_CAP];
 static volatile uint32_t gLogHead = 0;          // total je geschriebene Bytes (monoton)
-static bool            gLineStart = true;
+static char            gLine[220];              // aktuelle Zeile puffern (für Filter + Zeitstempel)
+static int             gLineLen = 0;
 static void logPutc(char c) {
-  if (gLineStart && c != '\n' && c != '\r') {
-    time_t now = time(nullptr);
+  if (c != '\r' && gLineLen < (int)sizeof(gLine) - 1) gLine[gLineLen++] = c; // '\r' ignorieren
+  if (c != '\n' && gLineLen < (int)sizeof(gLine) - 1) return;                 // Zeile noch offen
+  gLine[gLineLen] = 0;
+  if (!strstr(gLine, "Unexpected: RES:")) {       // WiFiClient-Socket-Rauschen wegfiltern
+    time_t now = time(nullptr);                   // lesbare Zeit nur in den Ring (UART hat millis)
     if (now > 1700000000) { struct tm t; localtime_r(&now, &t);
       char ts[14]; int n = snprintf(ts, sizeof(ts), "[%02d:%02d:%02d] ", t.tm_hour, t.tm_min, t.tm_sec);
       for (int i = 0; i < n; i++) { gLog[gLogHead % LOG_CAP] = ts[i]; gLogHead++; } }
-    gLineStart = false;
+    for (int i = 0; i < gLineLen; i++) {          // Zeile in Ring + UART
+      char x = gLine[i]; gLog[gLogHead % LOG_CAP] = x; gLogHead++;
+      if (x == '\n') ets_write_char_uart('\r');
+      ets_write_char_uart(x);
+    }
   }
-  gLog[gLogHead % LOG_CAP] = c; gLogHead++;
-  if (c == '\n') { gLineStart = true; ets_write_char_uart('\r'); }
-  ets_write_char_uart(c);
+  gLineLen = 0;
 }
 
 // Knopfdruck wird per Interrupt gelatcht — so geht keine Flanke verloren,
