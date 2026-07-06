@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.1.73"
+#define FW_VERSION "0.1.74"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Original-LMB-PCB (KSM-HW-V10): ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
@@ -40,6 +40,10 @@
 // USB-/Lade-Erkennung: GPIO26, active-HIGH (HIGH = USB dran/lädt; per Pin-Scan ermittelt).
 // -1 = kein Sense-Pin (z.B. LOLIN → charging wird nie gemeldet).
 #define PIN_CHARGE_DETECT 26
+// Lade-Status „voll/fertig" (TP4056 STDBY): GPIO13, open-drain → INPUT_PULLUP,
+// LOW = Ladung fertig/Akku voll (aus Original-LMB-FW). Nur zusammen mit charging
+// (GPIO26) aussagekräftig. Reine Anzeige, KEIN Safety-Pfad. -1 = kein Pin (z.B. LOLIN).
+#define PIN_CHARGE_FULL   13
 #define BATT_LOW_PERCENT  15  // % Warnung / LED
 #define BATT_CRITICAL_PCT  15 // % → Auto-Open Failsafe (Notöffnung mit Reserve fürs Drehmoment)
 // Plausibilität: ein laufendes 1S-LiPo-Board liegt bei ~3.0–4.2 V. Liest der ADC
@@ -67,6 +71,7 @@
 #define WIFI_TX_POWER            WIFI_POWER_8_5dBm
 
 // ── Server API ─────────────────────────────────────────────────────────────
+#define DEFAULT_SERVER_URL   "https://heimdall.trublue.ch" // Provisioning-Default
 #define SERVER_PATH_REGISTER "/api/box/register"
 #define SERVER_PATH_SYNC     "/api/box/sync"
 

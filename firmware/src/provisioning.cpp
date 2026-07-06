@@ -22,6 +22,32 @@ String apName() {
   return String("Heimdall-Setup-") + suffix;
 }
 
+// Verschluss-Invariante (SAFETY, einzige Quelle): eine gesperrte Box friert Server-URL
+// + Token ein — sie darf nicht auf einen anderen Server umgebogen werden (Bypass). Von
+// handleRoot (Anzeige) UND handleProvision (Enforcement) genutzt, damit beide nie
+// auseinanderlaufen. `cur` muss bereits geladen sein.
+bool isServerFrozen(const WifiCredentials& cur) {
+  BoxState st = {};
+  return NVS::loadState(st) && st.locked && cur.serverUrl[0] && cur.deviceToken[0];
+}
+
+// HTML-Attribut-Escape: verhindert, dass eine präparierte SSID (o. Token/URL beim
+// Vorausfüllen) aus dem value="…" ausbricht und das Formular umschreibt (XSS).
+String htmlAttr(const char* s) {
+  String o;
+  for (const char* p = s; *p; ++p) {
+    switch (*p) {
+      case '&': o += "&amp;";  break;
+      case '<': o += "&lt;";   break;
+      case '>': o += "&gt;";   break;
+      case '"': o += "&quot;"; break;
+      case '\'': o += "&#39;"; break;
+      default:  o += *p;
+    }
+  }
+  return o;
+}
+
 const char* PAGE_HEAD =
   "<!DOCTYPE html><html lang=de><head><meta charset=utf-8>"
   "<meta name=viewport content='width=device-width,initial-scale=1'>"
@@ -37,6 +63,13 @@ const char* PAGE_HEAD =
 // Captive-Seite: Variante A = Setup-Link einfügen (aus der App kopiert),
 // Variante B = manuelles Formular. Der QR-Link trifft /provision direkt.
 void handleRoot() {
+  // Vorhandene Credentials → WLAN-Wechsel: Felder vorausfüllen, damit man nur das
+  // WLAN neu tippt (Token bleibt). Bei aktivem Verschluss bleiben Server+Token
+  // eingefroren und werden gar nicht erst angezeigt.
+  WifiCredentials cur = {};
+  bool haveCreds = NVS::loadCredentials(cur);
+  bool frozen = haveCreds && isServerFrozen(cur);
+
   String html = PAGE_HEAD;
   html += "<h2>🔒 Heimdall einrichten</h2>"
 
@@ -47,23 +80,39 @@ void handleRoot() {
           "if(!v)return;try{var u=new URL(v);location.href=u.pathname+u.search;}"
           "catch(e){var i=v.indexOf('/provision');location.href=i>=0?v.slice(i):v;}}</script>"
 
-          "<hr style='border:0;border-top:1px solid #333;margin:1.5rem 0'>"
+          "<hr style='border:0;border-top:1px solid #333;margin:1.5rem 0'>";
 
-          "<p class=m><b>B — manuell eingeben:</b></p>"
-          "<form action=/provision method=get>"
-          "<label>WLAN-Name (SSID)</label><input name=ssid required>"
-          "<label>WLAN-Passwort</label><input name=pass type=password>"
-          "<label>Server-URL</label><input name=url value='https://heimdall.trublue.ch'>"
-          "<label>Geräte-Token</label><input name=token required>"
-          "<button type=submit>Speichern &amp; verbinden</button></form></body></html>";
+  if (!haveCreds)   html += "<p class=m><b>B — manuell eingeben:</b></p>";
+  else if (frozen)  html += "<p class=m>🔒 <b>Verschluss aktiv</b> — nur WLAN änderbar; Server &amp; Token bleiben.</p>";
+  else              html += "<p class=m><b>B — WLAN wechseln</b> (Felder vorausgefüllt):</p>";
+
+  html += "<form action=/provision method=get>"
+          "<label>WLAN-Name (SSID)</label><input name=ssid required value=\"" + htmlAttr(cur.ssid) + "\">"
+          "<label>WLAN-Passwort</label><input name=pass type=password>";
+  if (!frozen) {
+    String url = (haveCreds && cur.serverUrl[0]) ? htmlAttr(cur.serverUrl)
+                                                 : String(DEFAULT_SERVER_URL);
+    html += "<label>Server-URL</label><input name=url value=\"" + url + "\">"
+            "<label>Geräte-Token</label><input name=token required value=\"" + htmlAttr(cur.deviceToken) + "\">";
+  }
+  html += "<button type=submit>Speichern &amp; verbinden</button></form></body></html>";
   server.send(200, "text/html", html);
 }
 
 void handleProvision() {
-  if (!server.hasArg("ssid") || !server.hasArg("token") ||
-      server.arg("ssid").isEmpty() || server.arg("token").isEmpty()) {
+  // Server-Bindung während Verschluss einfrieren (siehe isServerFrozen): eine gesperrte
+  // Box darf nicht auf einen anderen Server/Token umgebogen werden (sonst Bypass). WLAN
+  // bleibt änderbar, damit die Box weiter syncen kann. Bei eingefrorenem Server ist auch
+  // kein Token-Feld nötig (das Portal zeigt keins).
+  WifiCredentials cur = {};
+  bool serverFrozen = NVS::loadCredentials(cur) && isServerFrozen(cur);
+
+  bool needToken = !serverFrozen;
+  if (!server.hasArg("ssid") || server.arg("ssid").isEmpty() ||
+      (needToken && (!server.hasArg("token") || server.arg("token").isEmpty()))) {
     server.send(400, "text/html",
-                String(PAGE_HEAD) + "<h2>Fehlt</h2><p class=m>SSID und Token sind nötig. "
+                String(PAGE_HEAD) + "<h2>Fehlt</h2><p class=m>SSID"
+                + (needToken ? " und Token sind" : " ist") + " nötig. "
                 "<a style=color:#4ade80 href=/>Zurück</a></p></body></html>");
     return;
   }
@@ -86,13 +135,7 @@ void handleProvision() {
   } else {
     strlcpy(c.password, passArg.c_str(), sizeof(c.password));
   }
-  // Server-Bindung während Verschluss einfrieren: Eine gesperrte Box darf nicht auf
-  // einen anderen Server/Token umgebogen werden (sonst Bypass — der neue Server könnte
-  // öffnen). WLAN (oben) bleibt änderbar, damit die Box weiter syncen kann.
-  BoxState st = {};
-  WifiCredentials cur = {};
-  bool serverFrozen = NVS::loadState(st) && st.locked && NVS::loadCredentials(cur)
-                      && cur.serverUrl[0] && cur.deviceToken[0];
+
   if (serverFrozen) {
     strlcpy(c.serverUrl,   cur.serverUrl,   sizeof(c.serverUrl));
     strlcpy(c.deviceToken, cur.deviceToken, sizeof(c.deviceToken));
@@ -100,7 +143,7 @@ void handleProvision() {
   } else {
     strlcpy(c.serverUrl,
             server.hasArg("url") && !server.arg("url").isEmpty()
-              ? server.arg("url").c_str() : "https://heimdall.trublue.ch",
+              ? server.arg("url").c_str() : DEFAULT_SERVER_URL,
             sizeof(c.serverUrl));
     strlcpy(c.deviceToken, server.arg("token").c_str(), sizeof(c.deviceToken));
   }
@@ -109,7 +152,7 @@ void handleProvision() {
   log_i("Provisioned: ssid=%s url=%s", c.ssid, c.serverUrl);
   server.send(200, "text/html",
               String(PAGE_HEAD) + "<h2>✅ Gespeichert</h2>"
-              "<p class=m>Die Box startet neu und verbindet sich mit <b>" + c.ssid +
+              "<p class=m>Die Box startet neu und verbindet sich mit <b>" + htmlAttr(c.ssid) +
               "</b>. Du kannst dieses WLAN verlassen.</p>" +
               (serverFrozen
                 ? "<p class=m>🔒 Verschluss aktiv — Server &amp; Token wurden "

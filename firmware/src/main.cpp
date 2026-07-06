@@ -30,6 +30,7 @@ static WifiCredentials gCreds          = {};
 static BoxState        gBox            = {};
 static BoxPolicy       gPolicy         = {};
 static unsigned long   gLastActivityMs = 0;
+static bool            gChargeFull     = false; // GPIO13 LOW & USB dran → Ladung fertig (nur Anzeige)
 
 // Aufeinanderfolgende 401 (überlebt Deep-Sleep) → Selbstheilung in den Hotspot (S8).
 RTC_DATA_ATTR static uint32_t gAuthFails = 0;
@@ -151,24 +152,33 @@ static void recordBoot() {
   p.end();
 }
 
-// Long-Press auf dem Button (GND↔GPIO14 ≥3 s gehalten) → Credentials löschen →
-// Reboot in den Setup-Hotspot. Aufruf nach Button-pinMode, vor dem Cred-Load.
-static void checkFactoryReset() {
-  if (digitalRead(PIN_BUTTON) != LOW) return; // nicht gedrückt
-  log_w("Button gehalten — halte 3 s für Factory-Reset …");
+// Taster (GND↔GPIO14) gehalten beim Boot → Setup-Hotspot. Zwei Stufen (Intent; der
+// eigentliche Eintritt läuft über die eine State-Machine-Route State::PROVISIONING):
+//  • ≥3 s losgelassen → WifiChange: Credentials BLEIBEN, Portal vorausgefüllt (nur
+//    SSID/Passwort neu; Server-URL+Token + Box-Identität bleiben erhalten).
+//  • ≥10 s gehalten   → FullWipe: Credentials werden gelöscht, Portal leer (neue Box).
+// Reine Erkennung (Blink-Quittung inklusive); löscht/öffnet nichts selbst.
+enum class ResetIntent { None, WifiChange, FullWipe };
+static ResetIntent checkFactoryReset() {
+  if (digitalRead(PIN_BUTTON) != LOW) return ResetIntent::None; // nicht gedrückt
+  log_w("Button gehalten — 3 s = WLAN-Wechsel, 10 s = Vollreset …");
   unsigned long t0 = millis();
+  bool acked = false;
   while (digitalRead(PIN_BUTTON) == LOW) {
-    if (millis() - t0 >= 3000) {
-      log_w("FACTORY-RESET: Credentials gelöscht → Setup-Hotspot");
-      for (int i = 0; i < 6; i++) { // schnelles LED-Blinken als Quittung
-        digitalWrite(PIN_LED, LED_ON);  delay(80);
-        digitalWrite(PIN_LED, LED_OFF); delay(80);
-      }
-      NVS::clearCredentials();
-      ESP.restart();
+    unsigned long held = millis() - t0;
+    if (!acked && held >= 3000) { // 3-s-Schwelle: kurze Doppel-Quittung
+      acked = true;
+      for (int i = 0; i < 2; i++) { digitalWrite(PIN_LED, LED_ON); delay(60); digitalWrite(PIN_LED, LED_OFF); delay(60); }
+    }
+    if (held >= 10000) {          // 10 s: Vollreset
+      log_w("VOLLRESET (10 s): Credentials werden gelöscht → leerer Setup-Hotspot");
+      for (int i = 0; i < 6; i++) { digitalWrite(PIN_LED, LED_ON); delay(80); digitalWrite(PIN_LED, LED_OFF); delay(80); }
+      return ResetIntent::FullWipe;
     }
     delay(20);
   }
+  if (acked) log_w("WLAN-Wechsel (Taster): Credentials bleiben, Portal vorausgefüllt → Setup-Hotspot");
+  return acked ? ResetIntent::WifiChange : ResetIntent::None;
 }
 
 // ── OTA-Validierung / Rollback (S14) ─────────────────────────────────────────
@@ -252,7 +262,7 @@ static void handleStatus() {
   }
   html += "<p class=m>Zeit: " + fmtLocal(time(nullptr)) + "</p>";
   html += "<p class=m>Akku: " + (gBox.batteryPct < 0 ? String("—") : String(gBox.batteryPct) + "%")
-          + (gBox.charging ? String(" ⚡lädt") : String("")) + " · "
+          + (gChargeFull ? String(" ✅voll") : (gBox.charging ? String(" ⚡lädt") : String(""))) + " · "
           + String(WiFi.RSSI()) + " dBm · fw " + FW_VERSION + "</p>";
   // Diagnose: gUnexpected > Boot-Power-On = Brownout-Verdacht (über WLAN sichtbar).
   html += "<p class=m>Boots: " + String(gBootCount)
@@ -283,14 +293,20 @@ static void handleDbgOta() {
   log_e("Manuelle OTA fehlgeschlagen — weiter mit aktueller FW");
 }
 
-// GPIO26 (USB/VBUS) frisch lesen → gBox.charging. Muss bei JEDEM Sync laufen, nicht nur
-// beim Boot — sonst friert "lädt" auf dem Boot-Zustand ein (Box bootet im Debug nie neu).
+// GPIO26 (USB/VBUS) + GPIO13 (STDBY/voll) frisch lesen. Muss bei JEDEM Sync laufen, nicht
+// nur beim Boot — sonst friert "lädt" auf dem Boot-Zustand ein (Box bootet im Debug nie neu).
 static void readChargeState() {
 #if PIN_CHARGE_DETECT >= 0
   pinMode(PIN_CHARGE_DETECT, INPUT_PULLDOWN); // idle LOW, HIGH = USB/VBUS da
   gBox.charging = (digitalRead(PIN_CHARGE_DETECT) == HIGH);
 #else
   gBox.charging = false;
+#endif
+#if PIN_CHARGE_FULL >= 0
+  pinMode(PIN_CHARGE_FULL, INPUT_PULLUP);     // STDBY open-drain: LOW = voll/fertig
+  gChargeFull = gBox.charging && (digitalRead(PIN_CHARGE_FULL) == LOW);
+#else
+  gChargeFull = false;
 #endif
 }
 
@@ -306,6 +322,7 @@ static void handleDbgInfo() {
   j += "\"vbat\":" + String(vbat, 2) + ",";
   j += "\"usb\":" + String(usb) + ",";
   j += "\"charging\":" + String(gBox.charging ? "true" : "false") + ",";
+  j += "\"full\":" + String(gChargeFull ? "true" : "false") + ",";
   j += "\"locked\":" + String(gBox.locked ? "true" : "false") + ",";
   j += "\"mac\":\"" + WiFi.macAddress() + "\",";
   j += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
@@ -366,7 +383,7 @@ static void handleDebugPage() {
     "async function refreshInfo(){try{let d=await(await fetch('/dbg/info')).json();"
     "document.getElementById('info').innerHTML="
     "'<span class=k>FW</span> <b>'+d.fw+'</b> · <span class=k>MAC</span> '+d.mac+'<br>'+"
-    "'<span class=k>Akku</span> <b>'+d.batt+'%</b> ('+d.vbat+' V) · <span class=k>USB</span> '+(d.usb?'ja':'nein')+' · <span class=k>Laden</span> '+(d.charging?'⚡ja':'nein')+'<br>'+"
+    "'<span class=k>Akku</span> <b>'+d.batt+'%</b> ('+d.vbat+' V) · <span class=k>USB</span> '+(d.usb?'ja':'nein')+' · <span class=k>Laden</span> '+(d.full?'✅voll':(d.charging?'⚡ja':'nein'))+'<br>'+"
     "'<span class=k>Lock</span> '+(d.locked?'ZU':'OFFEN')+' · <span class=k>WLAN</span> '+d.ssid+' ('+d.rssi+' dBm)<br>'+"
     "'<span class=k>IP</span> '+d.ip+' · <span class=k>Up</span> '+d.uptime+'s · <span class=k>Heap</span> '+d.heap+'kB';"
     "}catch(e){}}"
@@ -491,8 +508,9 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), onButtonIsr, FALLING);
   gLastActivityMs = millis();
 
-  // Button beim Boot ≥3 s gehalten → Factory-Reset in den Setup-Hotspot.
-  checkFactoryReset();
+  // Taster gehalten → Setup-Hotspot (3 s = WLAN-Wechsel, 10 s = Vollreset).
+  // Nur die Intent merken; betreten wird der Hotspot unten über State::PROVISIONING.
+  ResetIntent btnIntent = checkFactoryReset();
 
   // Batterie vor WiFi messen — ADC ist ohne WiFi-Rauschen genauer
   int batt = Failsafe::batteryPercent();
@@ -548,6 +566,14 @@ void setup() {
   bool hasState = NVS::loadState(gBox);
   NVS::loadPolicy(gPolicy);
   strlcpy(gBox.wakeReason, reason, sizeof(gBox.wakeReason));
+
+  // Taster-Intent: Hotspot über die eine Provisioning-Route betreten. Vollreset löscht
+  // vorher die Credentials (→ leeres Portal); WLAN-Wechsel behält sie (→ vorausgefüllt).
+  if (btnIntent != ResetIntent::None) {
+    if (btnIntent == ResetIntent::FullWipe) NVS::clearCredentials();
+    gState = State::PROVISIONING;
+    return;
+  }
 
   gBox.batteryPct = batt;
   // Lade-Status frisch lesen (GPIO26). Wird zusätzlich bei jedem Sync aktualisiert,
