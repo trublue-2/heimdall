@@ -23,7 +23,7 @@ struct BoxState {
   time_t lastSyncAt;   // Unix-Epoch des letzten erfolgreichen Syncs
   char   wakeReason[32];
   int    batteryPct;   // Aktuell gemessen, vor WiFi-Init (ADC ungestört)
-  bool   charging;     // true wenn Akku lädt (Trend aus NVS-Vorwert)
+  bool   charging;     // true = USB/Netz dran (GPIO26, PIN_CHARGE_DETECT)
   char   deviceName[64]; // Anzeigename vom Server (nur RAM, je Sync gesetzt)
 
   // Monotone Failsafe-Zähler — clock-UNABHÄNGIG (überleben Brownout/1970-Uhr via NVS).

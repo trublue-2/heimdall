@@ -1,11 +1,11 @@
 #pragma once
 
-#define FW_VERSION "0.1.72"
+#define FW_VERSION "0.1.73"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Original-LMB-PCB (KSM-HW-V10): ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
 // Alle boot-sicher (keine Strapping-/Flash-/Input-only-Pins).
-// LOLIN-Dev-Board war 32/33/25/26 → bei Board-Wechsel Debug-setPins nutzen (Board-Profil noch offen).
+// LOLIN-Dev-Board war 32/33/25/26 → bei Board-Wechsel hier in config.h anpassen (Board-Profil noch offen).
 #define STEPPER_IN1 23
 #define STEPPER_IN2 17
 #define STEPPER_IN3 16
@@ -57,9 +57,8 @@
 #define AUTH_FAIL_LIMIT          10                 // N×401 in Folge → Setup-Hotspot (Selbstheilung)
 #define OTA_VALIDATE_SYNCS       1                  // erfolgreiche Syncs bis OTA bestätigt (sonst Rollback)
 
-// Debug-Mode (server-aktiviert): Box bleibt wach + serviert lokale Debug-Seite.
-#define DEBUG_RESYNC_MS          (30UL * 1000)      // alle 30 s re-syncen (Flag/IP frisch, Fernabschaltung)
-#define DEBUG_MAX_MS             (20UL * 60 * 1000) // harte Obergrenze: nach 20 min Debug → Sleep (Drain-Schutz)
+// Re-Sync-Takt im Wach-Zustand (am Netz) — hält Policy/OTA/IP frisch.
+#define DEBUG_RESYNC_MS          (30UL * 1000)
 
 // WLAN-Sendeleistung: 8,5 dBm — wieder hoch für bessere Reichweite/Stabilität
 // (Multi-WLAN, schwächere APs). Der Brownout-Fix war primär ein gutes Kabel, nicht

@@ -55,32 +55,53 @@ static char            gLog[LOG_CAP];
 static volatile uint32_t gLogHead = 0;          // total je geschriebene Bytes (monoton)
 static char            gLine[220];              // aktuelle Zeile puffern (für Filter + Zeitstempel)
 static int             gLineLen = 0;
+static inline void ringPut(char x) { gLog[gLogHead % LOG_CAP] = x; gLogHead++; }
 static void logPutc(char c) {
-  if (c != '\r' && gLineLen < (int)sizeof(gLine) - 1) gLine[gLineLen++] = c; // '\r' ignorieren
-  if (c != '\n' && gLineLen < (int)sizeof(gLine) - 1) return;                 // Zeile noch offen
-  gLine[gLineLen] = 0;
-  if (!strstr(gLine, "Unexpected: RES:")) {       // WiFiClient-Socket-Rauschen wegfiltern
-    time_t now = time(nullptr);                   // lesbare Zeit nur in den Ring (UART hat millis)
-    if (now > 1700000000) { struct tm t; localtime_r(&now, &t);
-      char ts[14]; int n = snprintf(ts, sizeof(ts), "[%02d:%02d:%02d] ", t.tm_hour, t.tm_min, t.tm_sec);
-      for (int i = 0; i < n; i++) { gLog[gLogHead % LOG_CAP] = ts[i]; gLogHead++; } }
-    for (int i = 0; i < gLineLen; i++) {          // Zeile in Ring + UART
-      char x = gLine[i]; gLog[gLogHead % LOG_CAP] = x; gLogHead++;
-      if (x == '\n') ets_write_char_uart('\r');
-      ets_write_char_uart(x);
+  bool full = gLineLen >= (int)sizeof(gLine) - 1;
+  if (c == '\n' || full) {                        // Zeilenende ODER Puffer voll → abschließen
+    gLine[gLineLen] = 0;
+    if (gLineLen > 0 && !strstr(gLine, "Unexpected: RES:")) { // WiFiClient-Socket-Rauschen wegfiltern
+      time_t now = time(nullptr);                 // lesbare Zeit nur in den Ring (UART hat millis)
+      if (now > 1700000000) { struct tm t; localtime_r(&now, &t);
+        char ts[14]; int n = snprintf(ts, sizeof(ts), "[%02d:%02d:%02d] ", t.tm_hour, t.tm_min, t.tm_sec);
+        for (int i = 0; i < n; i++) ringPut(ts[i]); }
+      for (int i = 0; i < gLineLen; i++) { ringPut(gLine[i]); ets_write_char_uart(gLine[i]); }
+      ringPut('\n'); ets_write_char_uart('\r'); ets_write_char_uart('\n'); // immer sauber umbrechen
     }
-    // UDP-Broadcast fürs Live-Remote-Log (Mac: nc -ul 9999) — kommt aus dem Log-Hook,
-    // NICHT aus dem Loop → geht auch während des blockierenden OTA-Flashs raus.
-    if (WiFi.isConnected()) {
-      static bool udpUp = false;
-      if (!udpUp) { gUdp.begin(0); udpUp = true; }
-      if (gUdp.beginPacket(WiFi.broadcastIP(), LOG_UDP_PORT)) {
-        gUdp.write((const uint8_t*)gLine, gLineLen);
-        gUdp.endPacket();
-      }
-    }
+    gLineLen = 0;
+    if (full && c != '\n' && c != '\r') gLine[gLineLen++] = c; // auslösendes Zeichen nicht verlieren
+    return;
   }
-  gLineLen = 0;
+  if (c != '\r') gLine[gLineLen++] = c;           // Zeile weiter puffern ('\r' ignorieren)
+}
+
+// Broadcastet neue Ringpuffer-Bytes per UDP (Mac: nc -ul 9999). EIGENER Task, NICHT der
+// Log-Hook: läuft auch während des blockierenden OTA-Flashs (loopTask hängt) und aus sauberem
+// Kontext (keine lwIP-Reentranz, eigener Stack). Torn reads sind hier höchstens kosmetisch.
+static uint32_t gUdpCursor = 0;
+static void udpLogTask(void*) {
+  bool up = false;
+  for (;;) {
+    if (WiFi.isConnected()) {
+      if (!up) { gUdp.begin(0); up = true; }
+      uint32_t head = gLogHead;
+      uint32_t oldest = head > LOG_CAP ? head - LOG_CAP : 0;
+      if (gUdpCursor < oldest) gUdpCursor = oldest;
+      uint8_t pkt[512]; int n = 0;
+      for (uint32_t i = gUdpCursor; i < head; i++) {
+        pkt[n++] = (uint8_t)gLog[i % LOG_CAP];
+        if (n == (int)sizeof(pkt)) {
+          if (gUdp.beginPacket(WiFi.broadcastIP(), LOG_UDP_PORT)) { gUdp.write(pkt, n); gUdp.endPacket(); }
+          n = 0;
+        }
+      }
+      if (n > 0 && gUdp.beginPacket(WiFi.broadcastIP(), LOG_UDP_PORT)) { gUdp.write(pkt, n); gUdp.endPacket(); }
+      gUdpCursor = head;
+    } else {
+      up = false; // Reconnect → Socket neu öffnen
+    }
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
 }
 
 // Knopfdruck wird per Interrupt gelatcht — so geht keine Flanke verloren,
@@ -281,7 +302,7 @@ static void handleDbgInfo() {
   int usb = gBox.charging ? 1 : 0;
   String j = "{";
   j += "\"fw\":\"" FW_VERSION "\",";
-  j += "\"batt\":" + String(gBox.batteryPct) + ",";
+  j += "\"batt\":" + String(Failsafe::batteryPercent()) + ","; // frisch, konsistent zu vbat
   j += "\"vbat\":" + String(vbat, 2) + ",";
   j += "\"usb\":" + String(usb) + ",";
   j += "\"charging\":" + String(gBox.charging ? "true" : "false") + ",";
@@ -299,9 +320,10 @@ static void handleDbgInfo() {
 // Browser-Serial: neue Log-Bytes ab ?since=<cursor>. Antwort: "<neuerCursor>\n<bytes>".
 static void handleDbgLog() {
   uint32_t since = strtoul(gWeb.arg("since").c_str(), nullptr, 10);
-  uint32_t head = gLogHead;
+  uint32_t head = gLogHead;                        // einmal snapshoten
   uint32_t oldest = head > LOG_CAP ? head - LOG_CAP : 0;
   if (since < oldest) since = oldest;
+  if (since > head)   since = head;                // stale/torn Cursor → kein uint32-Underflow im reserve
   String out; out.reserve(head - since + 12);
   out += String(head); out += "\n";
   for (uint32_t i = since; i < head; i++) out += gLog[i % LOG_CAP];
@@ -410,10 +432,42 @@ static void goDeepSleep() {
   esp_deep_sleep_start();
 }
 
+// Lokale Failsafes: monotone Zähler ticken (delta-basiert, persistiert) + Öffnungsgründe prüfen.
+// Läuft in setup() UND periodisch im Wach-Zustand — sonst frören HardCap/Offline-Timeout am
+// Netz ein (die Box schläft an USB nie, setup() liefe dann nie neu). true → Box muss öffnen.
+static bool checkFailsafes() {
+  time_t now = time(nullptr);
+  uint32_t inc = 0;
+  if (gBox.lastTick > 0) {
+    long delta = (long)(now - gBox.lastTick);
+    inc = (delta >= 0 && delta <= (long)(2UL * WAKE_INTERVAL_S)) ? (uint32_t)delta : (uint32_t)WAKE_INTERVAL_S;
+  }
+  gBox.offlineSeconds += inc;
+  gBox.lockedSeconds = gBox.locked ? gBox.lockedSeconds + inc : 0;
+  gBox.lastTick = now;
+  NVS::saveState(gBox); // persistieren — überlebt Brownout
+
+  if (Failsafe::isLowBattery()) {
+    log_w("FAILSAFE: Low-Battery (%d%%) → OPENING", Failsafe::batteryPercent());
+    strlcpy(gBox.wakeReason, "low_battery", sizeof(gBox.wakeReason)); return true;
+  }
+  if (gBox.locked && Failsafe::isOfflineTimeout(gBox, gPolicy)) {
+    log_w("FAILSAFE: Offline-Timeout (%dh, %us offline) → OPENING", gPolicy.offlineOpenH, gBox.offlineSeconds);
+    strlcpy(gBox.wakeReason, "offline_timeout", sizeof(gBox.wakeReason)); return true;
+  }
+  // HardCap: absolute Obergrenze — lokal, nie überschreitbar (CLAUDE.md).
+  if (gBox.locked && Failsafe::isHardCapExceeded(gBox, gPolicy)) {
+    log_w("FAILSAFE: HardCap (%dh, %us locked) → OPENING", gPolicy.hardCapH, gBox.lockedSeconds);
+    strlcpy(gBox.wakeReason, "hard_deadline", sizeof(gBox.wakeReason)); return true;
+  }
+  return false;
+}
+
 // ── setup: läuft einmal nach jedem Wake / Power-On ──────────────────────────
 void setup() {
   Serial.begin(115200);
-  ets_install_putc1(logPutc); // Logs zusätzlich in den Browser-Serial-Ringpuffer (putc1-Hook)
+  ets_install_putc1(logPutc); // Logs in den Ringpuffer (Browser-Serial) — nur Ring+UART, kein Netz
+  xTaskCreate(udpLogTask, "udpLog", 4096, nullptr, 1, nullptr); // UDP-Broadcast in eigenem Task
   // Sofort-Quittung bei Button-Wake — GANZ am Anfang, VOR der schweren Init
   // (delay/NVS/OTA), damit das Ack ~sofort kommt statt erst ~0.5 s nach dem Boot.
   pinMode(PIN_LED, OUTPUT);
@@ -495,23 +549,6 @@ void setup() {
   NVS::loadPolicy(gPolicy);
   strlcpy(gBox.wakeReason, reason, sizeof(gBox.wakeReason));
 
-  // ── Monotone Failsafe-Zähler ticken (clock-UNABHÄNGIG, überleben 1970/Brownout) ──
-  // Delta der RTC-Uhr ist über Deep-Sleep korrekt; bei Power-Loss/1970-Sprung wird
-  // konservativ ein Wake-Intervall angenommen. Garantiert: Offline/HardCap greifen.
-  {
-    time_t now = time(nullptr);
-    uint32_t inc = 0;
-    if (gBox.lastTick > 0) {
-      long delta = (long)(now - gBox.lastTick);
-      inc = (delta >= 0 && delta <= (long)(2UL * WAKE_INTERVAL_S))
-              ? (uint32_t)delta : (uint32_t)WAKE_INTERVAL_S;
-    }
-    gBox.offlineSeconds += inc;
-    gBox.lockedSeconds = gBox.locked ? gBox.lockedSeconds + inc : 0;
-    gBox.lastTick = now;
-    NVS::saveState(gBox); // persistieren — überlebt Brownout
-  }
-
   gBox.batteryPct = batt;
   // Lade-Status frisch lesen (GPIO26). Wird zusätzlich bei jedem Sync aktualisiert,
   // damit "lädt" auch ohne Reboot dem echten USB-Zustand folgt.
@@ -544,30 +581,8 @@ void setup() {
 
   gState = (hasState && gBox.locked) ? State::LOCKED : State::IDLE_OPEN;
 
-  // ── P0: Failsafes — Safety vor Security vor Funktion ────────────────────
-  if (Failsafe::isLowBattery()) {
-    log_w("FAILSAFE: Low-Battery (%d%%) → OPENING", Failsafe::batteryPercent());
-    strlcpy(gBox.wakeReason, "low_battery", sizeof(gBox.wakeReason));
-    gState = State::OPENING;
-    return;
-  }
-
-  if (gBox.locked && Failsafe::isOfflineTimeout(gBox, gPolicy)) {
-    log_w("FAILSAFE: Offline-Timeout (%dh, %us offline) → OPENING",
-          gPolicy.offlineOpenH, gBox.offlineSeconds);
-    strlcpy(gBox.wakeReason, "offline_timeout", sizeof(gBox.wakeReason));
-    gState = State::OPENING;
-    return;
-  }
-
-  // HardCap: absolute Obergrenze — lokal, nie überschreitbar (CLAUDE.md).
-  if (gBox.locked && Failsafe::isHardCapExceeded(gBox, gPolicy)) {
-    log_w("FAILSAFE: HardCap (%dh, %us locked) → OPENING",
-          gPolicy.hardCapH, gBox.lockedSeconds);
-    strlcpy(gBox.wakeReason, "hard_deadline", sizeof(gBox.wakeReason));
-    gState = State::OPENING;
-    return;
-  }
+  // ── P0: Failsafes — Safety vor Security vor Funktion (tickt auch die Zähler) ──
+  if (checkFailsafes()) { gState = State::OPENING; return; }
 
   gState = State::SYNCING;
   gBtnLatched = false; // Boot-Bounce verwerfen — der Initial-Sync läuft ohnehin
@@ -706,11 +721,20 @@ void loop() {
       ensureStatusServer();
       gWeb.handleClient();
 
+      // Lokale Failsafes AUCH im Wach-Zustand periodisch prüfen — sonst frören HardCap/
+      // Offline-Timeout ein, solange die Box am Netz durchgehend wach ist (schläft ja nicht,
+      // setup() läuft nicht neu). 60-s-Takt schont NVS. Safety > Function (CLAUDE.md).
+      static unsigned long gLastFsCheck = 0;
+      if (millis() - gLastFsCheck > 60000) {
+        gLastFsCheck = millis();
+        if (checkFailsafes()) { gState = State::OPENING; break; }
+      }
+
       // Wach bleiben, solange USB/Netz anliegt (GPIO26) → Debug-Seite jederzeit erreichbar;
       // sonst auf Akku normal nach IDLE_SLEEP_MS schlafen. Kein Dauer-Wach über debugMode mehr.
+      static unsigned long gLastAwakeSync = 0;
       readChargeState(); // aktualisiert gBox.charging (GPIO26)
       if (gBox.charging) {
-        static unsigned long gLastAwakeSync = 0;
         if (gLastAwakeSync == 0) gLastAwakeSync = millis();
         if (millis() - gLastAwakeSync > DEBUG_RESYNC_MS) {
           gLastAwakeSync = millis();
@@ -719,6 +743,7 @@ void loop() {
           delay(5);
         }
       } else {
+        gLastAwakeSync = 0; // beim nächsten Einstecken sauber neu takten (kein Sofort-Sync)
         if (millis() - gLastActivityMs > IDLE_SLEEP_MS) {
           goDeepSleep();
         } else {
