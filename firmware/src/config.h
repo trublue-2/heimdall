@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.1.60"
+#define FW_VERSION "0.1.61"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Original-LMB-PCB (KSM-HW-V10): ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
@@ -30,9 +30,13 @@
 // interner Pull-Up (HIGH idle, LOW bei Druck), KEIN Strapping-Pin. Taster: GPIO14 ↔ GND.
 #define PIN_BUTTON 14
 
-// ── Batterie ADC ───────────────────────────────────────────────────────────
-// LOLIN D32: GPIO35 mit 100k/100k Teiler → misst Vbat/2.
-#define PIN_BATT_ADC      35
+// ── Batterie ADC + Lade-Erkennung ──────────────────────────────────────────
+// LMB-PCB: Akkuspannung auf GPIO32, 1:2-Teiler (per ADC-Scan ermittelt: 2,06 V → 4,12 V).
+// LOLIN-Dev war GPIO35 — Teiler bei beiden 1:2 (der ×2 in failsafe.h bleibt).
+#define PIN_BATT_ADC      32
+// USB-/Lade-Erkennung: GPIO26, active-HIGH (HIGH = USB dran/lädt; per Pin-Scan ermittelt).
+// -1 = kein Sense-Pin (z.B. LOLIN → charging wird nie gemeldet).
+#define PIN_CHARGE_DETECT 26
 #define BATT_LOW_PERCENT  15  // % Warnung / LED
 #define BATT_CRITICAL_PCT  15 // % → Auto-Open Failsafe (Notöffnung mit Reserve fürs Drehmoment)
 // Plausibilität: ein laufendes 1S-LiPo-Board liegt bei ~3.0–4.2 V. Liest der ADC

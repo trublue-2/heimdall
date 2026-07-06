@@ -467,11 +467,15 @@ void setup() {
   }
 
   gBox.batteryPct = batt;
-  // Lade-Status NICHT mehr aus dem Akku-Trend raten: nach Deep-Sleep/Lastwegfall
-  // erholt sich die Spannung + ADC-Rauschen → falsches "lädt" OHNE USB. Der
-  // LOLIN-D32-Laderegler (TP4054) hat keine Status-Leitung an einem GPIO →
-  // ohne USB-/VBUS-Sense-Pin nicht zuverlässig erkennbar, also gar nicht melden.
+  // Lade-Status: früher gar nicht gemeldet — LOLIN hat keine Status-Leitung, und aus
+  // dem Akku-Trend zu raten gab falsches "lädt" OHNE USB. Die LMB-PCB hat einen echten
+  // USB-/VBUS-Sense-Pin (PIN_CHARGE_DETECT, active-HIGH) → jetzt zuverlässig lesbar.
+#if PIN_CHARGE_DETECT >= 0
+  pinMode(PIN_CHARGE_DETECT, INPUT_PULLUP);
+  gBox.charging = (digitalRead(PIN_CHARGE_DETECT) == HIGH);
+#else
   gBox.charging = false;
+#endif
 
   // LED zeigt Lock-Status NUR während die Box wach ist (Knopfdruck → Status auf Abruf).
   // Bewusst KEIN gpio_hold im Deep-Sleep: spart Akku, LED erlischt im Schlaf.
@@ -533,7 +537,7 @@ void setup() {
 // (+ 5-s-Lebenszeichen), damit man sieht, welcher GPIO flippt — z.B. Lade-Pin: USB rein/raus.
 // Input-only-Pins (34/35/36/39) floaten evtl. (kein Pull-up) → dort etwas Rauschen möglich.
 static void dumpPinStates() {
-  static const uint8_t PINS[] = {0,2,12,13,14,15,18,19,21,22,25,26,27,32,33,34,35,36,39};
+  static const uint8_t PINS[] = {0,2,12,13,14,15,18,19,21,22,25,26,27,33,34,35,36,39}; // 32 raus = Akku-ADC (kein Pull-up drauf)
   static bool cfg = false;
   static uint32_t last = 0xFFFFFFFF;
   static unsigned long lastBeat = 0;
