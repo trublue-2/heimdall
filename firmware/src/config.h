@@ -1,18 +1,22 @@
 #pragma once
 
-#define FW_VERSION "0.1.57"
+#define FW_VERSION "0.1.58"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
-// Boot-sichere GPIOs ohne Strapping-Konflikt.
-#define STEPPER_IN1 32
-#define STEPPER_IN2 33
-#define STEPPER_IN3 25
-#define STEPPER_IN4 26
+// Original-LMB-PCB (KSM-HW-V10): ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
+// Alle boot-sicher (keine Strapping-/Flash-/Input-only-Pins).
+// LOLIN-Dev-Board war 32/33/25/26 → bei Board-Wechsel Debug-setPins nutzen (Board-Profil noch offen).
+#define STEPPER_IN1 23
+#define STEPPER_IN2 17
+#define STEPPER_IN3 16
+#define STEPPER_IN4 4
 
 // Schritte pro Richtung — kalibriert am Bench.
 // 28BYJ-48 Half-Step: 4096 Steps/Umdrehung (~11,4 Steps/°). 1024 Steps = 90° Riegelweg.
 #define STEPPER_LOCK_STEPS  1024
 #define STEPPER_STEP_DELAY_US 3000 // µs — langsamer = mehr Drehmoment; mit Last ≥3000
+// Drehrichtung: Vorzeichen, das auf ZU fährt. LMB-Mechanik ggü. LOLIN gespiegelt.
+#define STEPPER_DIR_LOCK (+1) // +1 = zu (LMB); LOLIN-Dev war -1
 
 // ── Onboard LED ────────────────────────────────────────────────────────────
 // LOLIN D32: Blaue LED auf GPIO5, ACTIVE-LOW (leuchtet bei LOW-Pegel!).

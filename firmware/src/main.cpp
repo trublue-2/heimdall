@@ -262,7 +262,7 @@ static void handleDebugPage() {
     "</style></head><body><h2>🔧 Heimdall Debug</h2>"
     "<p style='color:#8a8a8a;font-size:.85rem'>⚠️ BENCH-MODE: Sperre aus, Aktionen treiben den Motor auch bei ZU. Sweep = 2 s/GPIO.</p>"
     "<h3>Stepper-Pins setzen</h3>"
-    "IN1 <input id=a value=32> IN2 <input id=b value=33> IN3 <input id=c value=25> IN4 <input id=d value=26>"
+    "IN1 <input id=a value=23> IN2 <input id=b value=17> IN3 <input id=c value=16> IN4 <input id=d value=4>"
     "<div><button class=go onclick=setpins()>Pins übernehmen</button></div>"
     "<h3>Testfahrt (gesetzte Pins)</h3>"
     "<button class=go onclick=\"mv('lock')\">▶ ZU</button>"
