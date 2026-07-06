@@ -36,9 +36,7 @@ static bool            gOtaPending     = false; // läuft eine OTA-Validierung? 
 
 // Debug-Mode (server-aktiviert): Box bleibt wach + serviert die lokale Debug-Seite
 // zum Pin-Testen ohne Reflash. Nicht persistent — endet bei Server-Aus oder Obergrenze.
-static bool            gDebugMode      = false;
-static unsigned long   gDebugStartMs   = 0; // Start des Debug-Fensters (Drain-Obergrenze)
-static unsigned long   gLastDebugSync  = 0; // letzter Re-Sync im Debug
+static bool            gDebugMode      = false; // Server-Flag; steuert nur noch das Auto-OTA-Gate
 
 // ── Log-Ringpuffer für die Browser-Serial ───────────────────────────────────
 // Arduinos log_* landen via log_printf → ets_printf → putc1. Wir hängen uns per
@@ -232,41 +230,12 @@ static void handleStatus() {
   gWeb.send(200, "text/html", html);
 }
 
-// ── Debug-Mode: lokale Pin-Test-Seite (nur aktiv wenn der Server debugMode setzt) ──
-// ⚠️ BENCH / PIN-FINDING: „Box offen"-Sperre DEAKTIVIERT, damit der Sweep auch bei „ZU" misst.
-//    VOR PRODUKTIV WIEDER AKTIVIEREN — Original:
-//      if (gBox.locked) { gWeb.send(409, "text/plain", "Box ist ZU — Debug-Aktion abgelehnt"); return false; }
-static bool dbgGuard() {
-  return true;
-}
+// ── Debug-Mode: lokale Monitoring-Seite (Info + Serial + FW-Flashen) ──────────
+// Pin-Finde-Tools (Pins setzen, Testfahrt, Sweep, Einzel-Puls, ADC-Scan, Pin-Dump)
+// wurden nach abgeschlossenem Bring-up entfernt — alle LMB-Pins stehen in config.h.
 
-static void handleDbgPins() {
-  if (!dbgGuard()) return;
-  Stepper::setPins(gWeb.arg("a").toInt(), gWeb.arg("b").toInt(),
-                   gWeb.arg("c").toInt(), gWeb.arg("d").toInt());
-  gWeb.send(200, "text/plain", "Pins gesetzt: " + Stepper::pinsCsv());
-}
-
-static void handleDbgTest() {
-  if (!dbgGuard()) return;
-  String dir = gWeb.arg("dir");
-  if (dir == "lock") Stepper::lock(); else Stepper::unlock();
-  gWeb.send(200, "text/plain", "Testfahrt " + dir + " ok (Pins " + Stepper::pinsCsv() + ")");
-}
-
-static void handleDbgPulse() {
-  if (!dbgGuard()) return;
-  uint16_t ms = gWeb.arg("ms").toInt();
-  if (ms == 0) ms = 600;
-  if (ms > 6000) ms = 6000; // Obergrenze gegen Endlos-Bestromung; 5000 (5-s-Sweep) erlaubt
-  uint8_t pin = gWeb.arg("pin").toInt();
-  Stepper::pulse(pin, ms);
-  gWeb.send(200, "text/plain", "Puls GPIO" + String(pin) + " " + ms + "ms ok");
-}
-
-// Bench: OTA manuell anstoßen — umgeht das !gDebugMode-Gate der Loop, damit man im
-// Debug-Mode bleiben und trotzdem updaten kann. Verschluss-Sperre BLEIBT bestehen:
-// bei geschlossener Box nie flashen (gebrickter Flash = nicht mehr öffenbar; Safety > Function).
+// OTA manuell anstoßen. Verschluss-Sperre BLEIBT: bei geschlossener Box nie flashen
+// (gebrickter Flash = nicht mehr öffenbar; Safety > Function).
 static void handleDbgOta() {
   if (gBox.locked) { gWeb.send(409, "text/plain", "Box ist ZU — OTA abgelehnt (Brick-Gefahr)"); return; }
   OtaInfo ota = {};
@@ -278,22 +247,6 @@ static void handleDbgOta() {
   delay(200); // Response rausschicken, bevor der blockierende Flash + Reboot startet
   OTA::apply(ota.url, gCreds.deviceToken, ota.sig); // Erfolg → Reboot (kehrt nicht zurück)
   log_e("Manuelle OTA fehlgeschlagen — weiter mit aktueller FW");
-}
-
-// Bench: alle WiFi-tauglichen ADC1-Pins lesen, um Akku-Sense-Pin + Teiler der LMB zu finden.
-// LiPo dran → echte VBAT messen → welcher Pin geht proportional mit → PIN_BATT_ADC + Teiler.
-// (ADC2-Pins fehlen bewusst: mit aktivem WLAN nicht nutzbar.)
-static void handleDbgAdc() {
-  static const uint8_t ADC1[] = {32, 33, 34, 35, 36, 39};
-  String out = "ADC1 (16x gemittelt):\n";
-  for (uint8_t p : ADC1) {
-    uint32_t acc = 0;
-    for (int i = 0; i < 16; i++) acc += analogRead(p);
-    int raw = (int)(acc / 16);
-    float v = (raw / 4095.0f) * 3.3f;
-    out += "GPIO" + String(p) + ": raw " + String(raw) + " -> " + String(v, 3) + " V  (x2=" + String(v * 2.0f, 2) + " V)\n";
-  }
-  gWeb.send(200, "text/plain", out);
 }
 
 // GPIO26 (USB/VBUS) frisch lesen → gBox.charging. Muss bei JEDEM Sync laufen, nicht nur
@@ -359,21 +312,7 @@ static void handleDebugPage() {
     "#log{margin-top:.4rem;padding:.6rem;border-radius:.5rem;background:#000;color:#9fe7b0;"
     "font-family:monospace;font-size:.72rem;height:16rem;min-height:8rem;overflow:auto;white-space:pre-wrap;resize:both}"
     "</style></head><body><h2>🔧 Heimdall Debug</h2>"
-    "<p style='color:#8a8a8a;font-size:.85rem'>⚠️ BENCH-MODE: Sperre aus, Aktionen treiben den Motor auch bei ZU. Sweep = 2 s/GPIO.</p>"
     "<div id=info>lade…</div>"
-    "<h3>Stepper-Pins setzen</h3>"
-    "IN1 <input id=a value=23> IN2 <input id=b value=17> IN3 <input id=c value=16> IN4 <input id=d value=4>"
-    "<div><button class=go onclick=setpins()>Pins übernehmen</button></div>"
-    "<h3>Testfahrt (gesetzte Pins)</h3>"
-    "<button class=go onclick=\"mv('lock')\">▶ ZU</button>"
-    "<button class=go onclick=\"mv('unlock')\">▶ AUF</button>"
-    "<h3>Einzel-Pin Puls — welcher GPIO ruckt?</h3>"
-    "GPIO <input id=p value=32> ms <input id=ms value=2000>"
-    "<button onclick=pulse()>Puls</button>"
-    "<h3>Auto-Sweep (alle Kandidaten)</h3>"
-    "<button class=go onclick=sweep()>Sweep starten</button><button onclick=\"stop=1\">Stop</button>"
-    "<h3>ADC / Batterie-Pin finden</h3>"
-    "<button class=go onclick=adc()>ADC1-Pins lesen</button>"
     "<h3>Firmware</h3>"
     "<button class=go onclick=ota()>⬇ Neue FW flashen</button>"
     "<div id=st>bereit</div>"
@@ -382,16 +321,7 @@ static void handleDebugPage() {
     "<button onclick=\"navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('log').textContent)\">Kopieren</button>"
     "<pre id=log></pre>"
     "<script>"
-    "var stop=0;function S(t){document.getElementById('st').textContent=t}"
-    "function g(i){return document.getElementById(i).value}"
-    "async function setpins(){S((await(await fetch(`/dbg/pins?a=${g('a')}&b=${g('b')}&c=${g('c')}&d=${g('d')}`)).text()))}"
-    "async function mv(d){S('fahre '+d+'…');S(await(await fetch('/dbg/test?dir='+d)).text())}"
-    "async function pulse(){let p=g('p');S('Puls GPIO'+p+'…');S(await(await fetch(`/dbg/pulse?pin=${p}&ms=${g('ms')}`)).text())}"
-    "async function sweep(){stop=0;let c=[2,4,5,12,13,14,15,16,17,18,19,21,22,23,25,26,27,32,33];"
-    "for(let i=0;i<c.length&&!stop;i++){S('Sweep: GPIO'+c[i]+' ('+(i+1)+'/'+c.length+')');"
-    "await fetch(`/dbg/pulse?pin=${c[i]}&ms=${g('ms')}`);await new Promise(r=>setTimeout(r,300));}"
-    "S(stop?'Sweep gestoppt':'Sweep fertig');}"
-    "async function adc(){S('ADC lesen…');S(await(await fetch('/dbg/adc')).text())}"
+    "function S(t){document.getElementById('st').textContent=t}"
     "async function ota(){S('OTA: prüfe & flashe…');"
     "try{S(await(await fetch('/dbg/ota')).text())}"
     "catch(e){S('Verbindung weg — vermutlich Reboot nach erfolgreichem Flash ✓')}}"
@@ -484,11 +414,7 @@ void setup() {
   Stepper::begin();
   gWeb.on("/", handleStatus); // Statusseite-Route einmalig registrieren
   gWeb.on("/debug",    handleDebugPage); // Debug-Mode-Routen (nur wirksam, wenn debugMode aktiv)
-  gWeb.on("/dbg/pins", handleDbgPins);
-  gWeb.on("/dbg/test", handleDbgTest);
-  gWeb.on("/dbg/pulse",handleDbgPulse);
   gWeb.on("/dbg/ota",  handleDbgOta);
-  gWeb.on("/dbg/adc",  handleDbgAdc);
   gWeb.on("/dbg/info", handleDbgInfo);
   gWeb.on("/dbg/log",  handleDbgLog);
   pinMode(PIN_BUTTON, INPUT_PULLUP); // HIGH per Pull-up, LOW bei Druck (PIN_BUTTON)
@@ -631,29 +557,6 @@ void setup() {
   gBtnLatched = false; // Boot-Bounce verwerfen — der Initial-Sync läuft ohnehin
 }
 
-// Bench: periodischer Serial-Dump der digitalen Pin-Zustände. Druckt nur bei ÄNDERUNG
-// (+ 5-s-Lebenszeichen), damit man sieht, welcher GPIO flippt — z.B. Lade-Pin: USB rein/raus.
-// Input-only-Pins (34/35/36/39) floaten evtl. (kein Pull-up) → dort etwas Rauschen möglich.
-static void dumpPinStates() {
-  static const uint8_t PINS[] = {0,2,12,13,14,15,18,19,21,22,25,27,33,34,35,36,39}; // 32=Akku-ADC + 26=Lade-Pin raus (eigene Modes)
-  static bool cfg = false;
-  static uint32_t last = 0xFFFFFFFF;
-  static unsigned long lastBeat = 0;
-  if (!cfg) {
-    for (uint8_t p : PINS) pinMode(p, (p==34||p==35||p==36||p==39) ? INPUT : INPUT_PULLUP);
-    cfg = true;
-  }
-  uint32_t mask = 0;
-  for (size_t i = 0; i < sizeof(PINS); i++) if (digitalRead(PINS[i])) mask |= (1u << i);
-  bool changed = (mask != last), beat = (millis() - lastBeat > 5000);
-  if (!changed && !beat) return;
-  last = mask; lastBeat = millis();
-  char line[220]; int n = 0;
-  for (size_t i = 0; i < sizeof(PINS); i++)
-    n += snprintf(line + n, sizeof(line) - n, "%u=%d ", PINS[i], (int)((mask >> i) & 1u));
-  log_i("PINS%s %s", changed ? "*" : " ", line);
-}
-
 // ── loop: State-Machine ──────────────────────────────────────────────────────
 void loop() {
   switch (gState) {
@@ -785,29 +688,19 @@ void loop() {
       ensureStatusServer();
       gWeb.handleClient();
 
-      if (gDebugMode) {
-        static unsigned long gLastPinDump = 0; // Bench: Pin-Zustände alle 200 ms sampeln (druckt nur bei Änderung)
-        if (millis() - gLastPinDump > 200) { gLastPinDump = millis(); dumpPinStates(); }
-        // Debug-Mode: NICHT schlafen, lokale Seite bedienen. Periodisch re-syncen
-        // (hält Flag/IP frisch, erlaubt Fern-Aus im Dashboard); harte Obergrenze
-        // gegen Dauer-Wach-Drain, falls der Server-Kontakt verloren geht.
-        if (gDebugStartMs == 0) {
-          gDebugStartMs = gLastDebugSync = millis();
-          log_w("DEBUG-MODE aktiv → kein Sleep · http://%s/debug",
-                WiFi.localIP().toString().c_str());
-        }
-        if (millis() - gDebugStartMs > DEBUG_MAX_MS) {
-          log_w("DEBUG-MODE: %lu-min-Obergrenze erreicht → Deep-Sleep", DEBUG_MAX_MS / 60000);
-          gDebugMode = false; gDebugStartMs = 0;
-          goDeepSleep();
-        } else if (millis() - gLastDebugSync > DEBUG_RESYNC_MS) {
-          gLastDebugSync = millis();
-          gState = State::SYNCING; // refresht gDebugMode → „Aus" im Dashboard greift
+      // Wach bleiben, solange USB/Netz anliegt (GPIO26) → Debug-Seite jederzeit erreichbar;
+      // sonst auf Akku normal nach IDLE_SLEEP_MS schlafen. Kein Dauer-Wach über debugMode mehr.
+      readChargeState(); // aktualisiert gBox.charging (GPIO26)
+      if (gBox.charging) {
+        static unsigned long gLastAwakeSync = 0;
+        if (gLastAwakeSync == 0) gLastAwakeSync = millis();
+        if (millis() - gLastAwakeSync > DEBUG_RESYNC_MS) {
+          gLastAwakeSync = millis();
+          gState = State::SYNCING; // periodisch re-syncen, hält Policy/OTA/IP/Akku frisch
         } else {
           delay(5);
         }
       } else {
-        gDebugStartMs = 0;
         if (millis() - gLastActivityMs > IDLE_SLEEP_MS) {
           goDeepSleep();
         } else {
