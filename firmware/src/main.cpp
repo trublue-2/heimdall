@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiUdp.h>         // UDP-Broadcast des Logs (Live-Remote via nc -ul 9999)
 #include <WebServer.h>
 #include <Preferences.h>
 #include <esp_system.h>
@@ -48,6 +49,8 @@ extern "C" {
   void ets_write_char_uart(char c);
 }
 static const uint32_t  LOG_CAP = 6144;
+static const uint16_t  LOG_UDP_PORT = 9999;     // Broadcast-Ziel fürs Live-Remote-Log
+static WiFiUDP         gUdp;
 static char            gLog[LOG_CAP];
 static volatile uint32_t gLogHead = 0;          // total je geschriebene Bytes (monoton)
 static char            gLine[220];              // aktuelle Zeile puffern (für Filter + Zeitstempel)
@@ -65,6 +68,16 @@ static void logPutc(char c) {
       char x = gLine[i]; gLog[gLogHead % LOG_CAP] = x; gLogHead++;
       if (x == '\n') ets_write_char_uart('\r');
       ets_write_char_uart(x);
+    }
+    // UDP-Broadcast fürs Live-Remote-Log (Mac: nc -ul 9999) — kommt aus dem Log-Hook,
+    // NICHT aus dem Loop → geht auch während des blockierenden OTA-Flashs raus.
+    if (WiFi.isConnected()) {
+      static bool udpUp = false;
+      if (!udpUp) { gUdp.begin(0); udpUp = true; }
+      if (gUdp.beginPacket(WiFi.broadcastIP(), LOG_UDP_PORT)) {
+        gUdp.write((const uint8_t*)gLine, gLineLen);
+        gUdp.endPacket();
+      }
     }
   }
   gLineLen = 0;
@@ -317,6 +330,9 @@ static void handleDebugPage() {
     "<button class=go onclick=ota()>⬇ Neue FW flashen</button>"
     "<div id=st>bereit</div>"
     "<h3>Serial (live)</h3>"
+    "<p style='color:#8a8a8a;font-size:.78rem;margin:.2rem 0'>Live-Remote am Mac (auch OTA-Fortschritt): "
+    "<code style='background:#000;padding:.1rem .3rem;border-radius:.3rem'>nc -ul 9999</code> "
+    "— UDP-Broadcast auf Port 9999, blockiert nicht beim Flash.</p>"
     "<button onclick=clg()>Leeren</button>"
     "<button onclick=\"navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('log').textContent)\">Kopieren</button>"
     "<pre id=log></pre>"
