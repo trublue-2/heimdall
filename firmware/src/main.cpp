@@ -200,9 +200,10 @@ static void handleStatus() {
 }
 
 // ── Debug-Mode: lokale Pin-Test-Seite (nur aktiv wenn der Server debugMode setzt) ──
-// Aktionen treiben den Motor → nur erlaubt, solange die Box OFFEN ist.
+// ⚠️ BENCH / PIN-FINDING: „Box offen"-Sperre DEAKTIVIERT, damit der Sweep auch bei „ZU" misst.
+//    VOR PRODUKTIV WIEDER AKTIVIEREN — Original:
+//      if (gBox.locked) { gWeb.send(409, "text/plain", "Box ist ZU — Debug-Aktion abgelehnt"); return false; }
 static bool dbgGuard() {
-  if (gBox.locked) { gWeb.send(409, "text/plain", "Box ist ZU — Debug-Aktion abgelehnt"); return false; }
   return true;
 }
 
@@ -223,7 +224,8 @@ static void handleDbgTest() {
 static void handleDbgPulse() {
   if (!dbgGuard()) return;
   uint16_t ms = gWeb.arg("ms").toInt();
-  if (ms == 0 || ms > 3000) ms = 600; // Schutz vor Dauer-Bestromung einer Spule
+  if (ms == 0) ms = 600;
+  if (ms > 6000) ms = 6000; // Obergrenze gegen Endlos-Bestromung; 5000 (5-s-Sweep) erlaubt
   uint8_t pin = gWeb.arg("pin").toInt();
   Stepper::pulse(pin, ms);
   gWeb.send(200, "text/plain", "Puls GPIO" + String(pin) + " " + ms + "ms ok");
@@ -242,7 +244,7 @@ static void handleDebugPage() {
     "color:#e6e6e6;font-size:.95rem}button.go{background:#4ade80;color:#04130a;font-weight:700}"
     "#st{margin-top:1rem;padding:.7rem;border-radius:.5rem;background:#1a1d23;font-family:monospace}"
     "</style></head><body><h2>🔧 Heimdall Debug</h2>"
-    "<p style='color:#8a8a8a;font-size:.85rem'>Box muss OFFEN sein. Aktionen treiben den Motor.</p>"
+    "<p style='color:#8a8a8a;font-size:.85rem'>⚠️ BENCH-MODE: Sperre aus, Aktionen treiben den Motor auch bei ZU. Sweep = 5 s/GPIO.</p>"
     "<h3>Stepper-Pins setzen</h3>"
     "IN1 <input id=a value=32> IN2 <input id=b value=33> IN3 <input id=c value=25> IN4 <input id=d value=26>"
     "<div><button class=go onclick=setpins()>Pins übernehmen</button></div>"
@@ -250,7 +252,7 @@ static void handleDebugPage() {
     "<button class=go onclick=\"mv('lock')\">▶ ZU</button>"
     "<button class=go onclick=\"mv('unlock')\">▶ AUF</button>"
     "<h3>Einzel-Pin Puls — welcher GPIO ruckt?</h3>"
-    "GPIO <input id=p value=32> ms <input id=ms value=600>"
+    "GPIO <input id=p value=32> ms <input id=ms value=5000>"
     "<button onclick=pulse()>Puls</button>"
     "<h3>Auto-Sweep (alle Kandidaten)</h3>"
     "<button class=go onclick=sweep()>Sweep starten</button><button onclick=\"stop=1\">Stop</button>"
@@ -261,7 +263,7 @@ static void handleDebugPage() {
     "async function setpins(){S((await(await fetch(`/dbg/pins?a=${g('a')}&b=${g('b')}&c=${g('c')}&d=${g('d')}`)).text()))}"
     "async function mv(d){S('fahre '+d+'…');S(await(await fetch('/dbg/test?dir='+d)).text())}"
     "async function pulse(){let p=g('p');S('Puls GPIO'+p+'…');S(await(await fetch(`/dbg/pulse?pin=${p}&ms=${g('ms')}`)).text())}"
-    "async function sweep(){stop=0;let c=[2,4,5,12,13,15,16,17,18,19,21,22,23,25,26,27,32,33];"
+    "async function sweep(){stop=0;let c=[2,4,5,12,13,14,15,16,17,18,19,21,22,23,25,26,27,32,33];"
     "for(let i=0;i<c.length&&!stop;i++){S('Sweep: GPIO'+c[i]+' ('+(i+1)+'/'+c.length+')');"
     "await fetch(`/dbg/pulse?pin=${c[i]}&ms=${g('ms')}`);await new Promise(r=>setTimeout(r,300));}"
     "S(stop?'Sweep gestoppt':'Sweep fertig');}"
