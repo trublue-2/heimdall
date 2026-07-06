@@ -529,6 +529,29 @@ void setup() {
   gBtnLatched = false; // Boot-Bounce verwerfen — der Initial-Sync läuft ohnehin
 }
 
+// Bench: periodischer Serial-Dump der digitalen Pin-Zustände. Druckt nur bei ÄNDERUNG
+// (+ 5-s-Lebenszeichen), damit man sieht, welcher GPIO flippt — z.B. Lade-Pin: USB rein/raus.
+// Input-only-Pins (34/35/36/39) floaten evtl. (kein Pull-up) → dort etwas Rauschen möglich.
+static void dumpPinStates() {
+  static const uint8_t PINS[] = {0,2,12,13,14,15,18,19,21,22,25,26,27,32,33,34,35,36,39};
+  static bool cfg = false;
+  static uint32_t last = 0xFFFFFFFF;
+  static unsigned long lastBeat = 0;
+  if (!cfg) {
+    for (uint8_t p : PINS) pinMode(p, (p==34||p==35||p==36||p==39) ? INPUT : INPUT_PULLUP);
+    cfg = true;
+  }
+  uint32_t mask = 0;
+  for (size_t i = 0; i < sizeof(PINS); i++) if (digitalRead(PINS[i])) mask |= (1u << i);
+  bool changed = (mask != last), beat = (millis() - lastBeat > 5000);
+  if (!changed && !beat) return;
+  last = mask; lastBeat = millis();
+  char line[220]; int n = 0;
+  for (size_t i = 0; i < sizeof(PINS); i++)
+    n += snprintf(line + n, sizeof(line) - n, "%u=%d ", PINS[i], (int)((mask >> i) & 1u));
+  log_i("PINS%s %s", changed ? "*" : " ", line);
+}
+
 // ── loop: State-Machine ──────────────────────────────────────────────────────
 void loop() {
   switch (gState) {
@@ -659,6 +682,8 @@ void loop() {
       gWeb.handleClient();
 
       if (gDebugMode) {
+        static unsigned long gLastPinDump = 0; // Bench: Pin-Zustände alle 200 ms sampeln (druckt nur bei Änderung)
+        if (millis() - gLastPinDump > 200) { gLastPinDump = millis(); dumpPinStates(); }
         // Debug-Mode: NICHT schlafen, lokale Seite bedienen. Periodisch re-syncen
         // (hält Flag/IP frisch, erlaubt Fern-Aus im Dashboard); harte Obergrenze
         // gegen Dauer-Wach-Drain, falls der Server-Kontakt verloren geht.
