@@ -6,6 +6,7 @@
 #include <esp_ota_ops.h>
 #include <driver/rtc_io.h>
 #include <soc/gpio_struct.h> // direkter LED-Registerzugriff im Button-ISR (IRAM-sicher)
+#include <esp_log.h>         // Log-Hook für die Browser-Serial (Ring-Buffer)
 #include <time.h>
 #include "config.h"
 #include "nvs_storage.h"
@@ -39,6 +40,27 @@ static bool            gOtaPending     = false; // läuft eine OTA-Validierung? 
 static bool            gDebugMode      = false;
 static unsigned long   gDebugStartMs   = 0; // Start des Debug-Fensters (Drain-Obergrenze)
 static unsigned long   gLastDebugSync  = 0; // letzter Re-Sync im Debug
+
+// ── Log-Ringpuffer für die Browser-Serial ───────────────────────────────────
+// Fängt alle log_* ab (esp_log_set_vprintf), stellt eine lesbare [HH:MM:SS] voran und
+// schreibt weiterhin auf UART. /dbg/log liefert neue Bytes ab einem Cursor (= gLogHead).
+static const uint32_t  LOG_CAP = 6144;
+static char            gLog[LOG_CAP];
+static volatile uint32_t gLogHead = 0;          // total je geschriebene Bytes (monoton)
+static vprintf_like_t  gPrevVprintf = nullptr;
+static int logVprintf(const char* fmt, va_list ap) {
+  va_list ap2; va_copy(ap2, ap);
+  char buf[300]; int p = 0;
+  time_t now = time(nullptr);
+  if (now > 1700000000) { struct tm t; localtime_r(&now, &t);
+    p = snprintf(buf, sizeof(buf), "[%02d:%02d:%02d] ", t.tm_hour, t.tm_min, t.tm_sec); }
+  int m = vsnprintf(buf + p, sizeof(buf) - p, fmt, ap);
+  int total = p + (m > 0 ? m : 0); if (total > (int)sizeof(buf)) total = sizeof(buf);
+  for (int i = 0; i < total; i++) { gLog[gLogHead % LOG_CAP] = buf[i]; gLogHead++; }
+  int r = gPrevVprintf ? gPrevVprintf(fmt, ap2) : vprintf(fmt, ap2);
+  va_end(ap2);
+  return r;
+}
 
 // Knopfdruck wird per Interrupt gelatcht — so geht keine Flanke verloren,
 // auch nicht während SYNCING/Boot/Actuation, wo der Loop nicht pollt.
@@ -264,6 +286,45 @@ static void handleDbgAdc() {
   gWeb.send(200, "text/plain", out);
 }
 
+// Info-Panel (JSON, alle ~2 s gepollt): FW, Akku, USB/Laden, MAC/IP/WLAN, Lock, Uptime.
+static void handleDbgInfo() {
+  uint32_t acc = 0; for (int i = 0; i < 16; i++) acc += analogRead(PIN_BATT_ADC);
+  float vbat = (acc / 16 / 4095.0f) * 3.3f * BATT_DIVIDER;
+#if PIN_CHARGE_DETECT >= 0
+  pinMode(PIN_CHARGE_DETECT, INPUT_PULLDOWN);
+  int usb = digitalRead(PIN_CHARGE_DETECT);
+#else
+  int usb = 0;
+#endif
+  String j = "{";
+  j += "\"fw\":\"" FW_VERSION "\",";
+  j += "\"batt\":" + String(gBox.batteryPct) + ",";
+  j += "\"vbat\":" + String(vbat, 2) + ",";
+  j += "\"usb\":" + String(usb) + ",";
+  j += "\"charging\":" + String(gBox.charging ? "true" : "false") + ",";
+  j += "\"locked\":" + String(gBox.locked ? "true" : "false") + ",";
+  j += "\"mac\":\"" + WiFi.macAddress() + "\",";
+  j += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
+  j += "\"ssid\":\"" + WiFi.SSID() + "\",";
+  j += "\"rssi\":" + String(WiFi.RSSI()) + ",";
+  j += "\"uptime\":" + String(millis() / 1000) + ",";
+  j += "\"heap\":" + String(ESP.getFreeHeap() / 1024);
+  j += "}";
+  gWeb.send(200, "application/json", j);
+}
+
+// Browser-Serial: neue Log-Bytes ab ?since=<cursor>. Antwort: "<neuerCursor>\n<bytes>".
+static void handleDbgLog() {
+  uint32_t since = strtoul(gWeb.arg("since").c_str(), nullptr, 10);
+  uint32_t head = gLogHead;
+  uint32_t oldest = head > LOG_CAP ? head - LOG_CAP : 0;
+  if (since < oldest) since = oldest;
+  String out; out.reserve(head - since + 12);
+  out += String(head); out += "\n";
+  for (uint32_t i = since; i < head; i++) out += gLog[i % LOG_CAP];
+  gWeb.send(200, "text/plain", out);
+}
+
 static void handleDebugPage() {
   String h =
     "<!DOCTYPE html><html lang=de><head><meta charset=utf-8>"
@@ -276,8 +337,13 @@ static void handleDebugPage() {
     "button{margin:.2rem;padding:.5rem .8rem;border:0;border-radius:.5rem;background:#2a3340;"
     "color:#e6e6e6;font-size:.95rem}button.go{background:#4ade80;color:#04130a;font-weight:700}"
     "#st{margin-top:1rem;padding:.7rem;border-radius:.5rem;background:#1a1d23;font-family:monospace;white-space:pre-wrap}"
+    "#info{background:#1a1d23;border-radius:.5rem;padding:.7rem;font-size:.85rem;line-height:1.7;margin:.4rem 0 .2rem}"
+    "#info b{color:#4ade80}#info .k{color:#8a8a8a}"
+    "#log{margin-top:.4rem;padding:.6rem;border-radius:.5rem;background:#000;color:#9fe7b0;"
+    "font-family:monospace;font-size:.72rem;height:16rem;overflow:auto;white-space:pre-wrap}"
     "</style></head><body><h2>🔧 Heimdall Debug</h2>"
     "<p style='color:#8a8a8a;font-size:.85rem'>⚠️ BENCH-MODE: Sperre aus, Aktionen treiben den Motor auch bei ZU. Sweep = 2 s/GPIO.</p>"
+    "<div id=info>lade…</div>"
     "<h3>Stepper-Pins setzen</h3>"
     "IN1 <input id=a value=23> IN2 <input id=b value=17> IN3 <input id=c value=16> IN4 <input id=d value=4>"
     "<div><button class=go onclick=setpins()>Pins übernehmen</button></div>"
@@ -294,6 +360,10 @@ static void handleDebugPage() {
     "<h3>Firmware</h3>"
     "<button class=go onclick=ota()>⬇ Neue FW flashen</button>"
     "<div id=st>bereit</div>"
+    "<h3>Serial (live)</h3>"
+    "<button onclick=clg()>Leeren</button>"
+    "<button onclick=\"navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('log').textContent)\">Kopieren</button>"
+    "<pre id=log></pre>"
     "<script>"
     "var stop=0;function S(t){document.getElementById('st').textContent=t}"
     "function g(i){return document.getElementById(i).value}"
@@ -308,6 +378,19 @@ static void handleDebugPage() {
     "async function ota(){S('OTA: prüfe & flashe…');"
     "try{S(await(await fetch('/dbg/ota')).text())}"
     "catch(e){S('Verbindung weg — vermutlich Reboot nach erfolgreichem Flash ✓')}}"
+    "async function refreshInfo(){try{let d=await(await fetch('/dbg/info')).json();"
+    "document.getElementById('info').innerHTML="
+    "'<span class=k>FW</span> <b>'+d.fw+'</b> · <span class=k>MAC</span> '+d.mac+'<br>'+"
+    "'<span class=k>Akku</span> <b>'+d.batt+'%</b> ('+d.vbat+' V) · <span class=k>USB</span> '+(d.usb?'ja':'nein')+' · <span class=k>Laden</span> '+(d.charging?'⚡ja':'nein')+'<br>'+"
+    "'<span class=k>Lock</span> '+(d.locked?'ZU':'OFFEN')+' · <span class=k>WLAN</span> '+d.ssid+' ('+d.rssi+' dBm)<br>'+"
+    "'<span class=k>IP</span> '+d.ip+' · <span class=k>Up</span> '+d.uptime+'s · <span class=k>Heap</span> '+d.heap+'kB';"
+    "}catch(e){}}"
+    "let lc=0;async function pollLog(){try{let t=await(await fetch('/dbg/log?since='+lc)).text();"
+    "let nl=t.indexOf('\\n');lc=parseInt(t.slice(0,nl));let d=t.slice(nl+1);"
+    "if(d){let el=document.getElementById('log');let b=el.scrollTop+el.clientHeight>=el.scrollHeight-20;"
+    "el.textContent+=d;if(b)el.scrollTop=el.scrollHeight;}}catch(e){}}"
+    "function clg(){document.getElementById('log').textContent='';}"
+    "refreshInfo();setInterval(refreshInfo,2000);pollLog();setInterval(pollLog,1000);"
     "</script></body></html>";
   gWeb.send(200, "text/html", h);
 }
@@ -367,6 +450,7 @@ static void goDeepSleep() {
 // ── setup: läuft einmal nach jedem Wake / Power-On ──────────────────────────
 void setup() {
   Serial.begin(115200);
+  gPrevVprintf = esp_log_set_vprintf(logVprintf); // Logs zusätzlich in den Browser-Serial-Ringpuffer
   // Sofort-Quittung bei Button-Wake — GANZ am Anfang, VOR der schweren Init
   // (delay/NVS/OTA), damit das Ack ~sofort kommt statt erst ~0.5 s nach dem Boot.
   pinMode(PIN_LED, OUTPUT);
@@ -388,6 +472,8 @@ void setup() {
   gWeb.on("/dbg/pulse",handleDbgPulse);
   gWeb.on("/dbg/ota",  handleDbgOta);
   gWeb.on("/dbg/adc",  handleDbgAdc);
+  gWeb.on("/dbg/info", handleDbgInfo);
+  gWeb.on("/dbg/log",  handleDbgLog);
   pinMode(PIN_BUTTON, INPUT_PULLUP); // HIGH per Pull-up, LOW bei Druck (PIN_BUTTON)
   attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), onButtonIsr, FALLING);
   gLastActivityMs = millis();
@@ -538,7 +624,7 @@ void setup() {
 // (+ 5-s-Lebenszeichen), damit man sieht, welcher GPIO flippt — z.B. Lade-Pin: USB rein/raus.
 // Input-only-Pins (34/35/36/39) floaten evtl. (kein Pull-up) → dort etwas Rauschen möglich.
 static void dumpPinStates() {
-  static const uint8_t PINS[] = {0,2,12,13,14,15,18,19,21,22,25,26,27,33,34,35,36,39}; // 32 raus = Akku-ADC (kein Pull-up drauf)
+  static const uint8_t PINS[] = {0,2,12,13,14,15,18,19,21,22,25,27,33,34,35,36,39}; // 32=Akku-ADC + 26=Lade-Pin raus (eigene Modes)
   static bool cfg = false;
   static uint32_t last = 0xFFFFFFFF;
   static unsigned long lastBeat = 0;
