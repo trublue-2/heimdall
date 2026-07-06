@@ -232,7 +232,10 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   NVS::savePolicy(policy);
   NVS::saveState(state);
 
-  log_i("Policy: locked=%d lockUntil=%ld offlineH=%d hardCap=%d",
-        policy.serverLocked, (long)policy.lockUntil, policy.offlineOpenH, policy.hardCapH);
+  char lu[20] = "—";
+  if (policy.lockUntil > 0) { struct tm t; time_t v = policy.lockUntil; localtime_r(&v, &t);
+    strftime(lu, sizeof(lu), "%d.%m.%Y %H:%M", &t); }
+  log_i("Policy: locked=%d lockUntil=%ld (%s) offlineH=%d hardCap=%d",
+        policy.serverLocked, (long)policy.lockUntil, lu, policy.offlineOpenH, policy.hardCapH);
   return SyncResult::OK;
 }

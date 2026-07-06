@@ -599,13 +599,15 @@ void loop() {
         // Zeit-Lock ab; öffnet bei serverLocked=false oder abgelaufener Zeit-Deadline).
         // Nach erfolgreichem Sync ist die Uhr gültig (TLS-Cert-Check setzt das voraus).
         bool shouldClose = !Failsafe::isPolicyExpired(gPolicy);
-        log_i("Entscheidung: locked=%d serverLocked=%d lockUntil=%ld shouldClose=%d",
-              gBox.locked, gPolicy.serverLocked, (long)gPolicy.lockUntil, shouldClose);
+        log_i("Entscheidung: locked=%d serverLocked=%d lockUntil=%ld (%s) shouldClose=%d",
+              gBox.locked, gPolicy.serverLocked, (long)gPolicy.lockUntil,
+              fmtLocal(gPolicy.lockUntil).c_str(), shouldClose);
 
         if (gBox.locked && !shouldClose) {
           gState = State::OPENING;
         } else if (!gBox.locked && shouldClose) {
-          log_i("Policy: Sperren (serverLocked, bis %ld)", (long)gPolicy.lockUntil);
+          log_i("Policy: Sperren (serverLocked, bis %ld / %s)", (long)gPolicy.lockUntil,
+                fmtLocal(gPolicy.lockUntil).c_str());
           gBox.locked        = true;
           gBox.lockedSince   = time(nullptr);
           gBox.lockedSeconds = 0; // Sperrdauer-Zähler startet frisch (HardCap)
