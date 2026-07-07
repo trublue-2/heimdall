@@ -68,25 +68,31 @@ export function DeviceSettingsForm({
         value={nameVal}
         onChange={(e) => setNameVal(e.target.value)}
       />
-      <Input
-        id={`offline-${deviceId}`}
-        label="Offline-Failsafe (Stunden, 1–168) — öffnet nach X h ohne Sync"
-        type="number"
-        min={1}
-        max={168}
-        required
-        value={offline}
-        onChange={(e) => setOffline(e.target.value)}
-      />
-      <Input
-        id={`cap-${deviceId}`}
-        label="Hard-Cap (max. Stunden ab Verschluss, leer = kein Cap)"
-        type="number"
-        min={1}
-        max={720}
-        value={hardCap}
-        onChange={(e) => setHardCap(e.target.value)}
-      />
+      <details className="rounded-xl border border-[var(--border)] px-3 py-2">
+        <summary className="cursor-pointer select-none text-sm text-[var(--foreground-muted)]">
+          Erweitert — Failsafe (nur bei Bedarf ändern)
+        </summary>
+        <div className="mt-3 space-y-4">
+          <Input
+            id={`offline-${deviceId}`}
+            label="Offline-Failsafe (Stunden, 1–168) — öffnet nach X h ohne Sync"
+            type="number"
+            min={1}
+            max={168}
+            value={offline}
+            onChange={(e) => setOffline(e.target.value)}
+          />
+          <Input
+            id={`cap-${deviceId}`}
+            label="Hard-Cap (max. Stunden ab Verschluss, leer = kein Cap)"
+            type="number"
+            min={1}
+            max={720}
+            value={hardCap}
+            onChange={(e) => setHardCap(e.target.value)}
+          />
+        </div>
+      </details>
       <FormError message={error} />
       {ok && <p className="text-sm text-[var(--color-lock)]">Gespeichert.</p>}
       <Button type="submit" loading={saving}>Speichern</Button>

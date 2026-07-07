@@ -780,7 +780,7 @@ void setup() {
   // LED = Verbindungsanzeige (nicht mehr Lock): beim Boot noch aus (WiFi kommt erst),
   // geht an, sobald WiFi/Sync steht; erlischt im Deep-Sleep (Akku).
   digitalWrite(PIN_LED, LED_OFF);
-  log_i("Zustand (NVS): hasState=%d locked=%d lockedSince=%ld (LED = Server-Verbindung, nicht Lock)",
+  log_i("Zustand (NVS): hasState=%d locked=%d lockedSince=%ld",
         hasState, gBox.locked, (long)gBox.lockedSince);
 
   // ── Bench-Test: Credentials aus config.h flashen ─────────────────────────

@@ -139,6 +139,20 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // OTA-Update im Verlauf sichtbar machen: nach dem Flash meldet die Box eine neue fwVersion.
+  if (state.fwVersion && device.fwVersion && state.fwVersion !== device.fwVersion) {
+    await prisma.deviceEvent.create({
+      data: {
+        deviceId: device.id,
+        type: "OTA_UPDATE",
+        timestamp: now,
+        reason: `${device.fwVersion} → ${state.fwVersion}`,
+        fwVersion: state.fwVersion,
+      },
+    });
+    console.log(`${ts()} [box/sync] Device "${device.name}" → OTA_UPDATE (${device.fwVersion} → ${state.fwVersion})`);
+  }
+
   // Live-Update an offene Dashboards pushen (jeder Sync ändert mind. lastSyncAt)
   notifyDeviceChange();
 
