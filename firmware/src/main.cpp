@@ -11,6 +11,7 @@
 #include <time.h>
 #include "config.h"
 #include "nvs_storage.h"
+#include "watchdog.h"
 #include "stepper.h"
 #include "server_sync.h"
 #include "failsafe.h"
@@ -565,7 +566,7 @@ static void ensureStatusServer() {
     WiFi.begin(gCreds.ssid, gCreds.password);
     WiFi.setTxPower(WIFI_TX_POWER); // erst NACH begin() — STA muss gestartet sein
     unsigned long t = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t < WIFI_CONNECT_TIMEOUT_MS) delay(100);
+    while (WiFi.status() != WL_CONNECTED && millis() - t < WIFI_CONNECT_TIMEOUT_MS) { Watchdog::feed(); delay(100); }
     if (WiFi.status() != WL_CONNECTED) return;
   }
   if (!gWebOn) {
@@ -808,6 +809,13 @@ void setup() {
 
 // ── loop: State-Machine ──────────────────────────────────────────────────────
 void loop() {
+  // Hardware-Watchdog scharf ab dem ersten loop()-Eintritt (setup() + Dev-Test-Modi
+  // bleiben bewusst unbewacht) und in JEDER Iteration fuettern. Lange Blocker fuettern
+  // zusaetzlich selbst (WiFi-Connect, Provisioning-Hotspot, OTA-Download).
+  static bool wdtArmed = false;
+  if (!wdtArmed) { Watchdog::begin(); wdtArmed = true; }
+  Watchdog::feed();
+
   switch (gState) {
 
     // ── PROVISIONING ──────────────────────────────────────────────────────

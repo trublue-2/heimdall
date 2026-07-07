@@ -1,6 +1,7 @@
 #include "ota.h"
 #include "config.h"
 #include "certs.h"
+#include "watchdog.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <Update.h>
@@ -57,6 +58,7 @@ bool OTA::apply(const char* url, const char* token, const char* sigHex) {
   size_t written = 0;
   int lastPct = -10;
   while (http.connected() && (len < 0 || written < (size_t)len)) {
+    Watchdog::feed(); // ~1 MB Download kann > WDT_TIMEOUT_S dauern → je Chunk fuettern
     int n = stream.readBytes(buf, sizeof(buf));
     if (n <= 0) break; // Stream zu Ende / Timeout
     if (Update.write(buf, n) != (size_t)n) {

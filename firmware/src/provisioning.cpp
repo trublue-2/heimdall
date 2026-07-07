@@ -2,6 +2,7 @@
 #include "config.h"
 #include "nvs_storage.h"
 #include "failsafe.h"
+#include "watchdog.h"
 #include "stepper.h"
 #include <WiFi.h>
 #include <DNSServer.h>
@@ -195,6 +196,7 @@ void Provisioning::run() {
   uint32_t lastBlink = 0;
   bool ledOn = false;
   while (!gProvisioned) {
+    Watchdog::feed(); // Hotspot wartet legitim minutenlang auf den Nutzer → WDT nicht ausloesen
     dns.processNextRequest();
     server.handleClient();
     if (millis() - lastBlink >= 200) {

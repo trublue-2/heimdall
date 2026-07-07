@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.2.9"
+#define FW_VERSION "0.2.10"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Ziel-Board: ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
@@ -68,6 +68,10 @@
 // MUSS ≥ HEARTBEAT_S sein, sonst unterzählt der Offline-Zähler (Failsafe feuert zu spät).
 #define MAX_SLEEP_S              HEARTBEAT_S
 #define OFFLINE_OPEN_H           24                 // h ohne Sync → Auto-Open
+// Hardware-Watchdog: rebootet die Box, wenn die Firmware WDT_TIMEOUT_S lang haengt (kein
+// Feed) — Selbstheilung gegen Aufhaenger. Liegt bewusst ueber dem laengsten legitimen
+// Einzelblocker: OTA-Download wird per Chunk gefuettert, TLS/Sync/Stepper laufen << 30 s.
+#define WDT_TIMEOUT_S            30
 #define WIFI_CONNECT_TIMEOUT_MS  (15 * 1000)        // 15 s WiFi-Connect-Limit
 #define AUTH_FAIL_LIMIT          10                 // N×401 in Folge → Setup-Hotspot (Selbstheilung)
 #define OTA_VALIDATE_SYNCS       1                  // erfolgreiche Syncs bis OTA bestätigt (sonst Rollback)

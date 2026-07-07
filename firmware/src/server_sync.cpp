@@ -2,6 +2,7 @@
 #include "config.h"
 #include "certs.h"
 #include "logbuf.h"
+#include "watchdog.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -89,6 +90,7 @@ bool ServerSync::logToServerActive() { return gLogToServer; }
 static bool waitConnected(unsigned long timeoutMs) {
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED) {
+    Watchdog::feed(); // WiFi-Connect kann bis WIFI_CONNECT_TIMEOUT_MS dauern → WDT nicht ausloesen
     if (millis() - start > timeoutMs) return false;
     // "Verbinde"-Anzeige: LED schnell blinken während des WiFi-Connects (die dunkle Phase
     // zwischen Button-Ack und "verbunden = dauer an"). ~4 Hz.

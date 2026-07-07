@@ -136,9 +136,8 @@ Server und nach einem Stromausfall.
 
 Heimdall ist ein **funktionierender Prototyp**, kein fertiges Produkt. Ehrlich zum Stand:
 
-- ✅ Provisioning, Sperren/Öffnen, **Live-Steuerung (MQTT)**, Multi-WLAN, **signierte OTA + Zertifikat-Pinning**, Failsafes, Dashboard — **funktionieren** und laufen auf echter Hardware.
+- ✅ Provisioning, Sperren/Öffnen, **Live-Steuerung (MQTT)**, Multi-WLAN, **signierte OTA + Zertifikat-Pinning**, Failsafes, **Hardware-Watchdog** (Selbst-Reboot bei Firmware-Hänger), Dashboard — **funktionieren** und laufen auf echter Hardware.
 - ⚠️ Die **Mechanik (Schrittmotor/Riegel)** ist noch nicht unter Last validiert. Ein **Endlagensensor ist bewusst nicht vorgesehen** (keine Hardware dafür, kommt nicht) — der gemeldete Riegelzustand ist gerechnet, nicht gemessen; bei klemmendem Riegel öffnet der user-gemeldete „Riegel klemmt → erneut öffnen"-Befehl erneut.
-- 🔭 Auf der Roadmap: **Hardware-Watchdog** (Selbst-Reboot bei Firmware-Hänger).
 - ℹ️ Gedacht für den **privaten, selbst-gehosteten Betrieb** — die Sicherheit liegt bewusst in *Sichtbarkeit + Keyholder-Beziehung*, nicht in Unentrinnbarkeit (die Frontscheibe bleibt der physische Notausgang).
 
 ---
