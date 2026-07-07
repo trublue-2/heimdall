@@ -15,6 +15,7 @@
 #include "failsafe.h"
 #include "provisioning.h"
 #include "ota.h"
+#include "logbuf.h"
 
 // ── State-Machine ───────────────────────────────────────────────────────────
 enum class State {
@@ -105,6 +106,21 @@ static void udpLogTask(void*) {
     }
     vTaskDelay(pdMS_TO_TICKS(100));
   }
+}
+
+// Server-Log-Upload: neue Ring-Bytes seit dem Sync-Cursor (inkl. '\n'), auf maxBytes
+// gekappt, Cursor weitergeschoben. Deklaration in logbuf.h (nutzt server_sync.cpp).
+static uint32_t gSyncLogCursor = 0;
+String collectSyncLogs(size_t maxBytes) {
+  uint32_t head = gLogHead;
+  uint32_t oldest = head > LOG_CAP ? head - LOG_CAP : 0;
+  if (gSyncLogCursor < oldest) gSyncLogCursor = oldest; // überschriebene Bytes überspringen
+  uint32_t avail = head - gSyncLogCursor;
+  uint32_t cap = avail < maxBytes ? avail : (uint32_t)maxBytes;
+  String out;
+  out.reserve(cap + 1);
+  for (uint32_t i = 0; i < cap; i++) { out += gLog[gSyncLogCursor % LOG_CAP]; gSyncLogCursor++; }
+  return out;
 }
 
 // Knopfdruck wird per Interrupt gelatcht — so geht keine Flanke verloren,

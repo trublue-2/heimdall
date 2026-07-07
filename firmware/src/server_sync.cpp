@@ -1,6 +1,7 @@
 #include "server_sync.h"
 #include "config.h"
 #include "certs.h"
+#include "logbuf.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -54,6 +55,10 @@ RTC_DATA_ATTR static char     rtcPass[64] = {0};
 static volatile uint8_t gDiscReason  = 0;
 static char             gWifiErrSsid[64] = {0};
 static char             gWifiErrMsg[48]  = {0};
+
+// Server-Log: vom Server je Sync gemeldet (resp["logToServer"]). Ist er an, hängt der
+// NÄCHSTE Sync die neuen Log-Bytes an (ein Sync Verzögerung beim Umschalten — gewollt).
+static bool             gLogToServer = false;
 
 static void onWifiEvent(WiFiEvent_t ev, WiFiEventInfo_t info) {
   if (ev == ARDUINO_EVENT_WIFI_STA_DISCONNECTED)
@@ -238,6 +243,12 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   int ne = NVS::loadExtraNets(extras, MAX_EXTRA_NETS);
   for (int i = 0; i < ne; i++) ks.add(extras[i].ssid);
 
+  // Serielles Log mitschicken, wenn der Server es für diese Box aktiviert hat (logToServer).
+  if (gLogToServer) {
+    String logs = collectSyncLogs(4096);
+    if (logs.length()) req["logs"] = logs;
+  }
+
   String body;
   serializeJson(req, body);
 
@@ -286,6 +297,9 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   // Leer/fehlt → die lokale /wifi-Wahl der Box bleibt unberührt.
   const char* prefSsid = resp["preferredSsid"] | "";
   if (prefSsid[0]) { NVS::setPreferredSsid(prefSsid); log_i("Bevorzugtes WLAN (Server): %s", prefSsid); }
+
+  // Server-Log-Schalter für den nächsten Sync merken.
+  gLogToServer = resp["logToServer"] | false;
 
   NVS::savePolicy(policy);
   NVS::saveState(state);
