@@ -24,6 +24,9 @@ out/
 .pioenv/
 firmware/.pio/
 
+# Original-Firmware-Dumps (4 MB Binärabbilder, gehören nicht ins Repo)
+firmware/original_lmb/
+
 # macOS
 .DS_Store
 **/.DS_Store
