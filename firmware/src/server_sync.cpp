@@ -90,6 +90,9 @@ static bool waitConnected(unsigned long timeoutMs) {
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED) {
     if (millis() - start > timeoutMs) return false;
+    // "Verbinde"-Anzeige: LED schnell blinken während des WiFi-Connects (die dunkle Phase
+    // zwischen Button-Ack und "verbunden = dauer an"). ~4 Hz.
+    digitalWrite(PIN_LED, ((millis() / 120) % 2) ? LED_ON : LED_OFF);
     delay(50);
   }
   return true;

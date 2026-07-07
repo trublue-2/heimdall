@@ -890,3 +890,13 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* ─────────────────────────────────────────────
+   MASKIERTES TEXTFELD
+   Für Nicht-Login-Geheimnisse (z.B. WLAN-Schlüssel): maskiert wie ein Passwort,
+   ist aber KEIN type="password" → Passwortmanager (1Password) erkennen kein Login
+   und bieten kein ungefragtes Ausfüllen an.
+   ───────────────────────────────────────────── */
+.mask-text {
+  -webkit-text-security: disc;
+}

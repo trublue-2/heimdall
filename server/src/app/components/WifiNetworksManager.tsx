@@ -134,7 +134,7 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
           <Input id={`wifi-ssid-${deviceId}`} label="WLAN-Name (SSID)" value={ssid} onChange={(e) => setSsid(e.target.value)} suppressAutofill />
         </div>
         <div className="flex-1 min-w-[8rem]">
-          <Input id={`wifi-pass-${deviceId}`} label="WLAN-Schlüssel" type="password" value={pass} onChange={(e) => setPass(e.target.value)} suppressAutofill />
+          <Input id={`wifi-pass-${deviceId}`} label="WLAN-Schlüssel" type="text" className="mask-text" value={pass} onChange={(e) => setPass(e.target.value)} suppressAutofill />
         </div>
         <Button onClick={add} loading={saving} disabled={!ssid}>Hinzufügen</Button>
       </div>
