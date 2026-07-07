@@ -127,7 +127,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
             label="Box-IP (nur im selben WLAN, Box wach)"
             value={
               device.boxIp
-                ? mqttLive && device.debugMode
+                ? mqttLive
                   ? <a className="text-[var(--color-warn)] underline" href={`http://${device.boxIp}/debug`} target="_blank" rel="noopener noreferrer">{device.boxIp} → /debug</a>
                   : device.boxIp
                 : "—"
@@ -204,7 +204,7 @@ function Info({ label, value, mono }: { label: string; value: React.ReactNode; m
   return (
     <div>
       <p className="text-xs text-[var(--foreground-faint)] mb-0.5">{label}</p>
-      <p className={`font-medium ${mono ? "font-mono text-xs" : ""}`}>{value}</p>
+      <p className={`text-sm font-medium ${mono ? "font-mono" : ""}`}>{value}</p>
     </div>
   );
 }
