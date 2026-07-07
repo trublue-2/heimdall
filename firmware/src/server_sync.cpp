@@ -7,6 +7,7 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <time.h>
+#include <sys/time.h> // settimeofday — Server-Zeit je Sync übernehmen (RTC-Drift korrigieren)
 
 // struct tm (UTC) → Unix-Epoch, TZ-unabhängig (Hinnant days-from-civil).
 // ESP32-newlib hat kein timegm(); mktime würde die gesetzte TZ anwenden.
@@ -272,6 +273,19 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   policy.offlineOpenH = resp["offlineOpenHours"] | OFFLINE_OPEN_H;
   policy.hardCapH     = resp["hardCapHours"] | 0;
   strlcpy(state.deviceName, resp["name"] | "", sizeof(state.deviceName));
+
+  // Server-Zeit übernehmen: die Deep-Sleep-RTC driftet (Minuten pro Tage), NTP läuft nur
+  // bei ungültiger Uhr. timeUTC steht in JEDER Response → hier je Sync korrigiert, ohne
+  // extra NTP-Roundtrip. lastTick MIT verschieben, sonst sähen die monotonen Failsafe-
+  // Zähler (offlineSeconds/lockedSeconds) durch die Korrektur einen Scheinsprung.
+  time_t srvNow = parseIso8601(resp["timeUTC"] | "");
+  if (srvNow > 1700000000) {
+    struct timeval tv;
+    tv.tv_sec  = srvNow;
+    tv.tv_usec = 0;
+    settimeofday(&tv, nullptr);
+    state.lastTick = srvNow;
+  }
   state.lastSyncAt    = time(nullptr);
   state.offlineSeconds = 0; // erfolgreicher Sync → Offline-Zähler zurücksetzen
 
