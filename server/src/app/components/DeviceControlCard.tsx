@@ -57,6 +57,8 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
   const locked = props.locked;
   // Vorzeitig = noch Restzeit auf der Uhr (nur Zeit-Locks; Simple-Lock ist nie "vorzeitig").
   const isEarly = !!props.lockUntil && new Date(props.lockUntil) > new Date();
+  // Low-Batt-Vorwarnung: ab ≤20% (Auto-Open-Failsafe erst bei 15%). Am USB irrelevant.
+  const lowBatt = props.battery != null && props.battery <= 20 && !props.charging;
 
   // Zustands-Farbe: gesperrt = ROT (warn), offen = GRÜN (ok).
   const stateText = locked ? "text-[var(--color-warn)]" : "text-[var(--color-ok)]";
@@ -139,7 +141,7 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
                 </span>
               )}
               {props.wifiRssi != null && <RssiBars rssi={props.wifiRssi} />}
-              <span className="flex items-center gap-0.5">
+              <span className={`flex items-center gap-0.5 ${lowBatt ? "text-[var(--color-warn)] font-semibold" : ""}`}>
                 {props.battery != null ? `${props.battery}%` : "—"}
                 {props.charging && <Zap className="h-3 w-3 text-[var(--color-ok)]" />}
               </span>
@@ -176,6 +178,13 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
               </div>
             )}
           </div>
+
+          {/* Low-Batt-Vorwarnung */}
+          {lowBatt && (
+            <div className="mx-4 mb-3 rounded-xl bg-[var(--color-warn-bg)] border border-[var(--color-warn-border)] px-3 py-2 text-xs text-[var(--color-warn)] flex items-center gap-1.5">
+              ⚠ Akku niedrig ({props.battery}%) — die Box öffnet automatisch bei 15 %.
+            </div>
+          )}
 
           {/* Aktion */}
           <div className="px-4 pb-4 space-y-2">

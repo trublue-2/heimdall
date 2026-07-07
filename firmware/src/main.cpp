@@ -7,6 +7,7 @@
 #include <esp_ota_ops.h>
 #include <driver/rtc_io.h>
 #include <soc/gpio_struct.h> // direkter LED-Registerzugriff im Button-ISR (IRAM-sicher)
+#include <soc/rtc_cntl_reg.h> // Brownout-Detector-Register (verifizieren + loggen)
 #include <time.h>
 #include "config.h"
 #include "nvs_storage.h"
@@ -169,11 +170,19 @@ static void recordBoot() {
   p.begin("diag", false);
   gBootCount  = p.getUInt("boots", 0) + 1;
   gUnexpected = p.getUInt("unexp", 0);
-  // Alles außer regulärem Deep-Sleep-Wake gilt als unerwartet (Brownout-Verdacht).
-  if (r != ESP_RST_DEEPSLEEP) gUnexpected++;
+  // "unexp" zählt nur echte Stromverluste (Brownout / Power-on) — NICHT die erwarteten
+  // SW-/OTA-Resets oder Deep-Sleep-Wakes → ehrlicher Brownout-Indikator statt OTA-Rauschen.
+  if (r == ESP_RST_BROWNOUT || r == ESP_RST_POWERON) gUnexpected++;
   p.putUInt("boots", gBootCount);
   p.putUInt("unexp", gUnexpected);
   p.end();
+
+  // Brownout-Detector explizit verifizieren + loggen (wir deaktivieren ihn nie). Die
+  // Schwelle ist der Arduino-Core-Default (~2,43 V); ein BOD-Trip erscheint als reset=BROWNOUT.
+  uint32_t bo = READ_PERI_REG(RTC_CNTL_BROWN_OUT_REG);
+  log_i("Brownout-Detector: %s (Reset-on-BOD %s, reg=0x%08x)",
+        (bo & RTC_CNTL_BROWN_OUT_ENA)     ? "aktiv" : "AUS!",
+        (bo & RTC_CNTL_BROWN_OUT_RST_ENA) ? "an" : "aus", bo);
 }
 
 // Taster (GND↔GPIO14) gehalten beim Boot → Setup-Hotspot. Zwei Stufen (Intent; der
@@ -616,7 +625,7 @@ static bool checkFailsafes() {
   gBox.lastTick = now;
   NVS::saveState(gBox); // persistieren — überlebt Brownout
 
-  if (Failsafe::isLowBattery()) {
+  if (Failsafe::isLowBattery(gBox)) {
     log_w("FAILSAFE: Low-Battery (%d%%) → OPENING", Failsafe::batteryPercent());
     strlcpy(gBox.wakeReason, "low_battery", sizeof(gBox.wakeReason)); return true;
   }

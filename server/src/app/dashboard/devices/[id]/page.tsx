@@ -4,10 +4,10 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { Card } from "@/app/components/Card";
-import { Badge } from "@/app/components/Badge";
 import { DeviceControlCard } from "@/app/components/DeviceControlCard";
 import { DeviceSettingsForm } from "@/app/components/DeviceSettingsForm";
 import { SettingToggle } from "@/app/components/SettingToggle";
+import { EventLog } from "@/app/components/EventLog";
 import { DeviceActions } from "@/app/components/DeviceActions";
 import { WifiNetworksManager } from "@/app/components/WifiNetworksManager";
 import { DeviceLogViewer } from "@/app/components/DeviceLogViewer";
@@ -15,7 +15,7 @@ import { TrackerLinkForm } from "@/app/components/TrackerLinkForm";
 import { LiveRefresh } from "@/app/components/LiveRefresh";
 import { deviceLockView } from "@/lib/device-auth";
 import { deviceOnline } from "@/lib/mqttBridge";
-import { formatDateTime, isOnline, EVENT_CONFIG } from "@/lib/utils";
+import { formatDateTime, isOnline } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -138,28 +138,18 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
         </Card>
       </section>
 
-      {/* Event-Verlauf */}
+      {/* Event-Verlauf — 5 pro Seite mit Paginierung */}
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-[var(--foreground-muted)] uppercase tracking-wide">Verlauf</h2>
-        {events.length === 0 ? (
-          <Card className="text-center py-8 text-sm text-[var(--foreground-muted)]">Noch keine Events.</Card>
-        ) : (
-          <Card className="divide-y divide-[var(--border-subtle)] p-0 overflow-hidden">
-            {events.map((ev) => {
-              const cfg = EVENT_CONFIG[ev.type] ?? { label: ev.type, variant: "neutral" as const };
-              return (
-                <div key={ev.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                  <div className="flex items-center gap-2 flex-wrap min-w-0">
-                    <Badge variant={cfg.variant}>{cfg.label}</Badge>
-                    {ev.reason && <code className="text-xs text-[var(--foreground-faint)] font-mono">{ev.reason}</code>}
-                    {ev.battery != null && <span className="text-xs text-[var(--foreground-faint)]">{ev.battery}%</span>}
-                  </div>
-                  <span className="text-xs text-[var(--foreground-faint)] shrink-0">{formatDateTime(ev.timestamp)}</span>
-                </div>
-              );
-            })}
-          </Card>
-        )}
+        <EventLog
+          events={events.map((ev) => ({
+            id: ev.id,
+            type: ev.type,
+            reason: ev.reason,
+            battery: ev.battery,
+            timestamp: ev.timestamp.toISOString(),
+          }))}
+        />
       </section>
 
       {/* Weitere WLAN-Zugänge (Admin) */}

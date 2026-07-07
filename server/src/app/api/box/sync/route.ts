@@ -130,6 +130,15 @@ export async function POST(req: NextRequest) {
     }
   });
 
+  // Low-Batt-Vorwarnung: einmaliges Event beim Übergang unter die Warnschwelle (20%) —
+  // rechtzeitige Warnung im Verlauf/Dashboard, bevor der Auto-Open bei 15% greift.
+  const WARN_PCT = 20;
+  if (state.battery != null && state.battery <= WARN_PCT && (device.battery == null || device.battery > WARN_PCT)) {
+    await prisma.deviceEvent.create({
+      data: { deviceId: device.id, type: "LOW_BATTERY", timestamp: now, battery: state.battery },
+    });
+  }
+
   // Live-Update an offene Dashboards pushen (jeder Sync ändert mind. lastSyncAt)
   notifyDeviceChange();
 

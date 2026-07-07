@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.2.3"
+#define FW_VERSION "0.2.4"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Original-LMB-PCB (KSM-HW-V10): ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
@@ -46,8 +46,11 @@
 // LOW = Ladung fertig/Akku voll (aus Original-LMB-FW). Nur zusammen mit charging
 // (GPIO26) aussagekräftig. Reine Anzeige, KEIN Safety-Pfad. -1 = kein Pin (z.B. LOLIN).
 #define PIN_CHARGE_FULL   13
-#define BATT_LOW_PERCENT  15  // % Warnung / LED
+#define BATT_LOW_PERCENT  20  // % Warnung (Dashboard-Badge, Server-seitig ausgewertet)
 #define BATT_CRITICAL_PCT  15 // % → Auto-Open Failsafe (Notöffnung mit Reserve fürs Drehmoment)
+// Hysterese: einmal unter BATT_CRITICAL gilt "leer", bis der Akku wieder ≥ BATT_RECOVER
+// steigt → kein Flattern durch ADC-Rauschen um die 15%-Schwelle (latch in BoxState).
+#define BATT_RECOVER_PCT   25
 // Plausibilität: ein laufendes 1S-LiPo-Board liegt bei ~3.0–4.2 V. Liest der ADC
 // ausserhalb 2.5–4.5 V, ist kein echter Akku-Sensor am Pin (z.B. LMB-Board ohne
 // Teiler auf GPIO35) → BATT_UNKNOWN statt fälschlich "0% = kritisch leer".

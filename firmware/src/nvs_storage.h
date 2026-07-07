@@ -31,6 +31,7 @@ struct BoxState {
   uint32_t lockedSeconds;  // akkumulierte Sperrdauer (0 wenn offen) → HardCap
   uint32_t offlineSeconds; // Zeit seit letztem erfolgreichen Sync (0 bei Sync) → Offline-Open
   time_t   lastTick;       // time() beim letzten Wake (für Delta-Berechnung)
+  bool     lowBattLatched; // Low-Batt-Hysterese: gesetzt ab ≤CRITICAL, gelöscht erst ≥RECOVER
 };
 
 // MQTT-Konfig für den Session-Fenster-Push. Kommt pro Box aus der Sync-Response

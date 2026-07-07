@@ -26,12 +26,15 @@ namespace Failsafe {
   // Zeit-basierte Server-Deadlines dürfen einer ungültigen Uhr NICHT vertrauen.
   inline bool clockValid() { return time(nullptr) > 1700000000; } // ~2023-11
 
-  // Low-Battery: Öffnen solange noch genug Energie für den Stepper da ist.
-  // Unbekannter Akku (kein Sensor) feuert NICHT — sonst öffnete ein Board ohne
-  // Akku-Messung bei jedem Wake. Schutz übernimmt dann Offline-Timeout/HardCap.
-  inline bool isLowBattery() {
+  // Low-Battery mit HYSTERESE: latcht ab ≤ BATT_CRITICAL_PCT, löst erst wieder ≥ BATT_RECOVER_PCT
+  // → kein Flattern durch ADC-Rauschen um die 15%-Schwelle. Unbekannter Akku (kein Sensor)
+  // feuert NICHT — sonst öffnete ein Board ohne Akku-Messung bei jedem Wake.
+  inline bool isLowBattery(BoxState& state) {
     int p = batteryPercent();
-    return p != BATT_UNKNOWN && p <= BATT_CRITICAL_PCT;
+    if (p == BATT_UNKNOWN) return false;              // kein Sensor → nicht feuern
+    if (p <= BATT_CRITICAL_PCT)     state.lowBattLatched = true;
+    else if (p >= BATT_RECOVER_PCT) state.lowBattLatched = false;
+    return state.lowBattLatched;
   }
 
   // Offline-Timeout: zu lange kein erfolgreicher Sync. CLOCK-UNABHÄNGIG über den
@@ -59,8 +62,8 @@ namespace Failsafe {
   }
 
   // Fasst alle Öffnungsgründe zusammen: true → Box muss jetzt öffnen.
-  inline bool shouldOpen(const BoxState& state, const BoxPolicy& policy) {
-    return isLowBattery()
+  inline bool shouldOpen(BoxState& state, const BoxPolicy& policy) {
+    return isLowBattery(state)
         || isOfflineTimeout(state, policy)
         || isHardCapExceeded(state, policy)
         || isPolicyExpired(policy);

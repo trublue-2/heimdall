@@ -218,7 +218,7 @@ void Provisioning::run() {
       log_i("Hotspot-Failsafe: offline %us/%us, locked %us, batt %d%%",
             st.offlineSeconds, (uint32_t)pol.offlineOpenH * 3600u,
             st.lockedSeconds, Failsafe::batteryPercent());
-      if (Failsafe::isLowBattery() || Failsafe::isOfflineTimeout(st, pol) ||
+      if (Failsafe::isLowBattery(st) || Failsafe::isOfflineTimeout(st, pol) ||
           Failsafe::isHardCapExceeded(st, pol)) {
         log_w("FAILSAFE im Setup-Hotspot → ÖFFNEN (offline=%us locked=%us)",
               st.offlineSeconds, st.lockedSeconds);

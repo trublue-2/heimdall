@@ -53,6 +53,7 @@ bool NVS::loadState(BoxState& out) {
     out.lockedSeconds  = prefs.getUInt("locksec",  0);
     out.offlineSeconds = prefs.getUInt("offsec",   0);
     out.lastTick       = (time_t)prefs.getLong64("ltick", 0);
+    out.lowBattLatched = prefs.getBool("lowbatt", false);
   }
   prefs.end();
   return ok;
@@ -68,6 +69,7 @@ void NVS::saveState(const BoxState& in) {
   prefs.putUInt("locksec",   in.lockedSeconds);
   prefs.putUInt("offsec",    in.offlineSeconds);
   prefs.putLong64("ltick",   (int64_t)in.lastTick);
+  prefs.putBool("lowbatt",   in.lowBattLatched);
   prefs.end();
 }
 
