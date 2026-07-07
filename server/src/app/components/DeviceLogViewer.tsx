@@ -84,7 +84,7 @@ export function DeviceLogViewer({ deviceId, logToServer }: { deviceId: string; l
       </div>
 
       {rows.length > 0 && (
-        <pre className="max-h-96 overflow-auto rounded-md bg-black/60 p-3 text-xs leading-relaxed font-mono whitespace-pre-wrap text-[var(--color-unlock-text)]">
+        <pre className="max-h-96 overflow-auto rounded-md bg-[#0b0f17] p-3 text-xs leading-relaxed font-mono whitespace-pre-wrap text-[#9fe7b0]">
           {rows.map((r) => r.line).join("\n")}
         </pre>
       )}
