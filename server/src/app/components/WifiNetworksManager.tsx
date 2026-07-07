@@ -17,6 +17,7 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
   const [preferred, setPreferred] = useState<string | null>(null);
   const [ssid, setSsid] = useState("");
   const [pass, setPass] = useState("");
+  const [adding, setAdding] = useState(false); // Felder erst nach Klick zeigen
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +46,7 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
       if (!r.ok) throw new Error(await r.text());
       setSsid("");
       setPass("");
+      setAdding(false);
       load();
     } catch (e) {
       setError(String(e));
@@ -129,15 +131,20 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
         </ul>
       )}
 
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="flex-1 min-w-[8rem]">
-          <Input id={`wifi-ssid-${deviceId}`} label="WLAN-Name (SSID)" value={ssid} onChange={(e) => setSsid(e.target.value)} suppressAutofill />
+      {adding ? (
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex-1 min-w-[8rem]">
+            <Input id={`wifi-ssid-${deviceId}`} label="WLAN-Name (SSID)" value={ssid} onChange={(e) => setSsid(e.target.value)} suppressAutofill autoFocus />
+          </div>
+          <div className="flex-1 min-w-[8rem]">
+            <Input id={`wifi-pass-${deviceId}`} label="WLAN-Schlüssel" type="text" className="mask-text" value={pass} onChange={(e) => setPass(e.target.value)} suppressAutofill />
+          </div>
+          <Button onClick={add} loading={saving} disabled={!ssid}>Speichern</Button>
+          <Button variant="secondary" onClick={() => { setAdding(false); setSsid(""); setPass(""); setError(null); }} disabled={saving}>Abbrechen</Button>
         </div>
-        <div className="flex-1 min-w-[8rem]">
-          <Input id={`wifi-pass-${deviceId}`} label="WLAN-Schlüssel" type="text" className="mask-text" value={pass} onChange={(e) => setPass(e.target.value)} suppressAutofill />
-        </div>
-        <Button onClick={add} loading={saving} disabled={!ssid}>Hinzufügen</Button>
-      </div>
+      ) : (
+        <Button variant="secondary" onClick={() => setAdding(true)}>+ WLAN hinzufügen</Button>
+      )}
       <FormError message={error} />
       <p className="text-xs text-[var(--foreground-faint)]">
         Die Box übernimmt neue Netze beim nächsten Sync; das Passwort wird danach auf dem
