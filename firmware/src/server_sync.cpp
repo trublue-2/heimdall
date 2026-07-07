@@ -282,6 +282,11 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
     if (nssid[0]) { NVS::saveExtraNet(nssid, npass); log_i("Neues WLAN: %s", nssid); }
   }
 
+  // Bevorzugtes Netz (Server gewinnt): nur setzen, wenn der Server eins liefert.
+  // Leer/fehlt → die lokale /wifi-Wahl der Box bleibt unberührt.
+  const char* prefSsid = resp["preferredSsid"] | "";
+  if (prefSsid[0]) { NVS::setPreferredSsid(prefSsid); log_i("Bevorzugtes WLAN (Server): %s", prefSsid); }
+
   NVS::savePolicy(policy);
   NVS::saveState(state);
 
