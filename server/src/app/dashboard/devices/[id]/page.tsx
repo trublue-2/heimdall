@@ -127,7 +127,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
             label="Box-IP (nur im selben WLAN, Box wach)"
             value={
               device.boxIp
-                ? device.debugMode
+                ? mqttLive && device.debugMode
                   ? <a className="text-[var(--color-warn)] underline" href={`http://${device.boxIp}/debug`} target="_blank" rel="noopener noreferrer">{device.boxIp} → /debug</a>
                   : device.boxIp
                 : "—"

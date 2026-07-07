@@ -8,7 +8,7 @@
 // Jeder dieser Checks kann die Box öffnen — unabhängig von Server/WLAN.
 namespace Failsafe {
 
-  // Akkustand in Prozent (PIN_BATT_ADC, 1:2-Teiler, 4.2V=100%, 3.2V=0%; LMB=GPIO32).
+  // Akkustand in Prozent (PIN_BATT_ADC, 1:2-Teiler, 4.2V=100%, 3.2V=0%; Ziel-Board=GPIO32).
   // Messung ist bei WIFI_OFF genauer (ESP32 ADC beeinflusst durch WiFi-Rauschen).
   // Gibt BATT_UNKNOWN (-1) zurück, wenn die Spannung unplausibel ist (kein Sensor am
   // Pin) — sonst würde "kein Sensor" als "0% = kritisch" fehlinterpretiert (Auto-Open).

@@ -1,0 +1,12 @@
+# Partitionstabelle — 1:1 identisch mit der Werks-Firmware der Ziel-Box (aus 4-MB-Dump dekodiert).
+# Zweck: OTA-Übernahme. Deren HTTPUpdate schreibt Heimdalls App in den inaktiven App-Slot
+# DIESER Tabelle (app1 @ 0x1c0000, max 1728K) und bootet ihn; die Tabelle im Flash bleibt die
+# der Werks-Firmware. Heimdall muss darum mit exakt diesem Layout gebaut werden, damit der
+# App-Size-Check gegen 1728K greift und esp_ota_* konsistent ist.
+# nvs + otadata sind ohnehin identisch zu min_spiffs (0x9000/20K, 0xe000/8K).
+# Name,     Type, SubType, Offset,   Size,     Flags
+nvs,        data, nvs,     0x9000,   0x5000,
+otadata,    data, ota,     0xe000,   0x2000,
+app0,       app,  ota_0,   0x10000,  0x1b0000,
+app1,       app,  ota_1,   0x1c0000, 0x1b0000,
+spiffs,     data, spiffs,  0x370000, 0x20000,

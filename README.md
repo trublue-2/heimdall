@@ -55,8 +55,8 @@ können vom Server **nicht** abgeschaltet werden.
 ## Hardware
 
 - **ESP32** — die Firmware läuft auf einem LOLIN-D32-Devboard **und transplantiert auf der
-  originalen LockMeBox-Platine** (gleicher ESP32-Chip; Pin-Belegung per Firmware-Analyse der
-  Original-Box übernommen).
+  Original-Platine einer handelsüblichen Schlüssel-Lockbox** (gleicher ESP32-Chip; Pin-Belegung
+  per Firmware-Analyse der Ziel-Box übernommen).
 - **28BYJ-48 Schrittmotor** + ULN2003-Treiber (bewegt den Riegel)
 - **LiPo-Akku** mit Onboard-Lader
 - **Status-LED** (verbunden = leuchtet, Verbindungsaufbau = blinkt, Schlaf = aus)

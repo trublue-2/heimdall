@@ -1,9 +1,9 @@
 #pragma once
 
-#define FW_VERSION "0.2.7"
+#define FW_VERSION "0.2.8"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
-// Original-LMB-PCB (KSM-HW-V10): ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
+// Ziel-Board: ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
 // Alle boot-sicher (keine Strapping-/Flash-/Input-only-Pins).
 // LOLIN-Dev-Board war 32/33/25/26 → bei Board-Wechsel hier in config.h anpassen (Board-Profil noch offen).
 #define STEPPER_IN1 23
@@ -15,12 +15,12 @@
 // 28BYJ-48 Half-Step: 4096 Steps/Umdrehung (~11,4 Steps/°). 1024 Steps = 90° Riegelweg.
 #define STEPPER_LOCK_STEPS  1024
 #define STEPPER_STEP_DELAY_US 3000 // µs — langsamer = mehr Drehmoment; mit Last ≥3000
-// Drehrichtung: Vorzeichen, das auf ZU fährt. LMB-Mechanik ggü. LOLIN gespiegelt.
-#define STEPPER_DIR_LOCK (+1) // +1 = zu (LMB); LOLIN-Dev war -1
+// Drehrichtung: Vorzeichen, das auf ZU fährt. Ziel-Mechanik ggü. LOLIN gespiegelt.
+#define STEPPER_DIR_LOCK (+1) // +1 = zu (Ziel-Board); LOLIN-Dev war -1
 
 // ── Status-LED ──────────────────────────────────────────────────────────────
-// LMB-Board: weisse Status-LED auf GPIO5, ACTIVE-HIGH (leuchtet bei HIGH — am Gerät
-// verifiziert; GPIO5 per Firmware-Analyse der Original-LMB bestätigt). Das LOLIN-Dev-Board
+// Ziel-Board: weisse Status-LED auf GPIO5, ACTIVE-HIGH (leuchtet bei HIGH — am Gerät
+// verifiziert; GPIO5 per Firmware-Analyse der Original-Platine bestätigt). Das LOLIN-Dev-Board
 // hatte dieselbe GPIO5, aber die blaue Onboard-LED war active-LOW → bei Board-Wechsel flippen.
 #define PIN_LED  5
 #define LED_ON   HIGH
@@ -33,7 +33,7 @@
 #define PIN_BUTTON 14
 
 // ── Batterie ADC + Lade-Erkennung ──────────────────────────────────────────
-// LMB-PCB: Akkuspannung auf GPIO32, 1:2-Teiler (per ADC-Scan ermittelt: 2,06 V → 4,12 V).
+// Ziel-Board: Akkuspannung auf GPIO32, 1:2-Teiler (per ADC-Scan ermittelt: 2,06 V → 4,12 V).
 // LOLIN-Dev war GPIO35 — Teiler bei beiden 1:2 (der ×2 in failsafe.h bleibt).
 #define PIN_BATT_ADC      32
 // Skalierung: V_batt = V_adc × BATT_DIVIDER. Am Multimeter kalibriert (2026-07-06):
@@ -43,7 +43,7 @@
 // -1 = kein Sense-Pin (z.B. LOLIN → charging wird nie gemeldet).
 #define PIN_CHARGE_DETECT 26
 // Lade-Status „voll/fertig" (TP4056 STDBY): GPIO13, open-drain → INPUT_PULLUP,
-// LOW = Ladung fertig/Akku voll (aus Original-LMB-FW). Nur zusammen mit charging
+// LOW = Ladung fertig/Akku voll (aus der Werks-Firmware). Nur zusammen mit charging
 // (GPIO26) aussagekräftig. Reine Anzeige, KEIN Safety-Pfad. -1 = kein Pin (z.B. LOLIN).
 #define PIN_CHARGE_FULL   13
 #define BATT_LOW_PERCENT  20  // % Warnung (Dashboard-Badge, Server-seitig ausgewertet)
@@ -52,7 +52,7 @@
 // steigt → kein Flattern durch ADC-Rauschen um die 15%-Schwelle (latch in BoxState).
 #define BATT_RECOVER_PCT   25
 // Plausibilität: ein laufendes 1S-LiPo-Board liegt bei ~3.0–4.2 V. Liest der ADC
-// ausserhalb 2.5–4.5 V, ist kein echter Akku-Sensor am Pin (z.B. LMB-Board ohne
+// ausserhalb 2.5–4.5 V, ist kein echter Akku-Sensor am Pin (z.B. ein Board ohne
 // Teiler auf GPIO35) → BATT_UNKNOWN statt fälschlich "0% = kritisch leer".
 #define BATT_UNKNOWN        (-1)
 #define BATT_PLAUSIBLE_MIN_V 2.5f

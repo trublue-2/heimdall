@@ -400,7 +400,7 @@ static void handleWifiPage() {
 
 // ── Debug-Mode: lokale Monitoring-Seite (Info + Serial + FW-Flashen) ──────────
 // Pin-Finde-Tools (Pins setzen, Testfahrt, Sweep, Einzel-Puls, ADC-Scan, Pin-Dump)
-// wurden nach abgeschlossenem Bring-up entfernt — alle LMB-Pins stehen in config.h.
+// wurden nach abgeschlossenem Bring-up entfernt — alle Board-Pins stehen in config.h.
 
 // OTA manuell anstoßen. Verschluss-Sperre BLEIBT: bei geschlossener Box nie flashen
 // (gebrickter Flash = nicht mehr öffenbar; Safety > Function).
@@ -418,7 +418,7 @@ static void handleDbgOta() {
 }
 
 // Slot-Switch (Fallback): Boot-Zeiger auf den inaktiven OTA-Slot legen und neu starten.
-// Nach einer BLE-OTA-Übernahme liegt dort die Original-LMB-Firmware → „zurück ins Original"
+// Nach einer BLE-OTA-Übernahme liegt dort die Werks-Firmware → „zurück ins Original"
 // ohne UART. BEWUSST KEIN Lock-Gate (anders als OTA, das bei ZU wegen Brick-Gefahr sperrt):
 //  · zeigt nur auf die box-EIGENE, bereits gültige FW (set_boot_partition prüft das) → kein Brick;
 //  · der automatische Rollback in otaCheckBoot schaltet den Slot ohnehin ungated um;
@@ -537,7 +537,7 @@ static void handleDebugPage() {
     "async function ota(){S('OTA: prüfe & flashe…');"
     "try{S(await(await fetch('/dbg/ota')).text())}"
     "catch(e){S('Verbindung weg — vermutlich Reboot nach erfolgreichem Flash ✓')}}"
-    "async function revert(){if(!confirm('⚠️ Bootet die FW im anderen OTA-Slot und übergibt ihr die Kontrolle — Heimdalls Sperre & Failsafes gelten dann nicht mehr. Der andere Slot enthält (falls belegt) die vorige FW, nach LMB-Übernahme das Original. Einbahn aus dieser Oberfläche. Fortfahren?'))return;S('Slot-Switch…');"
+    "async function revert(){if(!confirm('⚠️ Bootet die FW im anderen OTA-Slot und übergibt ihr die Kontrolle — Heimdalls Sperre & Failsafes gelten dann nicht mehr. Der andere Slot enthält (falls belegt) die vorige FW, nach der Übernahme die Werks-Firmware. Einbahn aus dieser Oberfläche. Fortfahren?'))return;S('Slot-Switch…');"
     "try{S(await(await fetch('/dbg/switch')).text())}"
     "catch(e){S('Verbindung weg — vermutlich Reboot in den anderen Slot ✓')}}"
     "async function refreshInfo(){try{let d=await(await fetch('/dbg/info')).json();"
@@ -857,7 +857,7 @@ void loop() {
         // OTA (Server-Pull): NUR im offenen Ruhezustand. Während Verschluss NIE flashen
         // — ein fehlgeschlagener/gebrickter Flash bei geschlossener Box wäre nicht mehr
         // zu öffnen (Safety > Function). Updates passieren zwischen Sessions.
-        // Akku-Gate: unbekannt (kein Sensor, z.B. LMB) → erlaubt; nur ein BEKANNTER
+        // Akku-Gate: unbekannt (kein Sensor, z.B. Dev-Board) → erlaubt; nur ein BEKANNTER
         // Tiefstand <40% blockiert (Flash bei echt leerem Akku könnte abbrechen).
         const int otaBatt = Failsafe::batteryPercent();
         if (ota.version[0] && strcmp(ota.version, FW_VERSION) != 0 &&

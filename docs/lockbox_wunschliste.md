@@ -3,13 +3,13 @@
 **Codename:** Heimdall — der Wächter an der Bifröst, der sieht/hört wer kommt und geht und über Zugang entscheidet. Reiht sich in die Nordic-Namensgebung (midgard, asgard) ein.
 **Stand:** 2026-07-07 (Code-Stand FW 0.1.78)
 **Server / Backend:** chastitytracker.ch (self-hosted PWA + MCP)
-**Hardware-Pfad (aktuell):** ESP32 WROOM-32 (LOLIN D32, LiPo-Lader onboard) · 28BYJ-48 + ULN2003 · LiPo · Brain-Transfer in die LockMeBox-Mechanik
+**Hardware-Pfad (aktuell):** ESP32 WROOM-32 (LOLIN D32, LiPo-Lader onboard) · 28BYJ-48 + ULN2003 · LiPo · Brain-Transfer in die Ziel-Mechanik
 
 ---
 
 ## Wozu diese Liste
 
-Sammelstelle für alles, was dir im **Betrieb der LockMeBox** auffällt und was du in der **eigenen Umsetzung besser** haben willst. Lebendes Dokument — einfach unten in der jeweiligen Domäne ergänzen, neue Punkte kommen in den **Parkplatz** (Abschnitt 10) und werden später einsortiert.
+Sammelstelle für alles, was dir im **Betrieb der Ziel-Box** auffällt und was du in der **eigenen Umsetzung besser** haben willst. Lebendes Dokument — einfach unten in der jeweiligen Domäne ergänzen, neue Punkte kommen in den **Parkplatz** (Abschnitt 10) und werden später einsortiert.
 
 **Prioritäten:**
 - **P0** — Sicherheitskritisch, nicht verhandelbar. Muss stehen, bevor du je den Schlüssel einschliesst.
@@ -28,7 +28,7 @@ Sammelstelle für alles, was dir im **Betrieb der LockMeBox** auffällt und was 
 - [x] **Web statt Bluetooth** — Steuerung/Policy über den Server (WiFi), kein direktes BLE-Pairing.
 - [x] **Pull-Modell** — Box meldet sich am Server an und **bezieht** von dort ihre Daten.
 - [x] **Identitätsbindung über Device-Token** (beim Flashen ins NVS provisioniert). Solange Single-User: kein Claim-Code-Flow nötig. Server kennt Token → trublue.
-- [x] **Deep-Sleep/Standby nach ~3 min** (wie LMB, für Akkulaufzeit). Aufwachen per Taster, RTC-Deadline oder Low-Batt-Event.
+- [x] **Deep-Sleep/Standby nach ~3 min** (wie die Ziel-Box, für Akkulaufzeit). Aufwachen per Taster, RTC-Deadline oder Low-Batt-Event.
 - [x] **Sync ereignisgesteuert** — beim Aufwachen / **spätestens beim „Anschalten"**. Kein Dauer-Polling.
 - [x] **Zwei Timer, klare Zuständigkeit:**
   - **Box-lokaler Timer = sicherheitsführend** („Öffnen spätestens bei …"). Läuft auch im Deep-Sleep über RTC, auch offline.
@@ -68,7 +68,7 @@ Sammelstelle für alles, was dir im **Betrieb der LockMeBox** auffällt und was 
 ## 3. Energie & Laden — **P1**
 
 - [ ] LiPo-Kapazität so dimensionieren, dass **Max-Verschlusszeit + Reserve fürs Öffnen** sicher abgedeckt sind (mit Sicherheitsfaktor).
-- [ ] **Laden im verschlossenen Zustand** möglich (USB-Zugang von aussen am Gehäuse). Das kann die LockMeBox — behalten.
+- [ ] **Laden im verschlossenen Zustand** möglich (USB-Zugang von aussen am Gehäuse). Das kann die Ziel-Box — behalten.
 - [x] **Akkustand-Messung** — `Failsafe::batteryPercent()` (GPIO32, 1:2-Teiler, 16× gemittelt, am Multimeter kalibriert), Basis der Low-Batt-Logik.
 - [x] Ladeverhalten: `readChargeState()` (GPIO26 = USB dran, GPIO13 = TP4056-STDBY) — reine Erkennung, Einstecken löst keinen Reset/Öffnen/Zustandswechsel aus.
 
@@ -215,14 +215,14 @@ stateDiagram-v2
 
 ## D. Transplant-Verifikation (1:1-Garantie)
 
-> „1:1" liegt **nicht** im Board-Footprint, sondern im **CN3-Vertrag + identischem Stepper + gleicher Logikpegel**. Die KSM-Treiberplatine ist „dumm" (ULN2003 + TP4056 + Regler, **kein MCU**) → kein proprietäres Protokoll, 1:1 per Konstruktion möglich.
+> „1:1" liegt **nicht** im Board-Footprint, sondern im **CN3-Vertrag + identischem Stepper + gleicher Logikpegel**. Die Ziel-Treiberplatine ist „dumm" (ULN2003 + TP4056 + Regler, **kein MCU**) → kein proprietäres Protokoll, 1:1 per Konstruktion möglich.
 
-> **Befund (empirisch bestätigt 2026-06-07):** Der **USB-C der LMB ist charge-only**. Test an Mac (`ls /dev/cu.*`) und Pi (`dmesg -wH`): iPhone als Gegenprobe enumeriert sauber (Kabel/Setup belegt), die LMB meldet sich **gar nicht** als USB-Gerät an (D+/D- machen keine USB-Aushandlung). → Stock-Platine ist **nicht per USB flashbar**; deshalb Brain-Transfer bzw. Serial-Pins/Pogo, falls je direkt geflasht wird.
+> **Befund (empirisch bestätigt 2026-06-07):** Der **USB-C der Ziel-Box ist charge-only**. Test an Mac (`ls /dev/cu.*`) und Pi (`dmesg -wH`): iPhone als Gegenprobe enumeriert sauber (Kabel/Setup belegt), die Ziel-Box meldet sich **gar nicht** als USB-Gerät an (D+/D- machen keine USB-Aushandlung). → Stock-Platine ist **nicht per USB flashbar**; deshalb Brain-Transfer bzw. Serial-Pins/Pogo, falls je direkt geflasht wird.
 
 1. [x] **CN3 durchgemessen** — ULN2003-Pinbelegung per Debug-Sweep ermittelt (GPIO 23/17/16/4), auf/zu bestätigt. Ergebnis in `config.h`.
-2. [x] **Stock-Controller-Pegel** — 3.3-V-Logik bestätigt (Firmware treibt den Stepper direkt auf der LMB-KSM-Platine).
+2. [x] **Stock-Controller-Pegel** — 3.3-V-Logik bestätigt (Firmware treibt den Stepper direkt auf der Ziel-Treiberplatine).
 3. [x] **Bench-Replikat** — identischer 28BYJ-48 + ULN2003, Firmware-Antrieb bewiesen.
-4. [x] **CN3-Adapter/Harness** — D32-GPIOs → CN3 gemäß Pin-Map, boot-strapping-sichere GPIOs, Wake-Taster auf RTC-GPIO14. Firmware läuft auf der Original-LMB-PCB.
+4. [x] **CN3-Adapter/Harness** — D32-GPIOs → CN3 gemäß Pin-Map, boot-strapping-sichere GPIOs, Wake-Taster auf RTC-GPIO14. Firmware läuft auf der Original-Platine.
 5. [x] **An der Box kalibriert** — `STEPPER_LOCK_STEPS` auf realen Riegelweg. „Fahre bis Endlage" noch offen (Endlagensensor, Abschnitt 2) — aktuell blind N Schritte.
 
 **Absicherung:** Stock-Controller nur abstecken, **nicht zerstören** → Transplant reversibel. Voll-Flash-Backup (`read_flash 0 0x400000 …`) nur nötig, falls später die Stock-Platine selbst geflasht wird.
@@ -248,17 +248,17 @@ stateDiagram-v2
 
 > Roh-Einträge hier rein, später einsortieren.
 
-- _(deine Beobachtung aus dem LockMeBox-Betrieb …)_
+- _(deine Beobachtung aus dem Betrieb der Ziel-Box …)_
 - _(…)_
 
 ---
 
 ## Changelog
 
-- **2026-06-06** — Dokument angelegt; Domänen 1–9 aus bisherigen Gesprächen + LockMeBox-Schwachstellen geseedet, an aktuelles Tracker-Setup angeglichen (12-h-Cap, Reinigungsregeln, Stufe-2-Ziel).
+- **2026-06-06** — Dokument angelegt; Domänen 1–9 aus bisherigen Gesprächen + Schwachstellen der Ziel-Box geseedet, an aktuelles Tracker-Setup angeglichen (12-h-Cap, Reinigungsregeln, Stufe-2-Ziel).
 - **2026-06-06 (Update)** — Bauart als **Schlüssel-Box** geklärt (nicht am Körper). Sicherheitsmodell auf **Zerstören-zum-Befreien** (PLA + Scheibe) umgestellt, **keine Notentriegelung** als bewusster Entscheid. Failsafes: Low-Batt-Open + 24-h-Offline-Open + lokaler Hard-Deadline. Neuer Abschnitt **Architektur-Entscheide** (standalone-fähig, Web statt BLE, Pull-Modell, Device-Token, Deep-Sleep, ereignisgesteuerter Sync, Zwei-Timer-Modell). Abschnitte 2/3/4/7/8/9 entsprechend angepasst.
 - **2026-06-06 (Architektur-Spezifikation)** — Neuer Teil A–E ergänzt: (A) Server-Topologie 3-Schichten Box/Steuerserver/Tracker + minimaler Vertrag + Deployment, (B) kanonischer Ablauf Provisioning/Sync/Button/Long-Press, (C) State-Machine (Mermaid + Regeln), (D) Transplant-Verifikation CN3→Bench→Adapter→Kalibrierung, (E) Bedrohungsmodell/Cheat-Pfade mit Leitaxiom „Sichtbarkeit + Keyholder-Beziehung statt Unentrinnbarkeit".
 - **2026-06-06 (Codename)** — Projekt heißt **Heimdall**. Titel, Kopf und Deployment-Subdomain (`heimdall.selfgeek.ch`) entsprechend gesetzt.
-- **2026-06-07 (Befund)** — LMB-USB-C empirisch als **charge-only** bestätigt (Mac + Pi, iPhone-Gegenprobe). In Abschnitt D dokumentiert. Brain-Transfer bleibt die Route.
-- **2026-07-07 (Abgleich mit Code-Stand FW 0.1.78)** — Wunschliste an die reale Firmware angeglichen. Als erledigt markiert: alle P0-Failsafes (Low-Batt-, 24-h-Offline-, Hard-Deadline-Auto-Open, HardCap — `failsafe.h`, clock-unabhängig über monotone NVS-Zähler), Akkustand-/Lade-Erkennung, kompletter Sync-/Provisioning-Zyklus, Multi-WLAN, signierte OTA mit Rollback, Token-Auth + Cert-Pinning, Taster-Wake, sowie Transplant-Verifikation D1–D5 (Firmware läuft auf der Original-LMB-PCB). Teilweise (`[~]`): Positions-Persistenz (logisch ja, physisch ungemessen) und Statusanzeige (LED ja, Display nein). Weiterhin offen: Endlagen-Erkennung, Hardware-Watchdog, Brown-out-Config, Replay-Schutz für Einzelkommandos. **Neu aufgerollt:** §4 „Push für schnelles Keyholder-Feedback" — der ursprüngliche Entscheid gegen eine Dauerverbindung wird zugunsten besserer Website-Responsivität neu bewertet (Light-Sleep-connected + Türklingel-Push, Autorität bleibt auf dem HTTPS-Sync).
+- **2026-06-07 (Befund)** — USB-C der Ziel-Box empirisch als **charge-only** bestätigt (Mac + Pi, iPhone-Gegenprobe). In Abschnitt D dokumentiert. Brain-Transfer bleibt die Route.
+- **2026-07-07 (Abgleich mit Code-Stand FW 0.1.78)** — Wunschliste an die reale Firmware angeglichen. Als erledigt markiert: alle P0-Failsafes (Low-Batt-, 24-h-Offline-, Hard-Deadline-Auto-Open, HardCap — `failsafe.h`, clock-unabhängig über monotone NVS-Zähler), Akkustand-/Lade-Erkennung, kompletter Sync-/Provisioning-Zyklus, Multi-WLAN, signierte OTA mit Rollback, Token-Auth + Cert-Pinning, Taster-Wake, sowie Transplant-Verifikation D1–D5 (Firmware läuft auf der Original-Platine). Teilweise (`[~]`): Positions-Persistenz (logisch ja, physisch ungemessen) und Statusanzeige (LED ja, Display nein). Weiterhin offen: Endlagen-Erkennung, Hardware-Watchdog, Brown-out-Config, Replay-Schutz für Einzelkommandos. **Neu aufgerollt:** §4 „Push für schnelles Keyholder-Feedback" — der ursprüngliche Entscheid gegen eine Dauerverbindung wird zugunsten besserer Website-Responsivität neu bewertet (Light-Sleep-connected + Türklingel-Push, Autorität bleibt auf dem HTTPS-Sync).
 - **2026-07-07 (FW 0.2.0 — MQTT-Push)** — §4 umgesetzt als **Session-Fenster-MQTT**: Button/USB öffnet ein ~2-min-Wachfenster mit Live-MQTT (open/close/lock/reopen <2 s, „Box online" via LWT); dormant schläft die Box zwischen **stündlichen** Heartbeat-Syncs (12× weniger Wakes als vorher). Direkt-Kommandos über MQTT, autoritative Policy weiter über den cert-gepinnten HTTPS-Sync; lokale Failsafes unangetastet autoritativ (Safety-Invariante gewahrt). Server: Mosquitto-Broker (go-auth-HTTP-Backend, Reuse der Device-Token), `mqttBridge` + `mqttEnabled`-Flag pro Box (Default aus → schrittweiser Rollout). Endlagensensor verworfen (keine HW) → User-gemeldeter Riegel-Retry (`reopen`).
