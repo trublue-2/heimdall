@@ -702,17 +702,22 @@ void setup() {
   // Nur die Intent merken; betreten wird der Hotspot unten über State::PROVISIONING.
   ResetIntent btnIntent = checkFactoryReset();
 
-  // Batterie vor WiFi messen — ADC ist ohne WiFi-Rauschen genauer
-  int batt = Failsafe::batteryPercent();
+  // NVS-Zustand VOR dem Banner laden — u.a. der zuletzt an den Server gemeldete, LIVE
+  // (unter WiFi-Last) gemessene Akkuwert. So zeigt das Banner denselben Live-Wert wie
+  // Debug-Seite + Dashboard; eine WiFi-off-Sondermessung entfällt (frisch ab dem nächsten Sync).
+  bool hasCreds = NVS::loadCredentials(gCreds);
+  bool hasState = NVS::loadState(gBox);
+  NVS::loadPolicy(gPolicy);
 
   const char* reason = wakeReasonStr();
+  strlcpy(gBox.wakeReason, reason, sizeof(gBox.wakeReason));
   // Heartbeat-Wake (rtc_timer) öffnet kein Fenster; Button/Power-on schon. USB überstimmt später.
   gWindowWake = (strcmp(reason, "rtc_timer") != 0);
   // Ein-Zeilen-Wake-Spur: wake=warum wach (button/rtc_timer/power_on), reset=WIE gebootet
   // (DEEPSLEEP=sauberer Wake, BROWNOUT/POWERON/PANIC=Reset → kein Ack-Blink), boot#/unexp=
-  // kumulative Boot- bzw. Nicht-Deep-Sleep-Zähler (Brownout-Verdacht), ack=hat's quittiert.
+  // kumulative Zähler, batt=letzter LIVE-Wert aus NVS, ack=hat's quittiert.
   log_i("=== Heimdall %s | wake=%s reset=%s boot#%u unexp=%u batt=%d%% ack=%s ===",
-        FW_VERSION, reason, gResetReason, gBootCount, gUnexpected, batt, extWake ? "JA" : "nein");
+        FW_VERSION, reason, gResetReason, gBootCount, gUnexpected, gBox.batteryPct, extWake ? "JA" : "nein");
 
   // ── Bench-Test: Stepper/GPIO manuell testen ──────────────────────────────
 #if defined(GPIO_TEST) || defined(STEPPER_TEST)
@@ -757,12 +762,6 @@ void setup() {
   return;
 #endif
 
-  // ── Zustand aus NVS laden ────────────────────────────────────────────────
-  bool hasCreds = NVS::loadCredentials(gCreds);
-  bool hasState = NVS::loadState(gBox);
-  NVS::loadPolicy(gPolicy);
-  strlcpy(gBox.wakeReason, reason, sizeof(gBox.wakeReason));
-
   // Taster-Intent: Hotspot über die eine Provisioning-Route betreten. Vollreset löscht
   // vorher die Credentials (→ leeres Portal); WLAN-Wechsel behält sie (→ vorausgefüllt).
   if (btnIntent != ResetIntent::None) {
@@ -771,7 +770,6 @@ void setup() {
     return;
   }
 
-  gBox.batteryPct = batt;
   // Lade-Status frisch lesen (GPIO26). Wird zusätzlich bei jedem Sync aktualisiert,
   // damit "lädt" auch ohne Reboot dem echten USB-Zustand folgt.
   readChargeState();
