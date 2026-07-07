@@ -70,8 +70,7 @@ Ziel: kein Over-Engineering. Weniger Code ist besser als mehr Code.
 **Safety > Security > Function** — in dieser Reihenfolge, ohne Ausnahmen.
 
 - Lokale Failsafes (low-battery, offline-timeout, hard-deadline) können **nicht** durch den Server deaktiviert werden
-- `hardCapHours` ist eine absolute Obergrenze — nie überschreitbar, auch nicht durch den Keyholder
-- Jede Änderung an `effectiveLockUntil()` braucht explizite Überprüfung dieser Invariante
+- Jede Änderung an `effectiveLockUntil()` braucht explizite Überprüfung dieser Failsafe-Invariante
 
 ---
 

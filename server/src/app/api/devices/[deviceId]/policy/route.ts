@@ -9,10 +9,9 @@ import { publishCommand } from "@/lib/mqttBridge";
 const policySchema = z.object({
   lockUntil: z.string().datetime().nullable().optional(),
   offlineOpenHours: z.number().int().min(1).max(168).optional(),
-  hardCapHours: z.number().int().min(0).max(8760).nullable().optional(), // 0/null = kein Cap
 });
 
-// Steuerung + Policy-Edit (lockUntil = sperren/öffnen, offlineOpenHours, hardCap).
+// Steuerung + Policy-Edit (lockUntil = sperren/öffnen, offlineOpenHours).
 // Zugriff: zugewiesenes Konto oder Admin.
 export async function PATCH(
   req: NextRequest,
@@ -29,15 +28,13 @@ export async function PATCH(
   const body = parsed.data;
 
   // Partielles Update: nur übergebene Felder ändern. So setzt das Sperren/Öffnen
-  // (nur lockUntil) nicht versehentlich Failsafe/Hard-Cap zurück.
+  // (nur lockUntil) nicht versehentlich den Offline-Failsafe zurück.
   const data: {
     lockUntil?: Date | null;
     offlineOpenHours?: number;
-    hardCapHours?: number | null;
   } = {};
   if (body.lockUntil !== undefined) data.lockUntil = body.lockUntil ? new Date(body.lockUntil) : null;
   if (body.offlineOpenHours !== undefined) data.offlineOpenHours = body.offlineOpenHours;
-  if (body.hardCapHours !== undefined) data.hardCapHours = body.hardCapHours || null; // 0 → null
 
   const policy = await prisma.lockPolicy.upsert({
     where: { deviceId },
@@ -54,6 +51,5 @@ export async function PATCH(
     deviceName: policy.device.name,
     lockUntil: policy.lockUntil?.toISOString() ?? null,
     offlineOpenHours: policy.offlineOpenHours,
-    hardCapHours: policy.hardCapHours,
   });
 }

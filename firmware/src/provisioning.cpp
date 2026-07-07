@@ -180,12 +180,11 @@ void Provisioning::run() {
 
   // ── Failsafe-Wache (SAFETY): Auch OHNE Credentials muss eine gesperrte Box zur
   // Deadline öffnen. Sonst bliebe eine im Hotspot gelandete Box (Factory-Reset,
-  // GPIO14-Unfall, manuell) ewig zu. offlineSeconds/lockedSeconds laufen hier über
-  // millis() weiter, weil die State-Machine (und ihr Tick) im Hotspot nicht läuft.
+  // GPIO14-Unfall, manuell) ewig zu. offlineSeconds läuft hier über millis() weiter,
+  // weil die State-Machine (und ihr Tick) im Hotspot nicht läuft.
   BoxState  st = {};  bool hasState = NVS::loadState(st);
   BoxPolicy pol = {}; NVS::loadPolicy(pol);
   const uint32_t baseOffline = hasState ? st.offlineSeconds : 0;
-  const uint32_t baseLocked  = hasState ? st.lockedSeconds  : 0;
   const uint32_t startMs = millis();
   uint32_t lastFsMs = 0;
 
@@ -209,19 +208,17 @@ void Provisioning::run() {
       lastFsMs = millis();
       uint32_t elapsed = (millis() - startMs) / 1000;
       st.offlineSeconds = baseOffline + elapsed;
-      st.lockedSeconds  = baseLocked + elapsed;
       // Fortschritt persistieren — sonst verliert ein Brownout/Reset im Hotspot
       // den millis()-Zähler und der Timeout würde nie erreicht (Fail-closed!).
       // lastTick mitschreiben, damit der Tick nach einem Reboot nicht doppelt zählt.
       st.lastTick = time(nullptr);
       NVS::saveState(st);
-      log_i("Hotspot-Failsafe: offline %us/%us, locked %us, batt %d%%",
+      log_i("Hotspot-Failsafe: offline %us/%us, batt %d%%",
             st.offlineSeconds, (uint32_t)pol.offlineOpenH * 3600u,
-            st.lockedSeconds, Failsafe::batteryPercent());
-      if (Failsafe::isLowBattery(st) || Failsafe::isOfflineTimeout(st, pol) ||
-          Failsafe::isHardCapExceeded(st, pol)) {
-        log_w("FAILSAFE im Setup-Hotspot → ÖFFNEN (offline=%us locked=%us)",
-              st.offlineSeconds, st.lockedSeconds);
+            Failsafe::batteryPercent());
+      if (Failsafe::isLowBattery(st) || Failsafe::isOfflineTimeout(st, pol)) {
+        log_w("FAILSAFE im Setup-Hotspot → ÖFFNEN (offline=%us)",
+              st.offlineSeconds);
         WiFi.softAPdisconnect(true); // AP aus → voller Strom für den Motor
         WiFi.mode(WIFI_OFF);
         delay(50);

@@ -60,8 +60,8 @@ export async function POST(req: NextRequest) {
   const prevLocked = device.locked;
 
   // lockedSince server-autoritativ: beim Übergang offen→zu auf Server-"jetzt" setzen,
-  // danach stabil halten. Der Box-gemeldete `since` wird NICHT vertraut (sonst könnte
-  // die Box ihren HardCap-Anker manipulieren — der Cap rechnet ab lockedSince).
+  // danach stabil halten (reine „gesperrt seit"-Telemetrie). Der Box-gemeldete `since`
+  // wird NICHT vertraut, damit der Server die Wahrheit über den Sperrbeginn hält.
   const newLockedSince = state.locked ? (prevLocked ? device.lockedSince : now) : null;
 
   // Determine event type from state transition
@@ -187,12 +187,12 @@ export async function POST(req: NextRequest) {
   // Tracker ausgelöstes Kommando ziehen (consume-on-read) + anwenden — VOR der lockUntil-
   // Berechnung, damit die Box das Kommando schon in DIESER Sync-Antwort vollzieht.
   if (trackerInstance && device.trackerUsername && policy) {
-    const view = deviceLockView(policy, newLockedSince, now);
+    const view = deviceLockView(policy, now);
     const cmd = await pushBoxStatus(trackerInstance, {
       username: device.trackerUsername,
       boxId: device.id,
       name: device.name,
-      locked: boxLocked(policy, newLockedSince, now),
+      locked: boxLocked(policy, now),
       lockUntil: view.lockUntil,
       simpleLock: view.simpleLock,
       keyholderLocked: view.keyholderLocked,
@@ -221,7 +221,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const lockUntil = effectiveLockUntil(policy, newLockedSince, now);
+  const lockUntil = effectiveLockUntil(policy, now);
 
   if (eventType) {
     console.log(`${ts()} [box/sync] Device "${device.name}" → ${eventType} (reason: ${state.wakeReason ?? "—"})`);
@@ -285,10 +285,9 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     name: device.name,
-    locked: boxLocked(policy, newLockedSince, now), // autoritativ: Simple-Lock ODER aktive Zeit
+    locked: boxLocked(policy, now), // autoritativ: Simple-Lock ODER aktive Zeit
     lockUntil: lockUntil?.toISOString() ?? null,
     offlineOpenHours: policy?.offlineOpenHours ?? 24,
-    hardCapHours: policy?.hardCapHours ?? 0, // lokal als absolute Obergrenze enforced
 
     timeUTC: now.toISOString(),
     otaVersion: otaPending ? targetVersion : null,

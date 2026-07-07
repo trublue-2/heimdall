@@ -26,9 +26,8 @@ struct BoxState {
   bool   charging;     // true = USB/Netz dran (GPIO26, PIN_CHARGE_DETECT)
   char   deviceName[64]; // Anzeigename vom Server (nur RAM, je Sync gesetzt)
 
-  // Monotone Failsafe-Zähler — clock-UNABHÄNGIG (überleben Brownout/1970-Uhr via NVS).
-  // Garantieren, dass Offline-Timeout/HardCap auch ohne gültige Wall-Clock greifen.
-  uint32_t lockedSeconds;  // akkumulierte Sperrdauer (0 wenn offen) → HardCap
+  // Monotoner Failsafe-Zähler — clock-UNABHÄNGIG (überlebt Brownout/1970-Uhr via NVS).
+  // Garantiert, dass der Offline-Timeout auch ohne gültige Wall-Clock greift.
   uint32_t offlineSeconds; // Zeit seit letztem erfolgreichen Sync (0 bei Sync) → Offline-Open
   time_t   lastTick;       // time() beim letzten Wake (für Delta-Berechnung)
   bool     lowBattLatched; // Low-Batt-Hysterese: gesetzt ab ≤CRITICAL, gelöscht erst ≥RECOVER
@@ -49,7 +48,6 @@ struct BoxPolicy {
                        // Autoritativ — entkoppelt "zu" von lockUntil (Simple-Lock: zu ohne Deadline).
   time_t lockUntil;    // Unix-Epoch; 0 = keine Deadline (Failsafe-Grenze, NICHT "offen")
   int    offlineOpenH; // h — Standard: OFFLINE_OPEN_H
-  int    hardCapH;     // 0 = kein absoluter Cap
 };
 
 namespace NVS {

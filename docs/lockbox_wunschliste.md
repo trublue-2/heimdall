@@ -44,7 +44,7 @@ Sammelstelle für alles, was dir im **Betrieb der Ziel-Box** auffällt und was d
 - [x] **Entscheid: keine Notentriegelung.** Notausgang = Scheibe einschlagen (PLA, billig nachzudrucken, stromunabhängig, jederzeit verfügbar). Deckt die Lebenssicherheit ab.
 - [x] **Low-Battery-Auto-Open** — öffnet selbsttätig bei ≤15 % (`failsafe.h isLowBattery`, `BATT_CRITICAL_PCT`); `BATT_UNKNOWN`-Schutz gegen fehlenden Sensor (sonst fälschlich „0 % = leer"). _(FW 0.1.78; Hysterese/Vorwarnung noch nicht implementiert.)_
 - [x] **24-h-ohne-Internet-Auto-Open** — `Failsafe::isOfflineTimeout` über monotonen `offlineSeconds`-Zähler (clock-unabhängig, überlebt Brownout/1970-Uhr in NVS). Reset nur bei erfolgreichem Sync.
-- [x] **Box-lokaler Hard-Deadline** — `lockUntil` in NVS, RTC-Wake exakt zur Deadline (`goDeepSleep`), `isPolicyExpired` öffnet zeitbasiert nur bei gültiger Uhr. HardCap (`isHardCapExceeded` über monotonen `lockedSeconds`) als absolute Obergrenze.
+- [x] **Box-lokaler Hard-Deadline** — `lockUntil` in NVS, RTC-Wake exakt zur Deadline (`goDeepSleep`), `isPolicyExpired` öffnet zeitbasiert nur bei gültiger Uhr.
 - [~] **Positions-Persistenz in NVS** — logischer `locked`-Zustand überlebt Deep-Sleep via NVS (kein undefinierter Zustand). **Physisch ungemessen** (kein Endlagensensor → `boltPos=UNKNOWN`). Ein Sensor ist **nicht geplant** (keine HW); Korrektur bei klemmendem Riegel über die User-Meldung „erneut öffnen" (Abschnitt 2).
 - [ ] **Hardware-Watchdog** gegen Firmware-Hänger.
 - [ ] **Brown-out-Detector** aktiv konfiguriert.
@@ -80,7 +80,7 @@ Sammelstelle für alles, was dir im **Betrieb der Ziel-Box** auffällt und was d
 
 - [x] **Anmeldung am Server** beim ersten Boot: Box registriert sich mit Device-Token (`/api/box/register`), Server ordnet sie zu.
 - [x] **Sync-Zeitpunkte:** beim Aufwachen aus Standby, beim Taster-„Anschalten", per RTC-Timer-Wake (`WAKE_INTERVAL_S` 5 min, oder früher bei näherer Deadline). Spätestens bei jedem „Anschalten" wird gesynct.
-- [x] **Was beim Sync passiert:** Box pusht realen Zustand (auf/zu, seit wann, Akku) → zieht Soll (`serverLocked`, `lockUntil`, `offlineOpenHours`, `hardCapHours`) → rechnet lokal (immer ≤ Failsafe-Obergrenze). `lockedSince` server-autoritativ (Box kann HardCap-Anker nicht manipulieren).
+- [x] **Was beim Sync passiert:** Box pusht realen Zustand (auf/zu, seit wann, Akku) → zieht Soll (`serverLocked`, `lockUntil`, `offlineOpenHours`) → rechnet lokal (immer ≤ Failsafe-Obergrenze). `lockedSince` server-autoritativ („gesperrt seit"-Telemetrie).
 - [x] **Offline-Verhalten:** Box arbeitet mit dem zuletzt gesyncten Soll weiter (NVS-Policy); nach 24 h feuert der Offline-Auto-Open. Standalone (Simple-Lock ohne Deadline) läuft ebenso.
 - [x] **Verbindung User ↔ Box im Moment der Bedienung** — physischer **Taster** (GPIO14, EXT0-Wake) = Intent + Wake; Autorisierung kommt aus dem Server-Sync. Umgesetzt.
 - [ ] **Push für schnelles Keyholder-Feedback?** `[?]` — **wird gerade neu bewertet (2026-07-07):** heutige Worst-Case-Latenz Server→Box bis 5 min (Deep-Sleep). In Prüfung: Light-Sleep-connected + „Türklingel"-Push (MQTT/WebSocket), wobei die Autorität auf dem gehärteten HTTPS-Sync bleibt. Ursprünglicher Entscheid „bewusst gegen Dauerverbindung" ist damit offen.
@@ -94,7 +94,7 @@ Sammelstelle für alles, was dir im **Betrieb der Ziel-Box** auffällt und was d
 > Die Box wird das **erste Gerät, das echte Hardware-Wahrheit** in den Tracker schreibt — statt deiner manuellen Selbstauskunft.
 
 - [ ] Verschliessen/Öffnen der Box erzeugt **automatisch** `VERSCHLUSS`/`OEFFNEN`-Einträge.
-- [ ] Keyholder-`set_lock_period` / Sperrzeit wirkt **direkt** auf die Box (Server sagt „zu bis X" → Box vollzieht, im Rahmen der Hard-Caps).
+- [ ] Keyholder-`set_lock_period` / Sperrzeit wirkt **direkt** auf die Box (Server sagt „zu bis X" → Box vollzieht, im Rahmen der lokalen Failsafes).
 - [ ] **Reinigungspausen** als überwachte Öffnung mit Timer abbilden (aktuell: max. 15 min/Pause, 2 min/Tag) — Box öffnet kurz, zählt mit, schliesst selbst wieder.
 - [ ] **Foto-Inspektion** (`request_inspection`): Box zeigt/bestätigt den Code.
 - [ ] **Strafbuch**: hardwareseitig erkanntes unautorisiertes Öffnen → automatischer Eintrag statt Ehrensystem.
@@ -158,7 +158,7 @@ Sammelstelle für alles, was dir im **Betrieb der Ziel-Box** auffällt und was d
 **Leitsatz:** Die Box redet **ausschließlich** mit dem Steuerserver und weiß nicht, dass der Tracker existiert. „Tracker-Light" = Steuerserver mit Sync = off. „Server + Tracker-Sync" = Steuerserver mit Sync = on. **Ein Artefakt, Sync ist ein Feature-Flag.**
 
 **Box↔Steuerserver-Vertrag (minimal, versioniert):**
-- `register(token)` → Geräte-Config `{lockUntil, offlineOpenHours, hardCaps, timeUTC, fwTarget}`
+- `register(token)` → Geräte-Config `{lockUntil, offlineOpenHours, timeUTC, fwTarget}`
 - `sync(token, state{locked, since, battery, boltPos, fwVersion, wakeReason})` → `{lockUntil, offlineOpenHours, timeUTC, otaAvailable, commands[]}`
 
 **Sync-Vertrag Steuerserver↔Tracker (zwei Richtungen):**
@@ -262,3 +262,4 @@ stateDiagram-v2
 - **2026-06-07 (Befund)** — USB-C der Ziel-Box empirisch als **charge-only** bestätigt (Mac + Pi, iPhone-Gegenprobe). In Abschnitt D dokumentiert. Brain-Transfer bleibt die Route.
 - **2026-07-07 (Abgleich mit Code-Stand FW 0.1.78)** — Wunschliste an die reale Firmware angeglichen. Als erledigt markiert: alle P0-Failsafes (Low-Batt-, 24-h-Offline-, Hard-Deadline-Auto-Open, HardCap — `failsafe.h`, clock-unabhängig über monotone NVS-Zähler), Akkustand-/Lade-Erkennung, kompletter Sync-/Provisioning-Zyklus, Multi-WLAN, signierte OTA mit Rollback, Token-Auth + Cert-Pinning, Taster-Wake, sowie Transplant-Verifikation D1–D5 (Firmware läuft auf der Original-Platine). Teilweise (`[~]`): Positions-Persistenz (logisch ja, physisch ungemessen) und Statusanzeige (LED ja, Display nein). Weiterhin offen: Endlagen-Erkennung, Hardware-Watchdog, Brown-out-Config, Replay-Schutz für Einzelkommandos. **Neu aufgerollt:** §4 „Push für schnelles Keyholder-Feedback" — der ursprüngliche Entscheid gegen eine Dauerverbindung wird zugunsten besserer Website-Responsivität neu bewertet (Light-Sleep-connected + Türklingel-Push, Autorität bleibt auf dem HTTPS-Sync).
 - **2026-07-07 (FW 0.2.0 — MQTT-Push)** — §4 umgesetzt als **Session-Fenster-MQTT**: Button/USB öffnet ein ~2-min-Wachfenster mit Live-MQTT (open/close/lock/reopen <2 s, „Box online" via LWT); dormant schläft die Box zwischen **stündlichen** Heartbeat-Syncs (12× weniger Wakes als vorher). Direkt-Kommandos über MQTT, autoritative Policy weiter über den cert-gepinnten HTTPS-Sync; lokale Failsafes unangetastet autoritativ (Safety-Invariante gewahrt). Server: Mosquitto-Broker (go-auth-HTTP-Backend, Reuse der Device-Token), `mqttBridge` + `mqttEnabled`-Flag pro Box (Default aus → schrittweiser Rollout). Endlagensensor verworfen (keine HW) → User-gemeldeter Riegel-Retry (`reopen`).
+- **2026-07-07 (FW 0.2.9 — HardCap entfernt)** — Der **HardCap** (absolute Zeit-Obergrenze ab Verschluss) fällt komplett weg: Server (`hardCapHours`-Spalte + `effectiveLockUntil`-Kappung + UI-Feld) und Firmware (`isHardCapExceeded`, monotoner `lockedSeconds`-Zähler) bereinigt. Begründung: Der Keyholder öffnet jederzeit übers Dashboard (Notfall-Passwort/-Phrase), der Cap war nur ein User-Schutz und verwirrte durch stille Kappung der eingestellten Sperrzeit. Verbleibende lokale Failsafes: Low-Batt, 24-h-Offline, Zeit-Deadline (`isPolicyExpired`). Rückwärtskompatibel: Server sendet kein `hardCapHours` mehr → alte Firmware liest `0` → Cap inert; `hard_deadline` bleibt vorerst als legitimer Open-Reason gelistet (in-field-Boxen vor OTA).

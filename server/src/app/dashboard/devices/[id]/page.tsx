@@ -48,7 +48,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
 
   const online = isOnline(device.lastSyncAt);
   const mqttLive = deviceOnline(device.id); // MQTT-Präsenz (Wachfenster) für die Live-Anzeige
-  const lockView = deviceLockView(device.policy, device.lockedSince, new Date());
+  const lockView = deviceLockView(device.policy, new Date());
 
   return (
     <div className="space-y-6">
@@ -84,7 +84,6 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
             deviceId={device.id}
             name={device.name}
             offlineOpenHours={device.policy?.offlineOpenHours ?? 24}
-            hardCapHours={device.policy?.hardCapHours ?? null}
           />
         </Card>
         <Card className="space-y-4">

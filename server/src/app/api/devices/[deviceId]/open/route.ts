@@ -37,7 +37,7 @@ export async function POST(
 
   const now = new Date();
   const policy = device.policy;
-  const timedActive = effectiveLockUntil(policy, device.lockedSince, now) !== null;
+  const timedActive = effectiveLockUntil(policy, now) !== null;
   const hasPassword = !!policy?.openPasswordHash;
 
   let reason: "early" | "silent" = "silent";

@@ -18,7 +18,6 @@ export async function GET() {
       deviceName: d.name,
       lockUntil: d.policy?.lockUntil?.toISOString() ?? null,
       offlineOpenHours: d.policy?.offlineOpenHours ?? 24,
-      hardCapHours: d.policy?.hardCapHours ?? null,
     }))
   );
 }

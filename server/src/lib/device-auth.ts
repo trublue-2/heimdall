@@ -78,16 +78,15 @@ export function extractBearerToken(authHeader: string | null): string | null {
  */
 export function boxLocked(
   policy: LockPolicy | null,
-  lockedSince: Date | null,
   now: Date
 ): boolean {
   // Reinigungspause: bis cleaningUntil darf die Box trotz Sperrzeit offen sein. Öffnet nur
-  // FRÜHER (sichere Richtung), danach greift die Sperre wieder. hardCap/Failsafes unberührt.
+  // FRÜHER (sichere Richtung), danach greift die Sperre wieder. Lokale Failsafes unberührt.
   if (policy?.cleaningUntil && policy.cleaningUntil > now) return false;
   return (
     !!policy?.simpleLock ||
     !!policy?.trackerSimpleLock ||
-    effectiveLockUntil(policy, lockedSince, now) !== null
+    effectiveLockUntil(policy, now) !== null
   );
 }
 
@@ -100,38 +99,26 @@ export function boxLocked(
 export async function isDeviceLocked(deviceId: string): Promise<boolean> {
   const d = await prisma.device.findUnique({
     where: { id: deviceId },
-    select: { locked: true, lockedSince: true, policy: true },
+    select: { locked: true, policy: true },
   });
   if (!d) return false;
-  return d.locked || boxLocked(d.policy, d.lockedSince, new Date());
+  return d.locked || boxLocked(d.policy, new Date());
 }
 
 /**
- * Effektives lockUntil für die Box, gekappt durch hardCapHours.
- * HardCap ist eine absolute Obergrenze AB VERSCHLIESSEN (lockedSince) — nicht ab
- * "jetzt". Sonst würde der Cap bei jedem Sync mitgleiten und nie ablaufen.
- * 0/null = kein Cap. Ist die Box noch nicht zu (lockedSince null), wird ab jetzt
- * gerechnet (der Lock beginnt gleich; die Firmware enforced ohnehin lokal ab Lock).
+ * Effektives lockUntil für die Box: die eigene Heimdall-Zeit UND die aus dem Tracker
+ * gezogene Sperrzeit, die strengere (spätere) gewinnt. Keine Obergrenze — der
+ * Keyholder öffnet jederzeit übers Dashboard, lokale Failsafes (Low-Batt/Offline)
+ * bleiben davon unberührt.
  */
 export function effectiveLockUntil(
   policy: LockPolicy | null,
-  lockedSince: Date | null,
   now: Date
 ): Date | null {
-  // Hybrid: Heimdall-eigene Zeit UND aus dem Tracker gezogene Sperrzeit — die
-  // strengere (spätere) gewinnt. hardCap kappt das Ergebnis IMMER, der Tracker kann
-  // also nie über die absolute Obergrenze hinaus verlängern (Safety-Invariante).
   let until = policy?.lockUntil ?? null;
   const tracker = policy?.trackerLockUntil ?? null;
   if (tracker && (!until || tracker > until)) until = tracker;
   if (!until) return null;
-
-  const hardCapHours = policy?.hardCapHours ?? 0;
-  if (hardCapHours > 0) {
-    const anchor = lockedSince ?? now;
-    const cap = new Date(anchor.getTime() + hardCapHours * 60 * 60 * 1000);
-    if (until > cap) until = cap;
-  }
 
   // Don't return a lockUntil that's already in the past
   if (until <= now) return null;
@@ -140,16 +127,15 @@ export function effectiveLockUntil(
 }
 
 /** Anzeige-Sicht für die Geräte-Karte: die EFFEKTIVE Sperre (eigene + aus dem Tracker gezogene
- *  Sperrzeit, gekappt durch hardCap) statt nur der eigenen lockUntil — damit „geschlossen bis"
+ *  Sperrzeit, die spätere gewinnt) statt nur der eigenen lockUntil — damit „geschlossen bis"
  *  die real gültige Zeit zeigt, auch wenn der Tracker sie verändert hat. keyholderLocked = eine
  *  Tracker-Sperrzeit hält die Box, die der Sub lokal nicht öffnen kann (nur Keyholderin/Ablauf). */
 export function deviceLockView(
   policy: LockPolicy | null,
-  lockedSince: Date | null,
   now: Date
 ): { lockUntil: Date | null; simpleLock: boolean; keyholderLocked: boolean } {
   return {
-    lockUntil: effectiveLockUntil(policy, lockedSince, now),
+    lockUntil: effectiveLockUntil(policy, now),
     simpleLock: !!policy?.simpleLock || !!policy?.trackerSimpleLock,
     keyholderLocked: !!policy?.trackerSimpleLock || !!(policy?.trackerLockUntil && policy.trackerLockUntil > now),
   };

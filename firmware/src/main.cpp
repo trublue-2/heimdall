@@ -610,9 +610,9 @@ static void goDeepSleep() {
   esp_deep_sleep_start();
 }
 
-// Lokale Failsafes: monotone Zähler ticken (delta-basiert, persistiert) + Öffnungsgründe prüfen.
-// Läuft in setup() UND periodisch im Wach-Zustand — sonst frören HardCap/Offline-Timeout am
-// Netz ein (die Box schläft an USB nie, setup() liefe dann nie neu). true → Box muss öffnen.
+// Lokale Failsafes: monotoner Zähler tickt (delta-basiert, persistiert) + Öffnungsgründe prüfen.
+// Läuft in setup() UND periodisch im Wach-Zustand — sonst fröre der Offline-Timeout am Netz
+// ein (die Box schläft an USB nie, setup() liefe dann nie neu). true → Box muss öffnen.
 static bool checkFailsafes() {
   time_t now = time(nullptr);
   uint32_t inc = 0;
@@ -621,7 +621,6 @@ static bool checkFailsafes() {
     inc = (delta >= 0 && delta <= (long)(2UL * MAX_SLEEP_S)) ? (uint32_t)delta : (uint32_t)MAX_SLEEP_S;
   }
   gBox.offlineSeconds += inc;
-  gBox.lockedSeconds = gBox.locked ? gBox.lockedSeconds + inc : 0;
   gBox.lastTick = now;
   NVS::saveState(gBox); // persistieren — überlebt Brownout
 
@@ -633,11 +632,6 @@ static bool checkFailsafes() {
     log_w("FAILSAFE: Offline-Timeout (%dh, %us offline) → OPENING", gPolicy.offlineOpenH, gBox.offlineSeconds);
     strlcpy(gBox.wakeReason, "offline_timeout", sizeof(gBox.wakeReason)); return true;
   }
-  // HardCap: absolute Obergrenze — lokal, nie überschreitbar (CLAUDE.md).
-  if (gBox.locked && Failsafe::isHardCapExceeded(gBox, gPolicy)) {
-    log_w("FAILSAFE: HardCap (%dh, %us locked) → OPENING", gPolicy.hardCapH, gBox.lockedSeconds);
-    strlcpy(gBox.wakeReason, "hard_deadline", sizeof(gBox.wakeReason)); return true;
-  }
   return false;
 }
 
@@ -648,12 +642,11 @@ static bool shouldOpenNow() {
   return checkFailsafes() || (gBox.locked && Failsafe::isPolicyExpired(gPolicy));
 }
 
-// Kanonische Sperr-Sequenz (HardCap-Anker frisch, Riegel zu, Zustand melden). Genutzt von
+// Kanonische Sperr-Sequenz (Sperrbeginn merken, Riegel zu, Zustand melden). Genutzt von
 // der Policy-Entscheidung im Sync UND vom MQTT-lock-Kommando — eine Quelle statt zwei.
 static void lockBox() {
   gBox.locked        = true;
   gBox.lockedSince   = time(nullptr);
-  gBox.lockedSeconds = 0; // Sperrdauer-Zähler startet frisch (HardCap)
   NVS::saveState(gBox);
   Stepper::lock();
   gLastActivityMs = millis();
@@ -804,7 +797,7 @@ void setup() {
   gState = (hasState && gBox.locked) ? State::LOCKED : State::IDLE_OPEN;
 
   // ── P0: Sofort-Öffnungs-Gate VOR Sync/MQTT — Safety vor Security vor Funktion ──
-  // checkFailsafes() tickt die monotonen Zähler + prüft Low-Batt/Offline/HardCap.
+  // checkFailsafes() tickt den monotonen Zähler + prüft Low-Batt/Offline.
   // Zusätzlich die abgelaufene Lock-Zeit aus der GECACHTEN Policy prüfen (isPolicyExpired):
   // eine abgelaufene Sperre öffnet so sofort, ohne aufs Netz/den Sync zu warten.
   if (shouldOpenNow()) { gState = State::OPENING; return; }
@@ -943,7 +936,7 @@ void loop() {
       ensureStatusServer();
       gWeb.handleClient();
 
-      // Lokale Failsafes AUCH im Wach-Zustand periodisch prüfen — sonst frören HardCap/
+      // Lokale Failsafes AUCH im Wach-Zustand periodisch prüfen — sonst fröre der
       // Offline-Timeout ein, solange die Box am Netz durchgehend wach ist (schläft ja nicht,
       // setup() läuft nicht neu). 60-s-Takt schont NVS. Safety > Function (CLAUDE.md).
       static unsigned long gLastFsCheck = 0;

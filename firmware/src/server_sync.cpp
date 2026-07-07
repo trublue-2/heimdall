@@ -276,13 +276,12 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   // Autoritatives "soll zu". Fallback (Altserver ohne Feld): aus lockUntil ableiten.
   policy.serverLocked = resp["locked"] | (policy.lockUntil > 0);
   policy.offlineOpenH = resp["offlineOpenHours"] | OFFLINE_OPEN_H;
-  policy.hardCapH     = resp["hardCapHours"] | 0;
   strlcpy(state.deviceName, resp["name"] | "", sizeof(state.deviceName));
 
   // Server-Zeit übernehmen: die Deep-Sleep-RTC driftet (Minuten pro Tage), NTP läuft nur
   // bei ungültiger Uhr. timeUTC steht in JEDER Response → hier je Sync korrigiert, ohne
-  // extra NTP-Roundtrip. lastTick MIT verschieben, sonst sähen die monotonen Failsafe-
-  // Zähler (offlineSeconds/lockedSeconds) durch die Korrektur einen Scheinsprung.
+  // extra NTP-Roundtrip. lastTick MIT verschieben, sonst sähe der monotone Failsafe-
+  // Zähler (offlineSeconds) durch die Korrektur einen Scheinsprung.
   time_t srvNow = parseIso8601(resp["timeUTC"] | "");
   if (srvNow > 1700000000) {
     struct timeval tv;
@@ -337,7 +336,7 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   char lu[20] = "—";
   if (policy.lockUntil > 0) { struct tm t; time_t v = policy.lockUntil; localtime_r(&v, &t);
     strftime(lu, sizeof(lu), "%d.%m.%Y %H:%M", &t); }
-  log_i("Policy: locked=%d lockUntil=%ld (%s) offlineH=%d hardCap=%d",
-        policy.serverLocked, (long)policy.lockUntil, lu, policy.offlineOpenH, policy.hardCapH);
+  log_i("Policy: locked=%d lockUntil=%ld (%s) offlineH=%d",
+        policy.serverLocked, (long)policy.lockUntil, lu, policy.offlineOpenH);
   return SyncResult::OK;
 }

@@ -43,16 +43,9 @@ namespace Failsafe {
     return state.offlineSeconds >= (uint32_t)policy.offlineOpenH * 3600u;
   }
 
-  // HardCap: absolute, NIE überschreitbare Sperr-Obergrenze (CLAUDE.md). Lokal
-  // enforced über die monotone Sperrdauer — unabhängig von Server UND Wall-Clock.
-  inline bool isHardCapExceeded(const BoxState& state, const BoxPolicy& policy) {
-    if (policy.hardCapH <= 0) return false; // 0 = kein Cap
-    return state.lockedSeconds >= (uint32_t)policy.hardCapH * 3600u;
-  }
-
   // "Soll offen": Server sagt offen ODER zeitliche Deadline abgelaufen.
   // serverLocked ist autoritativ — Simple-Lock (lockUntil==0, aber serverLocked) bleibt zu.
-  // Zeit-Deadline öffnet NUR bei gültiger Uhr — sonst übernehmen Offline-Timeout/HardCap
+  // Zeit-Deadline öffnet NUR bei gültiger Uhr — sonst übernimmt der Offline-Timeout
   // (sonst bliebe die Box bei 1970 ewig zu).
   inline bool isPolicyExpired(const BoxPolicy& policy) {
     if (!policy.serverLocked) return true;  // Server sagt offen
@@ -65,7 +58,6 @@ namespace Failsafe {
   inline bool shouldOpen(BoxState& state, const BoxPolicy& policy) {
     return isLowBattery(state)
         || isOfflineTimeout(state, policy)
-        || isHardCapExceeded(state, policy)
         || isPolicyExpired(policy);
   }
 

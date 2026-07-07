@@ -125,7 +125,7 @@ Damit niemand durch einen technischen Defekt eingesperrt bleibt, öffnet die Box
 
 - **der Akku kritisch leer** ist (≤ 15 %, solange noch Energie für die Öffnung da ist) — mit **Vorwarnung** ab 20 % und Hysterese gegen Flattern,
 - **zu lange kein Server-Kontakt** bestand (Standard: 24 h),
-- eine **absolute Obergrenze** (`hardCap`) erreicht ist — diese kann der Server **nie** überschreiten.
+- die **eingestellte Sperrzeit abgelaufen** ist (`lockUntil`, uhrzeit-basiert).
 
 Diese Prüfungen laufen **lokal und uhrzeit-unabhängig** auf der Box — auch ohne WLAN, ohne
 Server und nach einem Stromausfall.

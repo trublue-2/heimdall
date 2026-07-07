@@ -44,7 +44,7 @@ export default async function DashboardPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {devices.map((device) => {
-            const lv = deviceLockView(device.policy, device.lockedSince, new Date());
+            const lv = deviceLockView(device.policy, new Date());
             return (
             <DeviceControlCard
               key={device.id}

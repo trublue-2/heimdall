@@ -121,19 +121,18 @@ model LockPolicy {
   deviceId         String    @unique
   lockUntil        DateTime?
   offlineOpenHours Int       @default(24)
-  hardCapHours     Int?
   // "Einfach verschliessen" (ohne Zeit): zu, aber kein lockUntil. Box bleibt zu,
   // bis serverseitig geöffnet wird (jederzeit, kein Event). Failsafes bleiben aktiv.
   simpleLock       Boolean   @default(false)
   // Optionales Öffnungs-Passwort (bcrypt). Gesetzt → vorzeitiges Öffnen nur mit Passwort.
   openPasswordHash String?
-  // Aus dem Tracker gezogene Keyholder-Absicht (Hybrid: strengere Zeit gewinnt, gekappt
-  // durch hardCap). Getrennt von lockUntil, damit die Heimdall-eigene Zeit nicht überschrieben wird.
+  // Aus dem Tracker gezogene Keyholder-Absicht (Hybrid: strengere Zeit gewinnt).
+  // Getrennt von lockUntil, damit die Heimdall-eigene Zeit nicht überschrieben wird.
   trackerLockUntil  DateTime? // timed Sperrzeit-Ende
   trackerSimpleLock Boolean   @default(false) // indefinite Sperrzeit → zu bis Keyholder öffnet
   // Reinigungspause: bis hierhin darf die Box TROTZ Sperrzeit offen sein (temporäre, vom
   // Tracker gewährte Öffnung; danach greift trackerLockUntil wieder). Öffnet nur FRÜHER →
-  // sichere Richtung, hardCap/Failsafes bleiben unberührt (Safety-Invariante gewahrt).
+  // sichere Richtung, lokale Failsafes bleiben unberührt (Safety-Invariante gewahrt).
   cleaningUntil     DateTime?
   updatedAt        DateTime  @updatedAt
 }

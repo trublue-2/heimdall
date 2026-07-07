@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.2.8"
+#define FW_VERSION "0.2.9"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Ziel-Board: ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
@@ -65,7 +65,7 @@
 #define HEARTBEAT_S              (60UL * 60)        // dormant: stündlicher Sync-Wake (RTC-Timer)
 // Längstes reguläres Sleep-Intervall — Klemme für die monotonen Failsafe-Zähler in
 // checkFailsafes(): ein Delta darüber gilt als Uhr-Sprung und wird konservativ gekappt.
-// MUSS ≥ HEARTBEAT_S sein, sonst unterzählen Offline-/HardCap-Zähler (Failsafe feuert zu spät).
+// MUSS ≥ HEARTBEAT_S sein, sonst unterzählt der Offline-Zähler (Failsafe feuert zu spät).
 #define MAX_SLEEP_S              HEARTBEAT_S
 #define OFFLINE_OPEN_H           24                 // h ohne Sync → Auto-Open
 #define WIFI_CONNECT_TIMEOUT_MS  (15 * 1000)        // 15 s WiFi-Connect-Limit

@@ -50,7 +50,6 @@ bool NVS::loadState(BoxState& out) {
     out.lastSyncAt  = (time_t)prefs.getLong64("lsync",  0);
     out.batteryPct  = prefs.getInt("prevBatt", -1); // -1 = noch nie gemessen
     strlcpy(out.wakeReason, prefs.getString("reason", "unknown").c_str(), sizeof(out.wakeReason));
-    out.lockedSeconds  = prefs.getUInt("locksec",  0);
     out.offlineSeconds = prefs.getUInt("offsec",   0);
     out.lastTick       = (time_t)prefs.getLong64("ltick", 0);
     out.lowBattLatched = prefs.getBool("lowbatt", false);
@@ -66,7 +65,6 @@ void NVS::saveState(const BoxState& in) {
   prefs.putLong64("lsync",   (int64_t)in.lastSyncAt);
   prefs.putString("reason",  in.wakeReason);
   prefs.putInt("prevBatt",   in.batteryPct);
-  prefs.putUInt("locksec",   in.lockedSeconds);
   prefs.putUInt("offsec",    in.offlineSeconds);
   prefs.putLong64("ltick",   (int64_t)in.lastTick);
   prefs.putBool("lowbatt",   in.lowBattLatched);
@@ -80,7 +78,6 @@ bool NVS::loadPolicy(BoxPolicy& out) {
   bool ok = prefs.isKey("lockUntil");
   out.lockUntil    = (time_t)prefs.getLong64("lockUntil", 0);
   out.offlineOpenH = prefs.getInt("offlineH", OFFLINE_OPEN_H);
-  out.hardCapH     = prefs.getInt("hardCap",  0);
   // Fallback für Altbestand ohne Key: "zu" aus lockUntil ableiten (kein Fehl-Öffnen).
   out.serverLocked = prefs.getBool("srvLocked", out.lockUntil > 0);
   prefs.end();
@@ -91,7 +88,6 @@ void NVS::savePolicy(const BoxPolicy& in) {
   prefs.begin("policy", false);
   prefs.putLong64("lockUntil", (int64_t)in.lockUntil);
   prefs.putInt("offlineH", in.offlineOpenH);
-  prefs.putInt("hardCap",  in.hardCapH);
   prefs.putBool("srvLocked", in.serverLocked);
   prefs.end();
 }

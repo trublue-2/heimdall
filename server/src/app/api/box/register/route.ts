@@ -26,14 +26,13 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const lockUntil = effectiveLockUntil(device.policy, device.lockedSince, now);
+  const lockUntil = effectiveLockUntil(device.policy, now);
   console.log(`${ts()} [box/register] Device "${device.name}" registered`);
 
   return NextResponse.json({
-    locked: boxLocked(device.policy, device.lockedSince, now),
+    locked: boxLocked(device.policy, now),
     lockUntil: lockUntil?.toISOString() ?? null,
     offlineOpenHours: device.policy?.offlineOpenHours ?? 24,
-    hardCapHours: device.policy?.hardCapHours ?? 0, // 0 = kein Cap (wie sync, lokal enforced)
     timeUTC: now.toISOString(),
     fwTarget: null,
   });

@@ -42,7 +42,7 @@ Middleware: `src/proxy.ts` — öffentliche Routen: `/login`, `/api/auth/*`, `/a
 |---|---|
 | `User` | Keyholder-Konten (`admin` / `viewer`) |
 | `Device` | Die Lockbox — Token-Hash, letzter gemeldeter Zustand |
-| `LockPolicy` | Soll-Policy pro Gerät (`lockUntil`, `offlineOpenHours`, `hardCapHours`) |
+| `LockPolicy` | Soll-Policy pro Gerät (`lockUntil`, `offlineOpenHours`) |
 | `DeviceEvent` | Zustandsübergänge: `LOCKED` / `UNLOCKED` / `FAILSAFE_OPEN` / `UNAUTHORIZED_OPEN` |
 | `RateLimit` | Login-Rate-Limiting |
 | `AppMeta` | KV-Store für Metadaten |
@@ -66,7 +66,7 @@ POST /api/box/sync       → Jedes Aufwachen: State rein, Soll-Zustand raus
 1. Token verifizieren → 401 wenn ungültig
 2. Device-Zustand updaten (locked, battery, boltPos, fwVersion, lastSyncAt, wakeReason)
 3. Zustandsübergang erkennen → `DeviceEvent` erstellen
-4. `lockUntil = min(policy.lockUntil, now + hardCapHours)` — Cap **nie** überschreiten
+4. `lockUntil = effectiveLockUntil(policy)` — eigene + aus dem Tracker gezogene Sperrzeit, die spätere gewinnt
 5. Tracker-Sync-Stub (Feature-Flag `TRACKER_SYNC_ENABLED=false`)
 
 ---

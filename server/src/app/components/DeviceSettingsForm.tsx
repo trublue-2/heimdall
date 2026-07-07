@@ -6,24 +6,21 @@ import { Button } from "./Button";
 import { Input } from "./Input";
 import { FormError } from "./FormError";
 
-/** Editierbare Werte (Name + Failsafe/Hard-Cap) mit Speichern-Button. Die booleschen
+/** Editierbare Werte (Name + Offline-Failsafe) mit Speichern-Button. Die booleschen
  *  Schalter (OTA, Debug, MQTT, Server-Log) laufen bewusst getrennt als sofort-anwendende
  *  SettingToggles — hier NUR Felder, die man tippt und dann bestätigt. */
 export function DeviceSettingsForm({
   deviceId,
   name,
   offlineOpenHours,
-  hardCapHours,
 }: {
   deviceId: string;
   name: string;
   offlineOpenHours: number;
-  hardCapHours: number | null;
 }) {
   const router = useRouter();
   const [nameVal, setNameVal] = useState(name);
   const [offline, setOffline] = useState(String(offlineOpenHours));
-  const [hardCap, setHardCap] = useState(hardCapHours != null ? String(hardCapHours) : "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
@@ -47,7 +44,6 @@ export function DeviceSettingsForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           offlineOpenHours: parseInt(offline, 10),
-          hardCapHours: hardCap ? parseInt(hardCap, 10) : null,
         }),
       });
       if (!pr.ok) throw new Error(await pr.text());
@@ -81,15 +77,6 @@ export function DeviceSettingsForm({
             max={168}
             value={offline}
             onChange={(e) => setOffline(e.target.value)}
-          />
-          <Input
-            id={`cap-${deviceId}`}
-            label="Hard-Cap (max. Stunden ab Verschluss, leer = kein Cap)"
-            type="number"
-            min={1}
-            max={720}
-            value={hardCap}
-            onChange={(e) => setHardCap(e.target.value)}
           />
         </div>
       </details>

@@ -29,7 +29,7 @@ export default async function GeraetePage() {
           name: d.name,
           assignedUserIds: d.users.map((u) => u.id),
           // Verschluss = Server/Token + Zuweisung eingefroren (siehe isDeviceLocked).
-          locked: d.locked || effectiveLockUntil(d.policy, d.lockedSince, now) !== null,
+          locked: d.locked || effectiveLockUntil(d.policy, now) !== null,
         }))}
       />
     </div>
