@@ -174,6 +174,12 @@ static void recordBoot() {
   // "unexp" zählt nur echte Stromverluste (Brownout / Power-on) — NICHT die erwarteten
   // SW-/OTA-Resets oder Deep-Sleep-Wakes → ehrlicher Brownout-Indikator statt OTA-Rauschen.
   if (r == ESP_RST_BROWNOUT || r == ESP_RST_POWERON) gUnexpected++;
+  // Einmaliger Baseline-Reset (marker-gesichert): der bisherige unexp-Stand ist historisch
+  // von Bench-/USB-Power-ons aufgebläht (Prod-Log 07-07: 0 echte Feld-Brownouts). Ab diesem
+  // FW-Marker einmal auf 0, damit unexp danach nur noch echte Feld-Brownouts/Power-ons zählt.
+  // STAT_BASELINE hochzählen, wenn man den Zähler erneut fleet-weit nullen will.
+  const uint32_t STAT_BASELINE = 211;
+  if (p.getUInt("statbase", 0) < STAT_BASELINE) { gUnexpected = 0; p.putUInt("statbase", STAT_BASELINE); }
   p.putUInt("boots", gBootCount);
   p.putUInt("unexp", gUnexpected);
   p.end();
