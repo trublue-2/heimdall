@@ -31,7 +31,10 @@ const syncBodySchema = z.object({
     mac: z.string().max(32).optional(),
   }),
   knownSsids: z.array(z.string().max(64)).max(16).optional(), // WLANs, die die Box kennt
+  logs: z.string().max(8000).optional(), // serielles Log (newline-getrennt), nur bei logToServer
 });
+
+const LOG_RETENTION = 2000; // je Gerät gespeicherte Log-Zeilen (ältere werden geprunt)
 
 export async function POST(req: NextRequest) {
   const rawToken = extractBearerToken(req.headers.get("authorization"));
@@ -225,6 +228,34 @@ export async function POST(req: NextRequest) {
     select: { ssid: true, password: true },
   });
 
+  // Serielles Log anhängen (nur bei aktivem logToServer): Zeilen splitten, speichern,
+  // dann je Gerät auf die letzten LOG_RETENTION prunen (Verlauf bleibt beschränkt).
+  if (device.logToServer && body.logs) {
+    const lines = body.logs
+      .split("\n")
+      .map((l) => l.trimEnd())
+      .filter((l) => l.length > 0)
+      .slice(-500); // Sicherheitskappe pro Sync
+    if (lines.length) {
+      await prisma.deviceLog.createMany({ data: lines.map((line) => ({ deviceId: device.id, line })) });
+      // Retention ist weich (~2000). Nicht jeden Sync prunen — das spart auf dem Hot-Path
+      // den skip:LOG_RETENTION-Indexscan; ~1-in-10 reicht, kurze Drift ist unkritisch.
+      if (Math.random() < 0.1) {
+        const cutoff = await prisma.deviceLog.findFirst({
+          where: { deviceId: device.id },
+          orderBy: { createdAt: "desc" },
+          select: { createdAt: true },
+          skip: LOG_RETENTION,
+        });
+        if (cutoff) {
+          await prisma.deviceLog.deleteMany({
+            where: { deviceId: device.id, createdAt: { lt: cutoff.createdAt } },
+          });
+        }
+      }
+    }
+  }
+
   return NextResponse.json({
     name: device.name,
     locked: boxLocked(policy, newLockedSince, now), // autoritativ: Simple-Lock ODER aktive Zeit
@@ -237,6 +268,7 @@ export async function POST(req: NextRequest) {
     otaUrl: otaPending ? `${process.env.NEXTAUTH_URL ?? ""}/api/box/firmware` : null,
     otaSig: otaPending ? otaSig : null,
     debugMode: device.debugMode, // Box bleibt wach + serviert lokale Debug-Seite
+    logToServer: device.logToServer, // Box schickt ihr serielles Log bei jedem Sync mit
     wifiNetworks: pendingNets.map((n) => ({ ssid: n.ssid, pass: n.password })),
     preferredSsid: device.preferredSsid ?? null, // Server-Präferenz (Box gewinnt-lassen); null = Box behält lokale Wahl
     commands: [],

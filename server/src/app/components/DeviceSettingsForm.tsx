@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "./Button";
 import { Input } from "./Input";
 import { FormError } from "./FormError";
+import { Toggle } from "./Toggle";
 
 /** Gerät umbenennen + Failsafe/Hard-Cap konfigurieren. Zugriff: zugewiesen/Admin. */
 export function DeviceSettingsForm({
@@ -104,24 +105,5 @@ export function DeviceSettingsForm({
       {ok && <p className="text-sm text-[var(--color-lock)]">Gespeichert.</p>}
       <Button type="submit" loading={saving}>Speichern</Button>
     </form>
-  );
-}
-
-function Toggle({ checked, onChange, title, desc }: {
-  checked: boolean; onChange: (v: boolean) => void; title: string; desc: string;
-}) {
-  return (
-    <label className="flex items-start gap-2 text-sm cursor-pointer select-none">
-      <input
-        type="checkbox"
-        className="mt-0.5 h-4 w-4 accent-[var(--color-warn)]"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      <span>
-        {title}
-        <span className="block text-xs text-[var(--foreground-faint)]">{desc}</span>
-      </span>
-    </label>
   );
 }

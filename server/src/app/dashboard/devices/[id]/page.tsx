@@ -9,6 +9,7 @@ import { DeviceControlCard } from "@/app/components/DeviceControlCard";
 import { DeviceSettingsForm } from "@/app/components/DeviceSettingsForm";
 import { DeviceActions } from "@/app/components/DeviceActions";
 import { WifiNetworksManager } from "@/app/components/WifiNetworksManager";
+import { DeviceLogViewer } from "@/app/components/DeviceLogViewer";
 import { TrackerLinkForm } from "@/app/components/TrackerLinkForm";
 import { LiveRefresh } from "@/app/components/LiveRefresh";
 import { deviceLockView } from "@/lib/device-auth";
@@ -143,6 +144,16 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
           <h2 className="text-sm font-semibold text-[var(--foreground-muted)] uppercase tracking-wide">Weitere WLAN-Zugänge (Admin)</h2>
           <Card>
             <WifiNetworksManager deviceId={device.id} primarySsid={device.primarySsid} />
+          </Card>
+        </section>
+      )}
+
+      {/* Server-Log (Admin) */}
+      {isAdmin && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold text-[var(--foreground-muted)] uppercase tracking-wide">Server-Log (Admin)</h2>
+          <Card>
+            <DeviceLogViewer deviceId={device.id} logToServer={device.logToServer} />
           </Card>
         </section>
       )}

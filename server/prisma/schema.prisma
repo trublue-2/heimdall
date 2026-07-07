@@ -43,6 +43,9 @@ model Device {
   // Debug-Mode: Box bleibt wach + serviert lokale Debug-Seite (Pin-Test ohne Reflash).
   // Nicht persistent auf der Box — endet bei Server-Aus oder Zeit-Obergrenze.
   debugMode   Boolean  @default(false)
+  // Server-Log: Box hängt ihr serielles Log bei jedem Sync an (auch schlafend, ~5 min).
+  // Hält die Box NICHT wach (anders als debugMode).
+  logToServer Boolean  @default(false)
   lastSyncAt  DateTime?
   wakeReason  String?
   wifiSsid    String?
@@ -65,6 +68,7 @@ model Device {
   events       DeviceEvent[]
   users        User[]        @relation("DeviceAccess")
   wifiNetworks WifiNetwork[]
+  logs         DeviceLog[]
 }
 
 // Eine chastitytracker.ch-Deployment, die dieser Heimdall-Server anspricht. Reine
@@ -90,6 +94,19 @@ model WifiNetwork {
   createdAt DateTime @default(now())
 
   @@unique([deviceId, ssid])
+}
+
+// Fortlaufendes serielles Log der Box: bei aktivem Device.logToServer hängt die Box
+// die neuen Ring-Puffer-Zeilen bei jedem Sync an. Retention: Server prunt je Gerät auf
+// die letzten ~2000 Zeilen (siehe api/box/sync).
+model DeviceLog {
+  id        String   @id @default(cuid())
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  deviceId  String
+  line      String
+  createdAt DateTime @default(now())
+
+  @@index([deviceId, createdAt])
 }
 
 model LockPolicy {
