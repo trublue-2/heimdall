@@ -12,12 +12,13 @@ Zweifel **immer von selbst** — Sicherheit geht vor Funktion.
 ## Funktionen
 
 - ⏱️ **Sperren bis Datum/Zeit** — über ein schlankes Web-Dashboard, mit Schnellwahl (+1 h / +1 Tag / +1 Woche) oder freiem Termin.
+- ⚡ **Live-Steuerung (< 2 s)** — solange die Box wach ist (Tastendruck oder am USB), erreichen Öffnen/Verschliessen sie **sofort** per MQTT-Push, statt auf den nächsten Sync zu warten.
 - 📶 **Drahtlos & mobil** — die Box kennt **mehrere WLANs** (Zuhause, Handy-Hotspot, …) und wählt automatisch das stärkste verfügbare.
-- 🔄 **Selbst-Update (OTA)** — neue Firmware kommt über WLAN auf die Box, **ohne Kabel**.
+- 🔄 **Signiertes Selbst-Update (OTA)** — neue Firmware kommt über WLAN auf die Box, **ohne Kabel** (Ed25519-signiert, mit automatischem Rollback bei Fehlstart).
 - 📲 **Einrichtung per QR/Link** — neue Box in unter einer Minute provisioniert, ohne Code.
 - 🛟 **Lokale Failsafes** — die Box öffnet bei leerem Akku, langer Offline-Zeit oder Erreichen einer absoluten Obergrenze **autonom**, auch ohne Server.
-- 🔋 **Akkubetrieb** — Deep-Sleep zwischen den Syncs, hält tagelang.
-- 📟 **Status-Seite** — jede Box zeigt ihren Zustand (offen / geschlossen bis …) im Browser an.
+- 🔋 **Akkubetrieb** — Deep-Sleep zwischen kurzen Wach-Fenstern, stündlicher Heartbeat-Sync — hält auf einem kleinen LiPo lange.
+- 💡 **Status-LED & Status-Seite** — die LED zeigt „mit dem Server verbunden"; die Box-Webseite Zustand, Akku, Signal und Firmware.
 
 ---
 
@@ -35,6 +36,15 @@ Die Box fragt beim Aufwachen den Server: *„Bis wann soll ich zu sein?"* — un
 dann **selbst**. Fällt der Server aus, arbeitet sie mit dem zuletzt bekannten Stand weiter
 und greift auf ihre Failsafes zurück.
 
+### Reaktionsschnell trotz Akku
+
+Die Box schläft, um Strom zu sparen, und wacht bei Tastendruck (oder stündlich für einen
+Heartbeat) auf. Im **Wach-Fenster** hält sie eine **MQTT-Verbindung** zum Server — Keyholder-
+Kommandos wirken dann in **unter einer Sekunde**. Schläft sie, greifen die Vorgaben beim
+nächsten Aufwachen. So bleibt sie sparsam **und** reagiert sofort, wenn jemand an ihr steht.
+Die autoritative Zustandsübertragung bleibt dabei immer auf dem gehärteten HTTPS-Sync — MQTT
+ist nur der schnelle „Anstupser".
+
 ### Safety-Prinzip: **Safety > Security > Function**
 
 Kein digitales Mittel darf die physische Befreiung verhindern. Die lokalen Failsafes der Box
@@ -44,10 +54,13 @@ können vom Server **nicht** abgeschaltet werden.
 
 ## Hardware
 
-- **ESP32** (LOLIN D32, mit Onboard-LiPo-Lader)
+- **ESP32** — die Firmware läuft auf einem LOLIN-D32-Devboard **und transplantiert auf der
+  originalen LockMeBox-Platine** (gleicher ESP32-Chip; Pin-Belegung per Firmware-Analyse der
+  Original-Box übernommen).
 - **28BYJ-48 Schrittmotor** + ULN2003-Treiber (bewegt den Riegel)
-- **LiPo-Akku**
-- Blaue Status-LED (onboard), optionaler externer Taster (GPIO14)
+- **LiPo-Akku** mit Onboard-Lader
+- **Status-LED** (verbunden = leuchtet, Verbindungsaufbau = blinkt, Schlaf = aus)
+- **Taster** (GPIO14): weckt die Box und öffnet ein Live-Fenster
 - PLA-Gehäuse mit Sollbruch-Front (mechanische Notfall-Befreiung durch Zerstören)
 
 ---
@@ -77,11 +90,12 @@ Eine neue (oder zurückgesetzte) Box spannt ein offenes WLAN **`Heimdall-Setup-X
 
 Auf der Geräte-Kachel:
 
-- **Verschliessen** → Modal: Sperrzeit wählen → die Box zieht den Befehl beim nächsten Sync.
+- **Verschliessen** → Modal: Sperrzeit wählen.
 - **Öffnen** → hebt die Sperre auf.
 
-Bis die Box den Befehl übernommen hat, zeigt die Kachel **„ausstehend"**. Sie synct alle paar
-Minuten von selbst — soll es sofort sein, weckst du sie (Taster/Reset an der Box).
+Ist die Box gerade wach (Tastendruck / am USB — die Kachel zeigt dann **„live"**), greift der
+Befehl **sofort** (< 2 s). Schläft sie, zeigt die Kachel **„ausstehend"** und der Befehl wird
+beim nächsten Aufwachen übernommen — jederzeit per Taster an der Box sofort auslösbar.
 
 ### 4. Mehrere WLANs
 
@@ -89,10 +103,13 @@ Minuten von selbst — soll es sofort sein, weckst du sie (Taster/Reset an der B
 Die Box übernimmt sie beim nächsten Sync (das Passwort wird danach serverseitig gelöscht) und
 verbindet sich künftig automatisch mit dem stärksten bekannten Netz.
 
-### 5. Status-Seite der Box
+### 5. Status-LED & Status-Seite
 
-Solange die Box wach ist, zeigt sie unter ihrer IP (im Geräte-Detail verlinkt) eine Status-Seite:
-**OFFEN** / **GESCHLOSSEN bis …**, Akku, WLAN-Signal, Firmware-Version.
+Die **Status-LED** leuchtet, solange die Box wach **und mit dem Server verbunden** ist (sie
+blinkt während des Verbindungsaufbaus, ist dunkel im Schlaf) — eine ehrliche „hängt am Server"-
+Anzeige. Solange die Box wach ist, zeigt sie zusätzlich unter ihrer IP (im Geräte-Detail
+verlinkt) eine Status-Seite: **OFFEN** / **GESCHLOSSEN bis …**, Akku, WLAN-Signal,
+Firmware-Version — und für Diagnose ein optionales Live-Log.
 
 ### 6. Firmware-Updates
 
@@ -106,7 +123,7 @@ nicht sauber, fällt die Box automatisch auf die vorherige zurück.
 
 Damit niemand durch einen technischen Defekt eingesperrt bleibt, öffnet die Box **autonom**, sobald:
 
-- **der Akku kritisch leer** ist (solange noch Energie für die Öffnung da ist),
+- **der Akku kritisch leer** ist (≤ 15 %, solange noch Energie für die Öffnung da ist) — mit **Vorwarnung** ab 20 % und Hysterese gegen Flattern,
 - **zu lange kein Server-Kontakt** bestand (Standard: 24 h),
 - eine **absolute Obergrenze** (`hardCap`) erreicht ist — diese kann der Server **nie** überschreiten.
 
@@ -119,9 +136,10 @@ Server und nach einem Stromausfall.
 
 Heimdall ist ein **funktionierender Prototyp**, kein fertiges Produkt. Ehrlich zum Stand:
 
-- ✅ Provisioning, Sperren/Öffnen-Logik, Multi-WLAN, OTA-Updates, Failsafes, Dashboard — **funktionieren**.
-- ⚠️ Die **Mechanik (Schrittmotor/Riegel)** ist noch nicht unter Last validiert (kein Endlagensensor) — der gemeldete Zustand kann von der Realität abweichen, bis ein Positionssensor ergänzt ist.
-- ⚠️ Härtung in Arbeit: **signierte OTA + Zertifikat-Pinning** sind auf der Roadmap. Bis dahin ist Heimdall für den **privaten, selbst-gehosteten Betrieb in einem vertrauenswürdigen Netz** gedacht — nicht für feindliche Umgebungen.
+- ✅ Provisioning, Sperren/Öffnen, **Live-Steuerung (MQTT)**, Multi-WLAN, **signierte OTA + Zertifikat-Pinning**, Failsafes, Dashboard — **funktionieren** und laufen auf echter Hardware.
+- ⚠️ Die **Mechanik (Schrittmotor/Riegel)** ist noch nicht unter Last validiert — es gibt **keinen Endlagensensor**, der gemeldete Zustand ist gerechnet, nicht gemessen. Als Notbehelf gibt es einen user-gemeldeten „Riegel klemmt → erneut öffnen"-Befehl.
+- 🔭 Auf der Roadmap: **Endlagensensor** und **Hardware-Watchdog**.
+- ℹ️ Gedacht für den **privaten, selbst-gehosteten Betrieb** — die Sicherheit liegt bewusst in *Sichtbarkeit + Keyholder-Beziehung*, nicht in Unentrinnbarkeit (die Frontscheibe bleibt der physische Notausgang).
 
 ---
 
@@ -129,7 +147,7 @@ Heimdall ist ein **funktionierender Prototyp**, kein fertiges Produkt. Ehrlich z
 
 ```
 heimdall/
-├── server/     ← Next.js-Steuerserver (Prisma + SQLite, NextAuth)
+├── server/     ← Next.js-Steuerserver (Prisma + SQLite, NextAuth) + MQTT-Broker (Mosquitto)
 ├── firmware/   ← ESP32-Firmware (PlatformIO, Arduino)
 └── docs/       ← Konzeptdokumente
 ```
