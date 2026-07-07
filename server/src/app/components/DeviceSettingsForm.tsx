@@ -5,33 +5,25 @@ import { useRouter } from "next/navigation";
 import { Button } from "./Button";
 import { Input } from "./Input";
 import { FormError } from "./FormError";
-import { Toggle } from "./Toggle";
 
-/** Gerät umbenennen + Failsafe/Hard-Cap konfigurieren. Zugriff: zugewiesen/Admin. */
+/** Editierbare Werte (Name + Failsafe/Hard-Cap) mit Speichern-Button. Die booleschen
+ *  Schalter (OTA, Debug, MQTT, Server-Log) laufen bewusst getrennt als sofort-anwendende
+ *  SettingToggles — hier NUR Felder, die man tippt und dann bestätigt. */
 export function DeviceSettingsForm({
   deviceId,
   name,
   offlineOpenHours,
   hardCapHours,
-  otaDisabled,
-  debugMode,
-  mqttEnabled,
 }: {
   deviceId: string;
   name: string;
   offlineOpenHours: number;
   hardCapHours: number | null;
-  otaDisabled: boolean;
-  debugMode: boolean;
-  mqttEnabled: boolean;
 }) {
   const router = useRouter();
   const [nameVal, setNameVal] = useState(name);
   const [offline, setOffline] = useState(String(offlineOpenHours));
   const [hardCap, setHardCap] = useState(hardCapHours != null ? String(hardCapHours) : "");
-  const [otaFrozen, setOtaFrozen] = useState(otaDisabled);
-  const [debug, setDebug] = useState(debugMode);
-  const [mqtt, setMqtt] = useState(mqttEnabled);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
@@ -42,17 +34,11 @@ export function DeviceSettingsForm({
     setError(null);
     setOk(false);
     try {
-      // Geräte-Felder (Name + OTA-Freeze) gebündelt patchen, nur bei Änderung.
-      const deviceData: { name?: string; otaDisabled?: boolean; debugMode?: boolean; mqttEnabled?: boolean } = {};
-      if (nameVal.trim() && nameVal.trim() !== name) deviceData.name = nameVal.trim();
-      if (otaFrozen !== otaDisabled) deviceData.otaDisabled = otaFrozen;
-      if (debug !== debugMode) deviceData.debugMode = debug;
-      if (mqtt !== mqttEnabled) deviceData.mqttEnabled = mqtt;
-      if (Object.keys(deviceData).length > 0) {
+      if (nameVal.trim() && nameVal.trim() !== name) {
         const r = await fetch(`/api/devices/${deviceId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(deviceData),
+          body: JSON.stringify({ name: nameVal.trim() }),
         });
         if (!r.ok) throw new Error(await r.text());
       }
@@ -94,19 +80,13 @@ export function DeviceSettingsForm({
       />
       <Input
         id={`cap-${deviceId}`}
-        label="Hard-Cap (max. Stunden ab jetzt, leer = kein Cap)"
+        label="Hard-Cap (max. Stunden ab Verschluss, leer = kein Cap)"
         type="number"
         min={1}
         max={720}
         value={hardCap}
         onChange={(e) => setHardCap(e.target.value)}
       />
-      <Toggle checked={otaFrozen} onChange={setOtaFrozen} title="OTA einfrieren"
-        desc="Box zieht keine Firmware-Updates mehr (Not-Aus für den Board-Rollout)." />
-      <Toggle checked={debug} onChange={setDebug} title="Debug-Mode"
-        desc="Box bleibt wach + serviert eine lokale Pin-Test-Seite (Box-IP unten → /debug). Nur fürs Pin-Finden, danach wieder aus." />
-      <Toggle checked={mqtt} onChange={setMqtt} title="MQTT-Push (Live-Steuerung)"
-        desc="Box hält im Wachfenster (Button/USB) eine MQTT-Verbindung → open/close wirken sofort (<2s). Ohne bleibt die Box heartbeat-only (stündlich)." />
       <FormError message={error} />
       {ok && <p className="text-sm text-[var(--color-lock)]">Gespeichert.</p>}
       <Button type="submit" loading={saving}>Speichern</Button>

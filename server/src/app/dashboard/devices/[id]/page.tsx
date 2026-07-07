@@ -7,6 +7,7 @@ import { Card } from "@/app/components/Card";
 import { Badge } from "@/app/components/Badge";
 import { DeviceControlCard } from "@/app/components/DeviceControlCard";
 import { DeviceSettingsForm } from "@/app/components/DeviceSettingsForm";
+import { SettingToggle } from "@/app/components/SettingToggle";
 import { DeviceActions } from "@/app/components/DeviceActions";
 import { WifiNetworksManager } from "@/app/components/WifiNetworksManager";
 import { DeviceLogViewer } from "@/app/components/DeviceLogViewer";
@@ -75,7 +76,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
         mqttLive={mqttLive}
       />
 
-      {/* Einstellungen */}
+      {/* Einstellungen — Werte (mit Speichern) getrennt von Schaltern (sofort wirksam) */}
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-[var(--foreground-muted)] uppercase tracking-wide">Einstellungen</h2>
         <Card>
@@ -84,16 +85,37 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
             name={device.name}
             offlineOpenHours={device.policy?.offlineOpenHours ?? 24}
             hardCapHours={device.policy?.hardCapHours ?? null}
-            otaDisabled={device.otaDisabled}
-            debugMode={device.debugMode}
-            mqttEnabled={device.mqttEnabled}
+          />
+        </Card>
+        <Card className="space-y-4">
+          <p className="text-xs text-[var(--foreground-faint)]">Schalter wirken sofort — kein Speichern nötig.</p>
+          <SettingToggle
+            deviceId={device.id}
+            field="mqttEnabled"
+            checked={device.mqttEnabled}
+            title="MQTT-Push (Live-Steuerung)"
+            desc="Box hält im Wachfenster (Button/USB) eine MQTT-Verbindung → Öffnen/Verschliessen wirken sofort (< 2 s). Ohne: heartbeat-only (stündlich)."
+          />
+          <SettingToggle
+            deviceId={device.id}
+            field="otaDisabled"
+            checked={device.otaDisabled}
+            title="OTA einfrieren"
+            desc="Box zieht keine Firmware-Updates mehr (Not-Aus für den Board-Rollout)."
+          />
+          <SettingToggle
+            deviceId={device.id}
+            field="debugMode"
+            checked={device.debugMode}
+            title="Debug-Modus"
+            desc="Schaltet die lokale /debug-Pin-Test-Seite frei (nur erreichbar, solange die Box wach ist) und pausiert Auto-OTA während der Session. Hält die Box NICHT wach."
           />
         </Card>
       </section>
 
-      {/* Debug */}
+      {/* Verbindung — reine Telemetrie (Steuerung/Status der Schalter läuft oben) */}
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold text-[var(--foreground-muted)] uppercase tracking-wide">Verbindung &amp; Debug</h2>
+        <h2 className="text-sm font-semibold text-[var(--foreground-muted)] uppercase tracking-wide">Verbindung</h2>
         <Card className="grid grid-cols-2 gap-3 text-sm">
           <Info label="WLAN" value={device.wifiSsid ?? "—"} />
           <Info label="Signal" value={device.wifiRssi != null ? `${device.wifiRssi} dBm` : "—"} />
@@ -102,9 +124,8 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
           <Info label="Boot-Grund" value={device.wakeReason ?? "—"} mono />
           <Info label="Firmware" value={device.fwVersion ? `v${device.fwVersion}` : "—"} mono />
           <Info label="MAC (Hardware-ID)" value={device.mac ?? "—"} mono />
-          <Info label="OTA" value={device.otaDisabled ? "🧊 eingefroren" : "aktiv"} />
           <Info
-            label="IP (nur im selben WLAN, Box wach)"
+            label="Box-IP (nur im selben WLAN, Box wach)"
             value={
               device.boxIp
                 ? device.debugMode
@@ -114,7 +135,6 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
             }
             mono
           />
-          {device.debugMode && <Info label="Debug-Mode" value="🔧 aktiv (Box bleibt wach)" />}
         </Card>
       </section>
 

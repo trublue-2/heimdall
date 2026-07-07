@@ -67,7 +67,7 @@ export function DeviceLogViewer({ deviceId, logToServer }: { deviceId: string; l
         checked={on}
         onChange={toggle}
         title="Server-Log aktiv"
-        desc="Box schickt ihr serielles Log bei jedem Sync mit (auch schlafend, ~5 min; hält die Box nicht wach). Umschalten greift ab dem nächsten Sync."
+        desc="Box spiegelt ihr serielles Log hierher — live über MQTT im Wachfenster, sonst beim nächsten Sync. Hält die Box nicht wach; Umschalten greift ab dem nächsten Sync."
       />
 
       <div className="flex items-center justify-between">
