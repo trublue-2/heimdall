@@ -64,6 +64,16 @@ export async function POST(req: NextRequest) {
   // wird NICHT vertraut, damit der Server die Wahrheit über den Sperrbeginn hält.
   const newLockedSince = state.locked ? (prevLocked ? device.lockedSince : now) : null;
 
+  // Regulärer Sperrzeit-Ablauf? Eine timed Sperre (eigene ODER aus dem Tracker) ist
+  // abgelaufen UND der Server hält die Box selbst nicht mehr geschlossen (kein Simple-Lock,
+  // keine noch laufende Deadline). Dann ist die Box-Selbstöffnung erwartungskonform — auch
+  // ohne Server-Kommando und ohne „bekannten" wakeReason (Timer-Wake). Öffnet die Box
+  // dagegen, während der Server sie noch gesperrt sieht, bleibt es unten Tamper.
+  const timedLockExpired =
+    !boxLocked(device.policy, now) &&
+    ((device.policy?.lockUntil != null && device.policy.lockUntil <= now) ||
+      (device.policy?.trackerLockUntil != null && device.policy.trackerLockUntil <= now));
+
   // Determine event type from state transition
   let eventType: string | null = null;
   if (!prevLocked && state.locked) {
@@ -79,6 +89,11 @@ export async function POST(req: NextRequest) {
       eventType = "CLEAN_OPEN"; // Reinigungspause aus dem Tracker (Sperrzeit bleibt, Re-Lock-Frist läuft)
     } else if (device.pendingOpenReason === "silent") {
       eventType = null; // Passwort-Öffnung / Simple-Lock / abgelaufen → kein Eintrag
+    } else if (timedLockExpired) {
+      // Reguläre Selbstöffnung: eine timed Sperre ist regulär abgelaufen und der Server
+      // sieht die Box selbst nicht mehr gesperrt → legitim, auch wenn der Timer-Wake
+      // (rtc_timer) kein „bekannter" Öffnungsgrund ist. KEIN Tamper.
+      eventType = "UNLOCKED";
     } else {
       // Box hat selbst geöffnet (Button/Failsafe/Tamper). Exact-Match: Unbekanntes
       // wakeReason → UNAUTHORIZED_OPEN (Safety: im Zweifel Tamper).
