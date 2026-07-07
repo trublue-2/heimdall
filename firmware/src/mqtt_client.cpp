@@ -12,6 +12,7 @@ static PubSubClient       gClient(gTls);
 static volatile Mqtt::Command gPending = Mqtt::Command::NONE;
 static char gCmdTopic[160];
 static char gStatusTopic[160];
+static char gLogTopic[160];
 static char gClientId[40];
 
 static Mqtt::Command parseCmd(const char* c) {
@@ -39,6 +40,7 @@ bool Mqtt::connect(const MqttConfig& cfg, const char* token) {
   strlcpy(gClientId, cfg.deviceId, sizeof(gClientId));
   snprintf(gCmdTopic,    sizeof(gCmdTopic),    "%s%s/cmd",    MQTT_TOPIC_PREFIX, cfg.deviceId);
   snprintf(gStatusTopic, sizeof(gStatusTopic), "%s%s/status", MQTT_TOPIC_PREFIX, cfg.deviceId);
+  snprintf(gLogTopic,    sizeof(gLogTopic),    "%s%s/log",    MQTT_TOPIC_PREFIX, cfg.deviceId);
 
   gClient.setServer(cfg.host, MQTT_PORT);
   gClient.setKeepAlive(MQTT_KEEPALIVE_S);
@@ -60,6 +62,11 @@ bool Mqtt::connect(const MqttConfig& cfg, const char* token) {
           gClient.state(), ESP.getFreeHeap(), ESP.getMinFreeHeap());
   }
   return ok;
+}
+
+void Mqtt::publishLog(const char* payload) {
+  // Live-Log ins .../log-Topic (QoS 0, best-effort) — nur solange verbunden.
+  if (gClient.connected()) gClient.publish(gLogTopic, payload);
 }
 
 bool Mqtt::connected() { return gClient.connected(); }

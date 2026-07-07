@@ -28,4 +28,8 @@ namespace ServerSync {
   // Letzter WLAN-Connect-Fehler für die /wifi-Anzeige. true, wenn der letzte Versuch
   // scheiterte; füllt ssid (ggf. leer) + msg (z.B. "Passwort falsch?"). Erfolg löscht ihn.
   bool lastWifiError(String& ssid, String& msg);
+
+  // true, wenn der Server logToServer für diese Box aktiviert hat (steuert Sync-Upload
+  // UND das Live-Log über MQTT im Wachfenster).
+  bool logToServerActive();
 }

@@ -14,6 +14,7 @@ namespace Mqtt {
   bool connected();
   void loop();       // im Wachfenster jede Iteration aufrufen (bedient Keepalive + Callbacks)
   void disconnect(); // publisht "offline" (retained) + trennt — vor Deep-Sleep
+  void publishLog(const char* payload); // Live-Log-Zeilen aufs .../log-Topic (best-effort)
 
   // Zuletzt empfangenes Kommando (consume-on-read), Command::NONE wenn keins.
   Command takeCommand();

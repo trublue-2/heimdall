@@ -84,6 +84,8 @@ bool ServerSync::lastWifiError(String& ssid, String& msg) {
   return true;
 }
 
+bool ServerSync::logToServerActive() { return gLogToServer; }
+
 static bool waitConnected(unsigned long timeoutMs) {
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED) {

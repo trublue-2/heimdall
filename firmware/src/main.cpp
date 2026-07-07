@@ -586,6 +586,7 @@ static void goDeepSleep() {
   }
 
   log_i("Deep-Sleep — button=GPIO%d LOW, timer=%llus", PIN_BUTTON, timerS);
+  digitalWrite(PIN_LED, LED_OFF); // dunkel = schläft (Verbindungsanzeige aus)
   detachInterrupt(digitalPinToInterrupt(PIN_BUTTON)); // GPIO-ISR freigeben, EXT0 übernimmt
   Stepper::powerOff();
   WiFi.disconnect(true);
@@ -659,7 +660,11 @@ void setup() {
   // (delay/NVS/OTA), damit das Ack ~sofort kommt statt erst ~0.5 s nach dem Boot.
   pinMode(PIN_LED, OUTPUT);
   digitalWrite(PIN_LED, LED_OFF);
-  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) ledAck();
+  // Sofort-Quittung (Blink) NUR bei echtem EXT0-Button-Wake aus Deep-Sleep. Bei einem
+  // Reset/Brownout ist die Wake-Cause NICHT EXT0 → dann kommt bewusst kein Blink (genau das
+  // erklärt "mal blinkt's beim Drücken, mal nicht" — im Banner unten als ack=/reset= sichtbar).
+  bool extWake = (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0);
+  if (extWake) ledAck();
   delay(200); // Sicherstellen dass UART-Buffer geleert wird vor erstem Log
   // CPU auf 160 MHz: schneller (TLS/Sync) als das frühere 80-MHz-Sparmodell.
   // Der eigentliche Brownout-Fix war ein gutes Kabel; etwas LDO-Marge bleibt
@@ -694,7 +699,11 @@ void setup() {
   const char* reason = wakeReasonStr();
   // Heartbeat-Wake (rtc_timer) öffnet kein Fenster; Button/Power-on schon. USB überstimmt später.
   gWindowWake = (strcmp(reason, "rtc_timer") != 0);
-  log_i("=== Heimdall %s | Wake: %s | Batt: %d%% ===", FW_VERSION, reason, batt);
+  // Ein-Zeilen-Wake-Spur: wake=warum wach (button/rtc_timer/power_on), reset=WIE gebootet
+  // (DEEPSLEEP=sauberer Wake, BROWNOUT/POWERON/PANIC=Reset → kein Ack-Blink), boot#/unexp=
+  // kumulative Boot- bzw. Nicht-Deep-Sleep-Zähler (Brownout-Verdacht), ack=hat's quittiert.
+  log_i("=== Heimdall %s | wake=%s reset=%s boot#%u unexp=%u batt=%d%% ack=%s ===",
+        FW_VERSION, reason, gResetReason, gBootCount, gUnexpected, batt, extWake ? "JA" : "nein");
 
   // ── Bench-Test: Stepper/GPIO manuell testen ──────────────────────────────
 #if defined(GPIO_TEST) || defined(STEPPER_TEST)
@@ -761,9 +770,11 @@ void setup() {
   // LED zeigt Lock-Status NUR während die Box wach ist (Knopfdruck → Status auf Abruf).
   // Bewusst KEIN gpio_hold im Deep-Sleep: spart Akku, LED erlischt im Schlaf.
   // Sofort aus gecachtem NVS-Zustand setzen — vor dem Sync (der bis zu 15s dauert).
-  digitalWrite(PIN_LED, (hasState && gBox.locked) ? LED_ON : LED_OFF);
-  log_i("NVS: hasState=%d locked=%d lockedSince=%ld | LED=%d",
-        hasState, gBox.locked, (long)gBox.lockedSince, (hasState && gBox.locked));
+  // LED = Verbindungsanzeige (nicht mehr Lock): beim Boot noch aus (WiFi kommt erst),
+  // geht an, sobald WiFi/Sync steht; erlischt im Deep-Sleep (Akku).
+  digitalWrite(PIN_LED, LED_OFF);
+  log_i("Zustand (NVS): hasState=%d locked=%d lockedSince=%ld (LED = Server-Verbindung, nicht Lock)",
+        hasState, gBox.locked, (long)gBox.lockedSince);
 
   // ── Bench-Test: Credentials aus config.h flashen ─────────────────────────
 #if defined(TEST_WIFI_SSID) && defined(TEST_DEVICE_TOKEN)
@@ -890,7 +901,9 @@ void loop() {
     // ── LOCKED / IDLE_OPEN ────────────────────────────────────────────────
     case State::LOCKED:
     case State::IDLE_OPEN: {
-      digitalWrite(PIN_LED, (gState == State::LOCKED) ? LED_ON : LED_OFF);
+      // LED = "wach & am Server verbunden": leuchtet, solange WiFi assoziiert ist; im
+      // Deep-Sleep aus (dunkel = schläft). Zeigt bewusst NICHT mehr den Lock-Status.
+      digitalWrite(PIN_LED, (WiFi.status() == WL_CONNECTED) ? LED_ON : LED_OFF);
 
       // Polling-Entprellung ZUSÄTZLICH zum ISR — robust bei floatendem GPIO14
       // (ohne externen Pull-up): 40 ms anhaltendes LOW = Druck, statt auf eine
@@ -948,6 +961,17 @@ void loop() {
           if (mq.enabled) Mqtt::connect(mq, gCreds.deviceToken);
         }
         Mqtt::loop();
+
+        // Live-Log über MQTT: neue Ring-Puffer-Zeilen aufs .../log-Topic streamen (throttled),
+        // solange verbunden und der Server logToServer aktiviert hat. GLEICHER Cursor wie der
+        // Sync-Upload (collectSyncLogs) → keine Doppelung: was live rausgeht, lädt der Sync
+        // nicht nochmal hoch; dormante Lücken deckt weiter der Sync-Backlog ab.
+        static unsigned long gLastLogPub = 0;
+        if (Mqtt::connected() && ServerSync::logToServerActive() && millis() - gLastLogPub > 1000) {
+          gLastLogPub = millis();
+          String live = collectSyncLogs(400);
+          if (live.length()) Mqtt::publishLog(live.c_str());
+        }
 
         // Sofort-Kommando aus dem Wachfenster → bestehende Aktionen (Failsafes bleiben
         // autoritativ; die Box meldet das Ergebnis danach per Sync).

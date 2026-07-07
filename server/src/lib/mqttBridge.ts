@@ -1,6 +1,7 @@
 import mqtt, { type MqttClient } from "mqtt";
 import { notifyDeviceChange } from "@/lib/events";
 import { MQTT_TOPIC_PREFIX } from "@/lib/mqttAuth";
+import { prisma } from "@/lib/prisma";
 
 // Server→Box-Push über MQTT. Der Server publisht Sofort-Kommandos auf das cmd-Topic der Box
 // und liest die LWT-Präsenz (online/offline) vom status-Topic. Single-Container → In-Memory-
@@ -28,20 +29,50 @@ function ensureClient(): MqttClient | null {
   client.on("connect", () => {
     // Retained status-Topics → Präsenz füllt sich beim Connect für alle bekannten Boxen.
     client.subscribe(`${MQTT_TOPIC_PREFIX}+/status`, { qos: 1 });
+    // Live-Log-Zeilen der Boxen (im Wachfenster) → in die DeviceLog-Tabelle spiegeln.
+    client.subscribe(`${MQTT_TOPIC_PREFIX}+/log`, { qos: 0 });
   });
   client.on("message", (topic, payload) => {
-    const m = topic.match(/^heimdall\/box\/([^/]+)\/status$/);
+    const m = topic.match(/^heimdall\/box\/([^/]+)\/(status|log)$/);
     if (!m) return;
-    const online = payload.toString() === "online";
-    if (state.presence.get(m[1]) !== online) {
-      state.presence.set(m[1], online);
-      notifyDeviceChange(); // Dashboards live aktualisieren (online/schläft)
+    const [, deviceId, kind] = m;
+    if (kind === "status") {
+      const online = payload.toString() === "online";
+      if (state.presence.get(deviceId) !== online) {
+        state.presence.set(deviceId, online);
+        notifyDeviceChange(); // Dashboards live aktualisieren (online/schläft)
+      }
+      return;
     }
+    void ingestLog(deviceId, payload.toString()); // kind === "log"
   });
   client.on("error", (e) => console.warn(`[mqttBridge] ${e.message}`));
 
   state.client = client;
   return client;
+}
+
+// Live-Log-Zeilen (MQTT) in dieselbe DeviceLog-Tabelle wie der Sync-Upload spiegeln → der
+// bestehende Log-Viewer zeigt sie ohne Sync-Verzögerung. Retention übernimmt der Sync-Handler.
+let lastLogNotify = 0;
+async function ingestLog(deviceId: string, chunk: string): Promise<void> {
+  const lines = chunk
+    .split("\n")
+    .map((l) => l.trimEnd())
+    .filter((l) => l.length > 0)
+    .slice(-200);
+  if (!lines.length) return;
+  try {
+    await prisma.deviceLog.createMany({ data: lines.map((line) => ({ deviceId, line })) });
+    // Dashboard-Refresh drosseln (max. 1×/s), sonst flutet aktives Logging die SSE-Clients.
+    const now = Date.now();
+    if (now - lastLogNotify > 1000) {
+      lastLogNotify = now;
+      notifyDeviceChange();
+    }
+  } catch (e) {
+    console.warn(`[mqttBridge] log ingest failed: ${(e as Error).message}`);
+  }
 }
 
 /** Sofort-Kommando an die Box pushen (fire-and-forget). Wirkt nur, wenn die Box gerade
