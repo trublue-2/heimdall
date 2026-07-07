@@ -9,16 +9,22 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ dev
   if (response) return response;
   const { deviceId } = await params;
   const [device, nets] = await Promise.all([
-    prisma.device.findUnique({ where: { id: deviceId }, select: { preferredSsid: true } }),
+    prisma.device.findUnique({ where: { id: deviceId }, select: { preferredSsid: true, primaryLastUsedAt: true } }),
     prisma.wifiNetwork.findMany({
       where: { deviceId },
       orderBy: { createdAt: "asc" },
-      select: { id: true, ssid: true, password: true },
+      select: { id: true, ssid: true, password: true, lastUsedAt: true },
     }),
   ]);
   return NextResponse.json({
     preferredSsid: device?.preferredSsid ?? null,
-    nets: nets.map((n) => ({ id: n.id, ssid: n.ssid, delivered: n.password === null })),
+    primaryLastUsedAt: device?.primaryLastUsedAt?.toISOString() ?? null,
+    nets: nets.map((n) => ({
+      id: n.id,
+      ssid: n.ssid,
+      delivered: n.password === null,
+      lastUsedAt: n.lastUsedAt?.toISOString() ?? null,
+    })),
   });
 }
 

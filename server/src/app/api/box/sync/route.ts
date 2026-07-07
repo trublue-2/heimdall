@@ -107,6 +107,11 @@ export async function POST(req: NextRequest) {
         boxIp:    state.ip        ?? null,
         mac:      state.mac       ?? device.mac,
         primarySsid: body.knownSsids?.[0] ?? device.primarySsid,
+        // Primär-Netz zuletzt-verwendet: nur setzen, wenn die Box gerade darauf verbunden ist.
+        primaryLastUsedAt:
+          state.wifiSsid && state.wifiSsid === (body.knownSsids?.[0] ?? device.primarySsid)
+            ? now
+            : undefined,
         pendingOpenReason: clearMarker ? null : device.pendingOpenReason,
       },
     });
@@ -244,6 +249,13 @@ export async function POST(req: NextRequest) {
     await prisma.wifiNetwork.updateMany({
       where: { deviceId: device.id, ssid: { in: knownSsids }, password: { not: null } },
       data: { password: null },
+    });
+  }
+  // Zuletzt verwendet: das aktuell verbundene Extra-Netz markieren (Primär läuft oben im device.update).
+  if (state.wifiSsid) {
+    await prisma.wifiNetwork.updateMany({
+      where: { deviceId: device.id, ssid: state.wifiSsid },
+      data: { lastUsedAt: now },
     });
   }
   const pendingNets = await prisma.wifiNetwork.findMany({

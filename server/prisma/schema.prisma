@@ -57,6 +57,7 @@ model Device {
   charging    Boolean?
   boxIp       String?
   primarySsid String? // Provisioning-Netz (knownSsids[0] der Box)
+  primaryLastUsedAt DateTime? // wann die Box zuletzt aufs Primär-Netz verbunden war
   // Operator-Wahl: dieses Netz bevorzugt verbinden (an die Box gepusht, Server gewinnt).
   // null = keine Server-Präferenz → Box behält ihre lokale /wifi-Wahl.
   preferredSsid String?
@@ -96,6 +97,7 @@ model WifiNetwork {
   ssid      String
   password  String? // null = bereits an die Box ausgeliefert
   createdAt DateTime @default(now())
+  lastUsedAt DateTime? // wann die Box zuletzt auf dieses Netz verbunden war (aus Sync-wifiSsid)
 
   @@unique([deviceId, ssid])
 }

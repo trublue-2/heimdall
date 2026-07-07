@@ -6,8 +6,9 @@ import { Button } from "./Button";
 import { Input } from "./Input";
 import { Badge } from "./Badge";
 import { FormError } from "./FormError";
+import { formatDuration } from "@/lib/utils";
 
-type Net = { id: string; ssid: string; delivered: boolean };
+type Net = { id: string; ssid: string; delivered: boolean; lastUsedAt: string | null };
 
 /** Zusatz-WLANs eines Geräts verwalten + ein Netz als „bevorzugt" markieren. Die Box
  *  zieht neue Netze beim Sync (Passwort wird danach serverseitig gelöscht); das bevorzugte
@@ -15,6 +16,7 @@ type Net = { id: string; ssid: string; delivered: boolean };
 export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: string; primarySsid?: string | null }) {
   const [nets, setNets] = useState<Net[]>([]);
   const [preferred, setPreferred] = useState<string | null>(null);
+  const [primaryLastUsedAt, setPrimaryLastUsedAt] = useState<string | null>(null);
   const [ssid, setSsid] = useState("");
   const [pass, setPass] = useState("");
   const [adding, setAdding] = useState(false); // Felder erst nach Klick zeigen
@@ -27,6 +29,7 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
       const d = await r.json();
       setNets(d.nets);
       setPreferred(d.preferredSsid);
+      setPrimaryLastUsedAt(d.primaryLastUsedAt);
     }
   }
   useEffect(() => {
@@ -102,7 +105,7 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
                 <Badge variant="lock">Primär</Badge>
               </span>
               <span className="flex items-center gap-3 shrink-0">
-                <span className="text-xs text-[var(--foreground-faint)]">aus Provisioning</span>
+                <span className="text-xs text-[var(--foreground-faint)]">zuletzt {formatDuration(primaryLastUsedAt)}</span>
                 <PrefStar netSsid={primarySsid} />
               </span>
             </li>
@@ -117,6 +120,7 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
                 </Badge>
               </span>
               <span className="flex items-center gap-3 shrink-0">
+                <span className="text-xs text-[var(--foreground-faint)]">zuletzt {formatDuration(n.lastUsedAt)}</span>
                 <PrefStar netSsid={n.ssid} />
                 <button
                   onClick={() => remove(n.id)}
