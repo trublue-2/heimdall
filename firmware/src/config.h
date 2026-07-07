@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.2.2"
+#define FW_VERSION "0.2.3"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Original-LMB-PCB (KSM-HW-V10): ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
@@ -18,11 +18,13 @@
 // Drehrichtung: Vorzeichen, das auf ZU fährt. LMB-Mechanik ggü. LOLIN gespiegelt.
 #define STEPPER_DIR_LOCK (+1) // +1 = zu (LMB); LOLIN-Dev war -1
 
-// ── Onboard LED ────────────────────────────────────────────────────────────
-// LOLIN D32: Blaue LED auf GPIO5, ACTIVE-LOW (leuchtet bei LOW-Pegel!).
+// ── Status-LED ──────────────────────────────────────────────────────────────
+// LMB-Board: weisse Status-LED auf GPIO5, ACTIVE-HIGH (leuchtet bei HIGH — am Gerät
+// verifiziert; GPIO5 per Firmware-Analyse der Original-LMB bestätigt). Das LOLIN-Dev-Board
+// hatte dieselbe GPIO5, aber die blaue Onboard-LED war active-LOW → bei Board-Wechsel flippen.
 #define PIN_LED  5
-#define LED_ON   LOW
-#define LED_OFF  HIGH
+#define LED_ON   HIGH
+#define LED_OFF  LOW
 
 // ── Button ─────────────────────────────────────────────────────────────────
 // Externer Lockbox-Taster gegen GND. Der LOLIN D32 hat KEINEN BOOT/IO0-Knopf
