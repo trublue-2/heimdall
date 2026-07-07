@@ -50,6 +50,9 @@ model Device {
   charging    Boolean?
   boxIp       String?
   primarySsid String? // Provisioning-Netz (knownSsids[0] der Box)
+  // Operator-Wahl: dieses Netz bevorzugt verbinden (an die Box gepusht, Server gewinnt).
+  // null = keine Server-Präferenz → Box behält ihre lokale /wifi-Wahl.
+  preferredSsid String?
   // chastitytracker.ch-Anbindung (optional, pro Box). Box kennt den Tracker nicht —
   // der Server ist die Brücke. trackerSync=Feature-Flag; Instanz = welche Tracker-Deployment,
   // trackerUsername = Ziel-User. KEINE feste KG-Zuordnung: die Box ist generisch, welches KG

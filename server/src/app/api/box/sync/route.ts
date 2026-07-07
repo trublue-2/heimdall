@@ -238,6 +238,7 @@ export async function POST(req: NextRequest) {
     otaSig: otaPending ? otaSig : null,
     debugMode: device.debugMode, // Box bleibt wach + serviert lokale Debug-Seite
     wifiNetworks: pendingNets.map((n) => ({ ssid: n.ssid, pass: n.password })),
+    preferredSsid: device.preferredSsid ?? null, // Server-Präferenz (Box gewinnt-lassen); null = Box behält lokale Wahl
     commands: [],
   });
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Trash2, Wifi } from "lucide-react";
+import { Trash2, Wifi, Star } from "lucide-react";
 import { Button } from "./Button";
 import { Input } from "./Input";
 import { Badge } from "./Badge";
@@ -9,10 +9,12 @@ import { FormError } from "./FormError";
 
 type Net = { id: string; ssid: string; delivered: boolean };
 
-/** Zusatz-WLANs eines Geräts verwalten. Box zieht sie beim Sync; Passwort wird
- *  danach serverseitig gelöscht (nur SSID + „ausgeliefert" bleibt sichtbar). */
+/** Zusatz-WLANs eines Geräts verwalten + ein Netz als „bevorzugt" markieren. Die Box
+ *  zieht neue Netze beim Sync (Passwort wird danach serverseitig gelöscht); das bevorzugte
+ *  Netz wird bei jedem Sync mitgeschickt und gewinnt gegen die lokale /wifi-Wahl der Box. */
 export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: string; primarySsid?: string | null }) {
   const [nets, setNets] = useState<Net[]>([]);
+  const [preferred, setPreferred] = useState<string | null>(null);
   const [ssid, setSsid] = useState("");
   const [pass, setPass] = useState("");
   const [saving, setSaving] = useState(false);
@@ -20,7 +22,11 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
 
   async function load() {
     const r = await fetch(`/api/admin/devices/${deviceId}/wifi`);
-    if (r.ok) setNets(await r.json());
+    if (r.ok) {
+      const d = await r.json();
+      setNets(d.nets);
+      setPreferred(d.preferredSsid);
+    }
   }
   useEffect(() => {
     load();
@@ -52,6 +58,36 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
     load();
   }
 
+  // Bevorzugtes Netz setzen/aufheben (Server gewinnt → beim nächsten Sync an die Box).
+  async function setPref(next: string | null) {
+    setError(null);
+    try {
+      const r = await fetch(`/api/admin/devices/${deviceId}/wifi`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preferredSsid: next }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      load();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  function PrefStar({ netSsid }: { netSsid: string }) {
+    const on = preferred === netSsid;
+    return (
+      <button
+        onClick={() => setPref(on ? null : netSsid)}
+        className={`shrink-0 ${on ? "text-[var(--color-unlock-text)]" : "text-[var(--foreground-faint)] hover:opacity-70"}`}
+        title={on ? "Bevorzugt — klicken zum Aufheben" : "Als bevorzugt setzen"}
+        aria-label={on ? "Bevorzugt aufheben" : "Als bevorzugt setzen"}
+      >
+        <Star className="h-4 w-4" fill={on ? "currentColor" : "none"} />
+      </button>
+    );
+  }
+
   return (
     <div className="space-y-3">
       {(primarySsid || nets.length > 0) && (
@@ -63,7 +99,10 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
                 <span className="truncate">{primarySsid}</span>
                 <Badge variant="lock">Primär</Badge>
               </span>
-              <span className="text-xs text-[var(--foreground-faint)] shrink-0">aus Provisioning</span>
+              <span className="flex items-center gap-3 shrink-0">
+                <span className="text-xs text-[var(--foreground-faint)]">aus Provisioning</span>
+                <PrefStar netSsid={primarySsid} />
+              </span>
             </li>
           )}
           {nets.map((n) => (
@@ -75,13 +114,16 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
                   {n.delivered ? "ausgeliefert" : "ausstehend"}
                 </Badge>
               </span>
-              <button
-                onClick={() => remove(n.id)}
-                className="text-[var(--color-warn)] hover:opacity-70 shrink-0"
-                aria-label="Entfernen"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              <span className="flex items-center gap-3 shrink-0">
+                <PrefStar netSsid={n.ssid} />
+                <button
+                  onClick={() => remove(n.id)}
+                  className="text-[var(--color-warn)] hover:opacity-70"
+                  aria-label="Entfernen"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </span>
             </li>
           ))}
         </ul>
@@ -98,8 +140,9 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
       </div>
       <FormError message={error} />
       <p className="text-xs text-[var(--foreground-faint)]">
-        Die Box übernimmt neue Netze beim nächsten Sync. Das Passwort wird danach
-        auf dem Server gelöscht.
+        Die Box übernimmt neue Netze beim nächsten Sync; das Passwort wird danach auf dem
+        Server gelöscht. Der <Star className="inline h-3 w-3 align-[-1px]" /> markiert das
+        bevorzugte Netz — es gewinnt gegen die lokale Wahl der Box; leer = Box entscheidet selbst.
       </p>
     </div>
   );
