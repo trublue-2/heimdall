@@ -42,6 +42,31 @@ export async function authenticateDevice(
   return null;
 }
 
+/**
+ * Auth für eine BEKANNTE deviceId (MQTT: username=deviceId, password=token). O(1) statt
+ * des Token-Scans über alle Geräte — dieselbe Normalisierung + Grace-Token-Logik wie
+ * authenticateDevice, nur gezielt per findUnique. Kein Grace-Invalidierungs-Write (nicht nötig).
+ */
+export async function authenticateDeviceById(
+  deviceId: string,
+  rawToken: string
+): Promise<boolean> {
+  if (!rawToken || rawToken.length > 128) return false;
+  const normalized = rawToken.replace(/-/g, "").toUpperCase();
+
+  const device = await prisma.device.findUnique({ where: { id: deviceId } });
+  if (!device) return false;
+
+  if (await bcrypt.compare(normalized, device.tokenHash)) return true;
+  // Grace: vorheriger Token noch im Gültigkeitsfenster.
+  return (
+    !!device.prevTokenHash &&
+    !!device.prevTokenExpiry &&
+    device.prevTokenExpiry > new Date() &&
+    (await bcrypt.compare(normalized, device.prevTokenHash))
+  );
+}
+
 export function extractBearerToken(authHeader: string | null): string | null {
   if (!authHeader?.startsWith("Bearer ")) return null;
   return authHeader.slice(7).trim();

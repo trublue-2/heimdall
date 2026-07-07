@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.1.78"
+#define FW_VERSION "0.2.0"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Original-LMB-PCB (KSM-HW-V10): ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
@@ -54,8 +54,14 @@
 #define BATT_PLAUSIBLE_MAX_V 4.5f
 
 // ── Timeouts ───────────────────────────────────────────────────────────────
-#define IDLE_SLEEP_MS            (1UL * 60 * 1000) // 1 min → Deep-Sleep
-#define WAKE_INTERVAL_S          (5UL * 60)         // 5 min → periodischer Sync-Wake
+// Session-Fenster-Modell: Button/USB öffnet ein kurzes Wachfenster mit Live-MQTT;
+// dormant schläft die Box zwischen stündlichen Heartbeat-Syncs.
+#define ACTIVE_WINDOW_MS         (2UL * 60 * 1000) // 2 min ohne Aktivität → Deep-Sleep (Wachfenster, MQTT live)
+#define HEARTBEAT_S              (60UL * 60)        // dormant: stündlicher Sync-Wake (RTC-Timer)
+// Längstes reguläres Sleep-Intervall — Klemme für die monotonen Failsafe-Zähler in
+// checkFailsafes(): ein Delta darüber gilt als Uhr-Sprung und wird konservativ gekappt.
+// MUSS ≥ HEARTBEAT_S sein, sonst unterzählen Offline-/HardCap-Zähler (Failsafe feuert zu spät).
+#define MAX_SLEEP_S              HEARTBEAT_S
 #define OFFLINE_OPEN_H           24                 // h ohne Sync → Auto-Open
 #define WIFI_CONNECT_TIMEOUT_MS  (15 * 1000)        // 15 s WiFi-Connect-Limit
 #define AUTH_FAIL_LIMIT          10                 // N×401 in Folge → Setup-Hotspot (Selbstheilung)
@@ -74,6 +80,13 @@
 #define DEFAULT_SERVER_URL   "https://heimdall.trublue.ch" // Provisioning-Default
 #define SERVER_PATH_REGISTER "/api/box/register"
 #define SERVER_PATH_SYNC     "/api/box/sync"
+
+// ── MQTT (Session-Fenster-Push) ────────────────────────────────────────────
+// Broker-Host kommt pro Box aus der Sync-Response (mqtt.host → NVS). Nur im Wachfenster
+// (Button/USB) verbunden; TLS mit demselben Cert-Pinning wie der Sync (ROOT_CA_BUNDLE).
+#define MQTT_PORT            8883            // mqtts (TLS) über Traefik-TCP-Router
+#define MQTT_KEEPALIVE_S     30              // PINGREQ-Intervall (kurz → zügige LWT-Offline-Erkennung)
+#define MQTT_TOPIC_PREFIX    "heimdall/box/" // + <deviceId>/cmd (sub) bzw. /status (LWT)
 
 // ── Bench-Test: Credentials (auskommentiert lassen, nur lokal setzen) ──────
 // #define TEST_WIFI_SSID    "MeinWLAN"

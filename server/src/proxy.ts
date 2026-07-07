@@ -57,8 +57,9 @@ export default auth((req) => {
     }
   }
 
-  // Box-API: pro-IP-Limit schützt die teure Token-Prüfung (bcrypt) vor CPU-DoS.
-  if (req.nextUrl.pathname.startsWith("/api/box/")) {
+  // Box-API + MQTT-Auth-Backend: pro-IP-Limit schützt die teure Token-Prüfung (bcrypt)
+  // vor CPU-DoS. go-auth cacht ohnehin, das Limit deckelt nur Missbrauch.
+  if (req.nextUrl.pathname.startsWith("/api/box/") || req.nextUrl.pathname.startsWith("/api/mqtt/")) {
     if (isRateLimited(boxBucket, clientIp(req), BOX_LIMIT)) {
       return NextResponse.json({ error: "Rate limit" }, { status: 429, headers: { "Retry-After": "60" } });
     }
@@ -74,7 +75,8 @@ export default auth((req) => {
     pathname.startsWith("/api/auth") ||
     pathname === "/login" ||
     pathname === "/api/version" ||
-    pathname.startsWith("/api/box/");
+    pathname.startsWith("/api/box/") ||
+    pathname.startsWith("/api/mqtt/"); // go-auth-Backend, eigene Credential-Prüfung
 
   const isAdminRoute = pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
   const isProtected =

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireDeviceAccess } from "@/lib/authGuards";
 import { prisma } from "@/lib/prisma";
 import { notifyDeviceChange } from "@/lib/events";
+import { publishCommand } from "@/lib/mqttBridge";
 
 // Safety-relevante Felder — strikt validieren, kein NaN/Invalid-Date in die DB.
 const policySchema = z.object({
@@ -46,6 +47,7 @@ export async function PATCH(
   });
 
   notifyDeviceChange(); // offene Dashboards sofort aktualisieren
+  publishCommand(deviceId, "sync"); // Box im Wachfenster zum sofortigen Re-Sync anstupsen
 
   return NextResponse.json({
     deviceId,

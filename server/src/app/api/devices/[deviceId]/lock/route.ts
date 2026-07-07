@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { requireDeviceAccess } from "@/lib/authGuards";
 import { prisma } from "@/lib/prisma";
 import { notifyDeviceChange } from "@/lib/events";
+import { publishCommand } from "@/lib/mqttBridge";
 
 // Verschliessen in drei Varianten. Reduziert sich serverseitig auf (lockUntil, simpleLock,
 // openPasswordHash) — die Box braucht nur das daraus berechnete `locked` + lockUntil.
@@ -77,5 +78,6 @@ export async function POST(
   ]);
 
   notifyDeviceChange();
+  publishCommand(deviceId, "lock"); // Sofort-Push, falls die Box im Wachfenster verbunden ist
   return NextResponse.json({ ok: true });
 }

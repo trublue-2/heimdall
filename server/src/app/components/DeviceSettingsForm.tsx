@@ -15,6 +15,7 @@ export function DeviceSettingsForm({
   hardCapHours,
   otaDisabled,
   debugMode,
+  mqttEnabled,
 }: {
   deviceId: string;
   name: string;
@@ -22,6 +23,7 @@ export function DeviceSettingsForm({
   hardCapHours: number | null;
   otaDisabled: boolean;
   debugMode: boolean;
+  mqttEnabled: boolean;
 }) {
   const router = useRouter();
   const [nameVal, setNameVal] = useState(name);
@@ -29,6 +31,7 @@ export function DeviceSettingsForm({
   const [hardCap, setHardCap] = useState(hardCapHours != null ? String(hardCapHours) : "");
   const [otaFrozen, setOtaFrozen] = useState(otaDisabled);
   const [debug, setDebug] = useState(debugMode);
+  const [mqtt, setMqtt] = useState(mqttEnabled);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
@@ -40,10 +43,11 @@ export function DeviceSettingsForm({
     setOk(false);
     try {
       // Geräte-Felder (Name + OTA-Freeze) gebündelt patchen, nur bei Änderung.
-      const deviceData: { name?: string; otaDisabled?: boolean; debugMode?: boolean } = {};
+      const deviceData: { name?: string; otaDisabled?: boolean; debugMode?: boolean; mqttEnabled?: boolean } = {};
       if (nameVal.trim() && nameVal.trim() !== name) deviceData.name = nameVal.trim();
       if (otaFrozen !== otaDisabled) deviceData.otaDisabled = otaFrozen;
       if (debug !== debugMode) deviceData.debugMode = debug;
+      if (mqtt !== mqttEnabled) deviceData.mqttEnabled = mqtt;
       if (Object.keys(deviceData).length > 0) {
         const r = await fetch(`/api/devices/${deviceId}`, {
           method: "PATCH",
@@ -101,6 +105,8 @@ export function DeviceSettingsForm({
         desc="Box zieht keine Firmware-Updates mehr (Not-Aus für den Board-Rollout)." />
       <Toggle checked={debug} onChange={setDebug} title="Debug-Mode"
         desc="Box bleibt wach + serviert eine lokale Pin-Test-Seite (Box-IP unten → /debug). Nur fürs Pin-Finden, danach wieder aus." />
+      <Toggle checked={mqtt} onChange={setMqtt} title="MQTT-Push (Live-Steuerung)"
+        desc="Box hält im Wachfenster (Button/USB) eine MQTT-Verbindung → open/close wirken sofort (<2s). Ohne bleibt die Box heartbeat-only (stündlich)." />
       <FormError message={error} />
       {ok && <p className="text-sm text-[var(--color-lock)]">Gespeichert.</p>}
       <Button type="submit" loading={saving}>Speichern</Button>

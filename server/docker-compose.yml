@@ -29,6 +29,29 @@ services:
     networks:
       - traefik
 
+  # MQTT-Broker für den Session-Fenster-Push (Server→Box). TLS terminiert Traefik über
+  # einen TCP-Router (HostSNI mqtt.trublue.ch, Entrypoint `mqtts` auf :8883 — muss in der
+  # Traefik-Static-Config definiert sein); intern spricht der Broker plaintext auf 1883.
+  # Auth/ACL kommen vom Heimdall-HTTP-Backend (/api/mqtt/*), Reuse der Device-Token.
+  mosquitto:
+    image: iegomez/mosquitto-go-auth:latest
+    container_name: heimdall-mqtt
+    init: true
+    restart: unless-stopped
+    depends_on:
+      - app
+    volumes:
+      - ./mosquitto/mosquitto.conf:/etc/mosquitto/mosquitto.conf:ro
+      - ./mosquitto/data:/mosquitto/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.tcp.routers.heimdall-mqtt.rule=HostSNI(`mqtt.trublue.ch`)"
+      - "traefik.tcp.routers.heimdall-mqtt.entrypoints=mqtts"
+      - "traefik.tcp.routers.heimdall-mqtt.tls.certresolver=letsencrypt"
+      - "traefik.tcp.services.heimdall-mqtt.loadbalancer.server.port=1883"
+    networks:
+      - traefik
+
 networks:
   traefik:
     external: true

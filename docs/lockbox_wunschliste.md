@@ -1,7 +1,7 @@
 # Eigene Lockbox „Heimdall" — Wunsch- & Anforderungsliste
 
 **Codename:** Heimdall — der Wächter an der Bifröst, der sieht/hört wer kommt und geht und über Zugang entscheidet. Reiht sich in die Nordic-Namensgebung (midgard, asgard) ein.
-**Stand:** 2026-06-06
+**Stand:** 2026-07-07 (Code-Stand FW 0.1.78)
 **Server / Backend:** chastitytracker.ch (self-hosted PWA + MCP)
 **Hardware-Pfad (aktuell):** ESP32 WROOM-32 (LOLIN D32, LiPo-Lader onboard) · 28BYJ-48 + ULN2003 · LiPo · Brain-Transfer in die LockMeBox-Mechanik
 
@@ -42,10 +42,10 @@ Sammelstelle für alles, was dir im **Betrieb der LockMeBox** auffällt und was 
 > **Modell: Zerstören-zum-Befreien.** Da es eine Schlüssel-Box ist und kein Körperteil, ist der Notausgang physisch: **PLA-Gehäuse mit Scheibe vorne — im Notfall einschlagen, Schlüssel raus.** Bewusst **keine** mechanische Notentriegelungs-Mechanik. Das ist ein sauberes, klassisches Time-Lock-Box-Prinzip, solange die Box physisch erreichbar bleibt. Die Firmware-Öffnungen unten sind dann **Komfort** (Box im Normalfall nicht zerstören müssen), nicht die Lebenssicherung — die liegt in der Scheibe.
 
 - [x] **Entscheid: keine Notentriegelung.** Notausgang = Scheibe einschlagen (PLA, billig nachzudrucken, stromunabhängig, jederzeit verfügbar). Deckt die Lebenssicherheit ab.
-- [ ] **Low-Battery-Auto-Open** mit Hysterese — öffnet selbsttätig, solange garantiert noch Energie zum Öffnen da ist. Vorwarnung, dann öffnen. (Damit du die Box im Normalfall nicht aufbrechen musst.)
-- [ ] **24-h-ohne-Internet-Auto-Open** — wenn der letzte erfolgreiche Server-Sync > 24 h zurückliegt, öffnet die Box. Schutz gegen „Server tot / WLAN weg / ausgesperrt".
-- [ ] **Box-lokaler Hard-Deadline** in RTC/NVS — Box öffnet spätestens zum lokal gespeicherten Termin, unabhängig von Server/WLAN. (Das sicherheitsführende Timer aus den Architektur-Entscheiden.)
-- [ ] **Positions-Persistenz in NVS** — nach Reset / Aufwachen aus Deep-Sleep weiss die Box real, ob auf oder zu. Kein undefinierter Zustand.
+- [x] **Low-Battery-Auto-Open** — öffnet selbsttätig bei ≤15 % (`failsafe.h isLowBattery`, `BATT_CRITICAL_PCT`); `BATT_UNKNOWN`-Schutz gegen fehlenden Sensor (sonst fälschlich „0 % = leer"). _(FW 0.1.78; Hysterese/Vorwarnung noch nicht implementiert.)_
+- [x] **24-h-ohne-Internet-Auto-Open** — `Failsafe::isOfflineTimeout` über monotonen `offlineSeconds`-Zähler (clock-unabhängig, überlebt Brownout/1970-Uhr in NVS). Reset nur bei erfolgreichem Sync.
+- [x] **Box-lokaler Hard-Deadline** — `lockUntil` in NVS, RTC-Wake exakt zur Deadline (`goDeepSleep`), `isPolicyExpired` öffnet zeitbasiert nur bei gültiger Uhr. HardCap (`isHardCapExceeded` über monotonen `lockedSeconds`) als absolute Obergrenze.
+- [~] **Positions-Persistenz in NVS** — logischer `locked`-Zustand überlebt Deep-Sleep via NVS (kein undefinierter Zustand). **Physisch ungemessen** (kein Endlagensensor → `boltPos=UNKNOWN`). Ein Sensor ist **nicht geplant** (keine HW); Korrektur bei klemmendem Riegel über die User-Meldung „erneut öffnen" (Abschnitt 2).
 - [ ] **Hardware-Watchdog** gegen Firmware-Hänger.
 - [ ] **Brown-out-Detector** aktiv konfiguriert.
 - [ ] **Limits abgleichen** `[?]` — 24-h-Offline-Open (Konnektivitäts-Failsafe, Obergrenze) vs. Keyholder-Cap 12 h (Policy darunter): klären, welches wann greift. Faustregel: Failsafe ist die harte Obergrenze, Keyholder-Zeit darf nie darüber.
@@ -58,8 +58,8 @@ Sammelstelle für alles, was dir im **Betrieb der LockMeBox** auffällt und was 
 
 > Mit dem Zerstören-zum-Befreien-Modell entfällt der Zwang zu mechanischem Fail-open: dass der Stepper seine Position **stromlos hält**, ist jetzt ein reines **Feature** (kein ungewolltes Öffnen bei Akku-leer/Reset). Das garantierte Öffnen übernehmen die Firmware-Failsafes (Low-Batt, 24 h offline, Hard-Deadline) bzw. im Ernstfall die Scheibe.
 
-- [ ] 28BYJ-48 + ULN2003 als Aktor bestätigen. **Empfehlung:** behalten — Selbsthalt stromlos passt hier perfekt.
-- [ ] **Endlagen-Erkennung** (Hall-Sensor oder Mikroschalter) statt blindem Schrittezählen → die Box kennt den realen Riegelzustand, nicht nur den gerechneten. Wichtig fürs ehrliche `VERSCHLUSS`/`OEFFNEN`-Logging.
+- [x] 28BYJ-48 + ULN2003 als Aktor bestätigt — Pins in `config.h` (GPIO 23/17/16/4 per Debug-Sweep), `stepper.cpp`, auf/zu am Bench verifiziert. Selbsthalt stromlos passt.
+- [x] ~~**Endlagen-Erkennung** (Hall/Mikroschalter)~~ — **verworfen: keine Hardware dafür.** `boltPos` bleibt geschätzt (open-loop). Ersatz-Fallback (umgesetzt, FW 0.2.0): Steht die Box auf „offen", klemmt der Riegel aber, meldet der User das auf der Website („Riegel klemmt? Erneut öffnen fahren") → `reopen`-Kommando → `Stepper::reopen()`: kurzer Rückzug Richtung ZU (löst Verkanten), dann **ein** voller Öffnungshub — bewusst auf den bekannten Gesamtweg gedeckelt (kein stumpfes Weiterdrücken gegen den Anschlag → schont Schritte/Strom auf 350 mAh). Instant im MQTT-Wachfenster, sonst beim nächsten Sync.
 - [ ] Riegel-Hub und Drehmoment so auslegen, dass der Riegel sicher öffnet, wenn ein Failsafe feuert (genug Reserve-Energie eingeplant, siehe Abschnitt 3).
 - [ ] Mechanik so, dass der Schlüssel im offenen Zustand wirklich entnehmbar ist (keine Restverriegelung).
 
@@ -69,8 +69,8 @@ Sammelstelle für alles, was dir im **Betrieb der LockMeBox** auffällt und was 
 
 - [ ] LiPo-Kapazität so dimensionieren, dass **Max-Verschlusszeit + Reserve fürs Öffnen** sicher abgedeckt sind (mit Sicherheitsfaktor).
 - [ ] **Laden im verschlossenen Zustand** möglich (USB-Zugang von aussen am Gehäuse). Das kann die LockMeBox — behalten.
-- [ ] **Akkustand-Messung** (ADC an Batteriespannung) als Basis für die Low-Batt-Logik aus Abschnitt 1.
-- [ ] Ladeverhalten definieren: Einstecken darf **keinen** Reset/Öffnen/Zustandswechsel auslösen.
+- [x] **Akkustand-Messung** — `Failsafe::batteryPercent()` (GPIO32, 1:2-Teiler, 16× gemittelt, am Multimeter kalibriert), Basis der Low-Batt-Logik.
+- [x] Ladeverhalten: `readChargeState()` (GPIO26 = USB dran, GPIO13 = TP4056-STDBY) — reine Erkennung, Einstecken löst keinen Reset/Öffnen/Zustandswechsel aus.
 
 ---
 
@@ -78,14 +78,14 @@ Sammelstelle für alles, was dir im **Betrieb der LockMeBox** auffällt und was 
 
 > WiFi-first (siehe Architektur-Entscheide). Kernthema hier: **Sync trotz Deep-Sleep**. Die Box schläft ~3 min nach Aktivität ein (Akku!), kann also nicht dauernd pollen. Lösung: ereignisgesteuerter Sync + RTC-gestützte Safety-Weckung.
 
-- [ ] **Anmeldung am Server** beim ersten Boot: Box registriert sich mit Device-Token, Server ordnet sie trublue zu.
-- [ ] **Sync-Zeitpunkte:** beim Aufwachen aus Standby, beim Taster-„Anschalten", und (optional) per RTC-Timer-Weckung in grossem Intervall. **Spätestens** bei jedem „Anschalten" wird gesynct, bevor die Box etwas tut.
-- [ ] **Was beim Sync passiert:** Box pusht ihren realen Zustand (auf/zu, seit wann, Akku) → Box zieht die Soll-Vorgaben (Sperren-bis, Keyholder-Kommandos, Ziele) → Box rechnet ihren lokalen Hard-Deadline neu (immer ≤ Failsafe-Obergrenze).
-- [ ] **Offline-Verhalten:** ohne Server arbeitet die Box mit dem zuletzt gesyncten Soll-Zustand weiter; greift kein Update, feuert nach 24 h der Offline-Auto-Open (Abschnitt 1). Standalone-Betrieb komplett ohne Server muss ebenso laufen.
-- [ ] **Verbindung User ↔ Box im Moment der Bedienung** `[?]` — wie löst der User „ich will jetzt etwas" aus, wenn die Box schläft und es kein BLE/App gibt? **Vorschlag:** physischer **Taster** an der Box = Intent + Wake; die *Autorisierung* kommt dann aus dem Server-Sync. (Details unten im Chat.)
-- [ ] **Push für schnelles Keyholder-Feedback?** `[?]` MQTT würde „sofort" wirken — kollidiert aber mit Deep-Sleep/Akku. Für eine Schlüssel-Box vermutlich unnötig: Keyholder-Kommandos greifen beim nächsten Aufwachen, die Safety läuft lokal. Bewusst gegen Dauerverbindung entscheiden.
-- [ ] **OTA-Update** über eigenen Server, **signiert**.
-- [ ] **WLAN-Provisioning ohne Reflash** (Captive Portal beim ersten Start), damit Credentials wechselbar sind, ohne aufzumachen.
+- [x] **Anmeldung am Server** beim ersten Boot: Box registriert sich mit Device-Token (`/api/box/register`), Server ordnet sie zu.
+- [x] **Sync-Zeitpunkte:** beim Aufwachen aus Standby, beim Taster-„Anschalten", per RTC-Timer-Wake (`WAKE_INTERVAL_S` 5 min, oder früher bei näherer Deadline). Spätestens bei jedem „Anschalten" wird gesynct.
+- [x] **Was beim Sync passiert:** Box pusht realen Zustand (auf/zu, seit wann, Akku) → zieht Soll (`serverLocked`, `lockUntil`, `offlineOpenHours`, `hardCapHours`) → rechnet lokal (immer ≤ Failsafe-Obergrenze). `lockedSince` server-autoritativ (Box kann HardCap-Anker nicht manipulieren).
+- [x] **Offline-Verhalten:** Box arbeitet mit dem zuletzt gesyncten Soll weiter (NVS-Policy); nach 24 h feuert der Offline-Auto-Open. Standalone (Simple-Lock ohne Deadline) läuft ebenso.
+- [x] **Verbindung User ↔ Box im Moment der Bedienung** — physischer **Taster** (GPIO14, EXT0-Wake) = Intent + Wake; Autorisierung kommt aus dem Server-Sync. Umgesetzt.
+- [ ] **Push für schnelles Keyholder-Feedback?** `[?]` — **wird gerade neu bewertet (2026-07-07):** heutige Worst-Case-Latenz Server→Box bis 5 min (Deep-Sleep). In Prüfung: Light-Sleep-connected + „Türklingel"-Push (MQTT/WebSocket), wobei die Autorität auf dem gehärteten HTTPS-Sync bleibt. Ursprünglicher Entscheid „bewusst gegen Dauerverbindung" ist damit offen.
+- [x] **OTA-Update** über eigenen Server, **Ed25519-signiert** (`ota.cpp`, fail-closed ohne Signatur), mit Rollback-Validierung.
+- [x] **WLAN-Provisioning ohne Reflash** (Captive Portal, `provisioning.cpp`) + Multi-WLAN/bevorzugtes Netz per Sync, ohne die Box zu öffnen.
 
 ---
 
@@ -115,8 +115,8 @@ Sammelstelle für alles, was dir im **Betrieb der LockMeBox** auffällt und was 
 
 ## 7. Bedienung & Alltag — **P2**
 
-- [ ] **Taster** an der Box: Wake aus Standby + User-Intent (z. B. „Sync jetzt" / „ich will öffnen").
-- [ ] Statusanzeige hinter der Scheibe (LED oder kleines Display): verschlossen / offen / Akku / Verbindung.
+- [x] **Taster** an der Box: Wake aus Standby (EXT0/GPIO14) + User-Intent (Sync jetzt). Umgesetzt.
+- [~] Statusanzeige hinter der Scheibe: Onboard-LED zeigt Lock-Zustand (`PIN_LED`, active-low); kleines Display noch offen.
 - [ ] **Stiller Modus** — diskret, keine auffälligen Signale, wenn die Box irgendwo herumsteht.
 
 ---
@@ -134,9 +134,9 @@ Sammelstelle für alles, was dir im **Betrieb der LockMeBox** auffällt und was 
 
 ## 9. Security (digital) — **P1**
 
-- [ ] **Identitäts-/Auth-Token** Box ↔ Server (beim Flashen provisioniert; siehe Architektur-Entscheide). Optional mTLS.
-- [ ] Keine Klartext-Credentials, kein offenes BLE-Pairing wie bei der LockMeBox.
-- [ ] **Replay-Schutz** für Kommandos (signiert, zeitgebunden) — vor allem für „Sperren-bis"-Verlängerungen.
+- [x] **Identitäts-/Auth-Token** Box ↔ Server — 80-Bit-Token beim Provisioning ins NVS, `Authorization: Bearer` gegen bcrypt-`tokenHash`. TLS cert-gepinnt (ISRG-Roots in `certs.h`). Optional mTLS noch offen.
+- [x] Keine Klartext-Credentials, kein offenes BLE-Pairing (WiFi-only, kein BLE).
+- [ ] **Replay-Schutz** für Einzelkommandos (signiert, zeitgebunden) — heute nur TLS-Transportschutz; relevant, sobald ein Push-Kanal Kommandos trägt (Abschnitt 4).
 - [ ] **Grenze:** digitale Security darf die physische Befreiung (Scheibe) und die lokalen Auto-Open-Failsafes (Abschnitt 1) **niemals** aushebeln. Ein kompromittierter/abwesender Server darf dich nicht dauerhaft einsperren.
 
 ---
@@ -219,11 +219,11 @@ stateDiagram-v2
 
 > **Befund (empirisch bestätigt 2026-06-07):** Der **USB-C der LMB ist charge-only**. Test an Mac (`ls /dev/cu.*`) und Pi (`dmesg -wH`): iPhone als Gegenprobe enumeriert sauber (Kabel/Setup belegt), die LMB meldet sich **gar nicht** als USB-Gerät an (D+/D- machen keine USB-Aushandlung). → Stock-Platine ist **nicht per USB flashbar**; deshalb Brain-Transfer bzw. Serial-Pins/Pogo, falls je direkt geflasht wird.
 
-1. [ ] **CN3 durchmessen** (nur an echter Box): jeder der 5 Pins → IN1–IN4 / GND / Vbat? + Versorgungsspannung. Ergebnis = Pin-Map-Tabelle.
-2. [ ] **Optional: Stock-Controller an CN3 im Betrieb messen** → bestätigt Logikpegel (3.3 V) + Schrittsequenz/Richtung.
-3. [ ] **Bench-Replikat** mit identischem 28BYJ-48 + ULN2003 → Firmware-Antrieb beweisen, bevor die Box angefasst wird.
-4. [ ] **CN3-Adapter/Harness** bauen: D32-GPIOs → CN3 gemäß Pin-Map (GPIO-Wahl boot-strapping-sicher, Wake-Taster auf RTC-GPIO).
-5. [ ] **An der Box kalibrieren** (einziger nicht vorab garantierbarer Teil): Schrittzahl auf realen Riegelweg, idealerweise „fahre bis Endlage" statt blind N Schritte.
+1. [x] **CN3 durchgemessen** — ULN2003-Pinbelegung per Debug-Sweep ermittelt (GPIO 23/17/16/4), auf/zu bestätigt. Ergebnis in `config.h`.
+2. [x] **Stock-Controller-Pegel** — 3.3-V-Logik bestätigt (Firmware treibt den Stepper direkt auf der LMB-KSM-Platine).
+3. [x] **Bench-Replikat** — identischer 28BYJ-48 + ULN2003, Firmware-Antrieb bewiesen.
+4. [x] **CN3-Adapter/Harness** — D32-GPIOs → CN3 gemäß Pin-Map, boot-strapping-sichere GPIOs, Wake-Taster auf RTC-GPIO14. Firmware läuft auf der Original-LMB-PCB.
+5. [x] **An der Box kalibriert** — `STEPPER_LOCK_STEPS` auf realen Riegelweg. „Fahre bis Endlage" noch offen (Endlagensensor, Abschnitt 2) — aktuell blind N Schritte.
 
 **Absicherung:** Stock-Controller nur abstecken, **nicht zerstören** → Transplant reversibel. Voll-Flash-Backup (`read_flash 0 0x400000 …`) nur nötig, falls später die Stock-Platine selbst geflasht wird.
 
@@ -260,3 +260,5 @@ stateDiagram-v2
 - **2026-06-06 (Architektur-Spezifikation)** — Neuer Teil A–E ergänzt: (A) Server-Topologie 3-Schichten Box/Steuerserver/Tracker + minimaler Vertrag + Deployment, (B) kanonischer Ablauf Provisioning/Sync/Button/Long-Press, (C) State-Machine (Mermaid + Regeln), (D) Transplant-Verifikation CN3→Bench→Adapter→Kalibrierung, (E) Bedrohungsmodell/Cheat-Pfade mit Leitaxiom „Sichtbarkeit + Keyholder-Beziehung statt Unentrinnbarkeit".
 - **2026-06-06 (Codename)** — Projekt heißt **Heimdall**. Titel, Kopf und Deployment-Subdomain (`heimdall.selfgeek.ch`) entsprechend gesetzt.
 - **2026-06-07 (Befund)** — LMB-USB-C empirisch als **charge-only** bestätigt (Mac + Pi, iPhone-Gegenprobe). In Abschnitt D dokumentiert. Brain-Transfer bleibt die Route.
+- **2026-07-07 (Abgleich mit Code-Stand FW 0.1.78)** — Wunschliste an die reale Firmware angeglichen. Als erledigt markiert: alle P0-Failsafes (Low-Batt-, 24-h-Offline-, Hard-Deadline-Auto-Open, HardCap — `failsafe.h`, clock-unabhängig über monotone NVS-Zähler), Akkustand-/Lade-Erkennung, kompletter Sync-/Provisioning-Zyklus, Multi-WLAN, signierte OTA mit Rollback, Token-Auth + Cert-Pinning, Taster-Wake, sowie Transplant-Verifikation D1–D5 (Firmware läuft auf der Original-LMB-PCB). Teilweise (`[~]`): Positions-Persistenz (logisch ja, physisch ungemessen) und Statusanzeige (LED ja, Display nein). Weiterhin offen: Endlagen-Erkennung, Hardware-Watchdog, Brown-out-Config, Replay-Schutz für Einzelkommandos. **Neu aufgerollt:** §4 „Push für schnelles Keyholder-Feedback" — der ursprüngliche Entscheid gegen eine Dauerverbindung wird zugunsten besserer Website-Responsivität neu bewertet (Light-Sleep-connected + Türklingel-Push, Autorität bleibt auf dem HTTPS-Sync).
+- **2026-07-07 (FW 0.2.0 — MQTT-Push)** — §4 umgesetzt als **Session-Fenster-MQTT**: Button/USB öffnet ein ~2-min-Wachfenster mit Live-MQTT (open/close/lock/reopen <2 s, „Box online" via LWT); dormant schläft die Box zwischen **stündlichen** Heartbeat-Syncs (12× weniger Wakes als vorher). Direkt-Kommandos über MQTT, autoritative Policy weiter über den cert-gepinnten HTTPS-Sync; lokale Failsafes unangetastet autoritativ (Safety-Invariante gewahrt). Server: Mosquitto-Broker (go-auth-HTTP-Backend, Reuse der Device-Token), `mqttBridge` + `mqttEnabled`-Flag pro Box (Default aus → schrittweiser Rollout). Endlagensensor verworfen (keine HW) → User-gemeldeter Riegel-Retry (`reopen`).

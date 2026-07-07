@@ -5,6 +5,7 @@ import { requireDeviceAccess } from "@/lib/authGuards";
 import { prisma } from "@/lib/prisma";
 import { effectiveLockUntil } from "@/lib/device-auth";
 import { notifyDeviceChange } from "@/lib/events";
+import { publishCommand } from "@/lib/mqttBridge";
 
 const openSchema = z.object({
   password: z.string().max(128).optional(),
@@ -75,5 +76,6 @@ export async function POST(
   ]);
 
   notifyDeviceChange();
+  publishCommand(deviceId, "open"); // Sofort-Push, falls die Box im Wachfenster verbunden ist
   return NextResponse.json({ ok: true });
 }

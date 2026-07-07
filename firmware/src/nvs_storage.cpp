@@ -94,6 +94,25 @@ void NVS::savePolicy(const BoxPolicy& in) {
   prefs.end();
 }
 
+// ── MQTT-Konfig ────────────────────────────────────────────────────────────
+bool NVS::loadMqtt(MqttConfig& out) {
+  prefs.begin("mqtt", true);
+  bool ok = prefs.isKey("host");
+  out.enabled = prefs.getBool("en", false);
+  strlcpy(out.host,     prefs.getString("host", "").c_str(), sizeof(out.host));
+  strlcpy(out.deviceId, prefs.getString("did",  "").c_str(), sizeof(out.deviceId));
+  prefs.end();
+  return ok;
+}
+
+void NVS::saveMqtt(const MqttConfig& in) {
+  prefs.begin("mqtt", false);
+  prefs.putBool("en", in.enabled);
+  prefs.putString("host", in.host);
+  prefs.putString("did",  in.deviceId);
+  prefs.end();
+}
+
 // ── Zusatz-WLANs ─────────────────────────────────────────────────────────────
 int NVS::loadExtraNets(WifiNet* out, int maxN) {
   prefs.begin("nets", true);

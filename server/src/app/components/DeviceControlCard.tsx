@@ -25,6 +25,7 @@ export interface DeviceControlCardProps {
   fwVersion: string | null;
   wifiRssi: number | null;
   isOnline: boolean;
+  mqttLive?: boolean; // Box gerade MQTT-verbunden (Wachfenster) → Kommandos wirken sofort
 }
 
 /** Verbleibende Zeit bis until, kompakt (z.B. "23 Min", "5 h 12 Min", "3 T 4 h"). */
@@ -102,6 +103,24 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
     setModalOpen(true);
   }
 
+  // Riegel-Retry (Fallback ohne Endlagensensor): Box soll offen sein, Riegel klemmt →
+  // erneut Richtung "offen" fahren. Instant im Wachfenster, sonst beim nächsten Sync.
+  async function doReopen(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/devices/${props.id}/reopen`, { method: "POST" });
+      if (!res.ok) throw new Error();
+      router.refresh();
+    } catch {
+      setError("Erneutes Öffnen fehlgeschlagen — bitte erneut versuchen.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <>
       <Link href={`/dashboard/devices/${props.id}`} className="block group">
@@ -114,6 +133,11 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
                 <OnlineDot online={props.isOnline} />
                 {props.isOnline ? "online" : formatDuration(props.lastSyncAt)}
               </span>
+              {props.mqttLive && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-ok-bg)] border border-[var(--color-ok-border)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-ok)]">
+                  <Zap className="h-2.5 w-2.5" /> live
+                </span>
+              )}
               {props.wifiRssi != null && <RssiBars rssi={props.wifiRssi} />}
               <span className="flex items-center gap-0.5">
                 {props.battery != null ? `${props.battery}%` : "—"}
@@ -174,13 +198,23 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
                 </button>
               )
             ) : (
-              <button
-                onClick={openLockModal}
-                className="w-full rounded-xl bg-[var(--color-warn)] py-3 font-semibold text-[var(--foreground-invert)] hover:opacity-90 transition flex items-center justify-center gap-2"
-              >
-                <Lock className="h-4 w-4" />
-                Verschliessen
-              </button>
+              <>
+                <button
+                  onClick={openLockModal}
+                  className="w-full rounded-xl bg-[var(--color-warn)] py-3 font-semibold text-[var(--foreground-invert)] hover:opacity-90 transition flex items-center justify-center gap-2"
+                >
+                  <Lock className="h-4 w-4" />
+                  Verschliessen
+                </button>
+                {/* Fallback ohne Endlagensensor: Riegel klemmt → erneut öffnen fahren. */}
+                <button
+                  onClick={doReopen}
+                  disabled={saving}
+                  className="w-full py-1 text-xs text-[var(--foreground-muted)] hover:text-[var(--foreground)] disabled:opacity-50 transition"
+                >
+                  Riegel klemmt? Erneut öffnen fahren
+                </button>
+              </>
             )}
           </div>
         </div>

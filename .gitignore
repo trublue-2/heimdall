@@ -22,7 +22,9 @@ out/
 # PlatformIO / Arduino
 .pio/
 .pioenv/
+.pio-venv/
 firmware/.pio/
+firmware/.pio-venv/
 
 # Original-Firmware-Dumps (4 MB Binärabbilder, gehören nicht ins Repo)
 firmware/original_lmb/

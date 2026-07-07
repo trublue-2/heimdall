@@ -59,6 +59,7 @@ export const EVENT_CONFIG: Record<string, { label: string; variant: "lock" | "un
   FAILSAFE_OPEN:     { label: "Failsafe-Öffnung", variant: "warn" },
   UNAUTHORIZED_OPEN: { label: "Unautorisiert geöffnet", variant: "warn" },
   EARLY_OPEN:        { label: "Vorzeitig geöffnet", variant: "warn" },
+  REOPEN:            { label: "Riegel-Retry", variant: "neutral" },
 };
 
 export function formatDuration(from: Date | string | null | undefined): string {

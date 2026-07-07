@@ -13,6 +13,7 @@ import { DeviceLogViewer } from "@/app/components/DeviceLogViewer";
 import { TrackerLinkForm } from "@/app/components/TrackerLinkForm";
 import { LiveRefresh } from "@/app/components/LiveRefresh";
 import { deviceLockView } from "@/lib/device-auth";
+import { deviceOnline } from "@/lib/mqttBridge";
 import { formatDateTime, isOnline, EVENT_CONFIG } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +46,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
     : [];
 
   const online = isOnline(device.lastSyncAt);
+  const mqttLive = deviceOnline(device.id); // MQTT-Präsenz (Wachfenster) für die Live-Anzeige
   const lockView = deviceLockView(device.policy, device.lockedSince, new Date());
 
   return (
@@ -70,6 +72,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
         fwVersion={device.fwVersion}
         wifiRssi={device.wifiRssi ?? null}
         isOnline={online}
+        mqttLive={mqttLive}
       />
 
       {/* Einstellungen */}
@@ -83,6 +86,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
             hardCapHours={device.policy?.hardCapHours ?? null}
             otaDisabled={device.otaDisabled}
             debugMode={device.debugMode}
+            mqttEnabled={device.mqttEnabled}
           />
         </Card>
       </section>

@@ -301,6 +301,17 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   // Server-Log-Schalter für den nächsten Sync merken.
   gLogToServer = resp["logToServer"] | false;
 
+  // MQTT-Konfig (Session-Fenster-Push): nur wenn der Server den Block liefert.
+  // Fehlt er → enabled=false → Box bleibt heartbeat-only (abwärtskompatibel).
+  MqttConfig mq = {};
+  JsonObject mqtt = resp["mqtt"].as<JsonObject>();
+  if (!mqtt.isNull()) {
+    mq.enabled = mqtt["enabled"] | false;
+    strlcpy(mq.host,     mqtt["host"]     | "", sizeof(mq.host));
+    strlcpy(mq.deviceId, mqtt["deviceId"] | "", sizeof(mq.deviceId));
+  }
+  NVS::saveMqtt(mq);
+
   NVS::savePolicy(policy);
   NVS::saveState(state);
 

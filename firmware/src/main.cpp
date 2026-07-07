@@ -16,6 +16,7 @@
 #include "provisioning.h"
 #include "ota.h"
 #include "logbuf.h"
+#include "mqtt_client.h"
 
 // ── State-Machine ───────────────────────────────────────────────────────────
 enum class State {
@@ -32,6 +33,11 @@ static BoxState        gBox            = {};
 static BoxPolicy       gPolicy         = {};
 static unsigned long   gLastActivityMs = 0;
 static bool            gChargeFull     = false; // GPIO13 LOW & USB dran → Ladung fertig (nur Anzeige)
+// Öffnet dieser Wake ein aktives MQTT-Wachfenster? Button/Power-on = ja, Heartbeat
+// (rtc_timer) = nein (nur Sync, dann sofort weiterschlafen). USB überstimmt (immer Fenster).
+static bool            gWindowWake     = false;
+// Nächste OPENING-Fahrt als Riegel-Retry (Wiggle) statt normalem Öffnen — via reopen-Kommando.
+static bool            gReopen         = false;
 
 // Aufeinanderfolgende 401 (überlebt Deep-Sleep) → Selbstheilung in den Hotspot (S8).
 RTC_DATA_ATTR static uint32_t gAuthFails = 0;
@@ -571,9 +577,9 @@ static const char* wakeReasonStr() {
 
 // ── Deep-Sleep ──────────────────────────────────────────────────────────────
 static void goDeepSleep() {
-  // Periodischer Sync alle WAKE_INTERVAL_S — oder früher, wenn eine
+  // Dormant: stündlicher Heartbeat-Sync (HEARTBEAT_S) — oder früher, wenn eine
   // Policy-Deadline näher liegt (dann genau zur Deadline aufwachen).
-  uint64_t timerS = WAKE_INTERVAL_S;
+  uint64_t timerS = HEARTBEAT_S;
   if (gPolicy.lockUntil > 0) {
     time_t remaining = gPolicy.lockUntil - time(nullptr);
     if (remaining > 60 && remaining < (long)timerS) timerS = (uint64_t)remaining;
@@ -602,7 +608,7 @@ static bool checkFailsafes() {
   uint32_t inc = 0;
   if (gBox.lastTick > 0) {
     long delta = (long)(now - gBox.lastTick);
-    inc = (delta >= 0 && delta <= (long)(2UL * WAKE_INTERVAL_S)) ? (uint32_t)delta : (uint32_t)WAKE_INTERVAL_S;
+    inc = (delta >= 0 && delta <= (long)(2UL * MAX_SLEEP_S)) ? (uint32_t)delta : (uint32_t)MAX_SLEEP_S;
   }
   gBox.offlineSeconds += inc;
   gBox.lockedSeconds = gBox.locked ? gBox.lockedSeconds + inc : 0;
@@ -623,6 +629,25 @@ static bool checkFailsafes() {
     strlcpy(gBox.wakeReason, "hard_deadline", sizeof(gBox.wakeReason)); return true;
   }
   return false;
+}
+
+// Sofort-Öffnungs-Gate (VOR Sync/MQTT): failsafe-Zähler ticken + prüfen, plus abgelaufene
+// Lock-Zeit aus der gecachten Policy → öffnen ohne aufs Netz zu warten. checkFailsafes()
+// bleibt die Quelle des Zähler-Ticks (Seiteneffekt bewusst).
+static bool shouldOpenNow() {
+  return checkFailsafes() || (gBox.locked && Failsafe::isPolicyExpired(gPolicy));
+}
+
+// Kanonische Sperr-Sequenz (HardCap-Anker frisch, Riegel zu, Zustand melden). Genutzt von
+// der Policy-Entscheidung im Sync UND vom MQTT-lock-Kommando — eine Quelle statt zwei.
+static void lockBox() {
+  gBox.locked        = true;
+  gBox.lockedSince   = time(nullptr);
+  gBox.lockedSeconds = 0; // Sperrdauer-Zähler startet frisch (HardCap)
+  NVS::saveState(gBox);
+  Stepper::lock();
+  gLastActivityMs = millis();
+  ServerSync::run(gCreds, gBox, gPolicy, true); // Zustand melden, WiFi behalten
 }
 
 // ── setup: läuft einmal nach jedem Wake / Power-On ──────────────────────────
@@ -667,6 +692,8 @@ void setup() {
   int batt = Failsafe::batteryPercent();
 
   const char* reason = wakeReasonStr();
+  // Heartbeat-Wake (rtc_timer) öffnet kein Fenster; Button/Power-on schon. USB überstimmt später.
+  gWindowWake = (strcmp(reason, "rtc_timer") != 0);
   log_i("=== Heimdall %s | Wake: %s | Batt: %d%% ===", FW_VERSION, reason, batt);
 
   // ── Bench-Test: Stepper/GPIO manuell testen ──────────────────────────────
@@ -758,8 +785,11 @@ void setup() {
 
   gState = (hasState && gBox.locked) ? State::LOCKED : State::IDLE_OPEN;
 
-  // ── P0: Failsafes — Safety vor Security vor Funktion (tickt auch die Zähler) ──
-  if (checkFailsafes()) { gState = State::OPENING; return; }
+  // ── P0: Sofort-Öffnungs-Gate VOR Sync/MQTT — Safety vor Security vor Funktion ──
+  // checkFailsafes() tickt die monotonen Zähler + prüft Low-Batt/Offline/HardCap.
+  // Zusätzlich die abgelaufene Lock-Zeit aus der GECACHTEN Policy prüfen (isPolicyExpired):
+  // eine abgelaufene Sperre öffnet so sofort, ohne aufs Netz/den Sync zu warten.
+  if (shouldOpenNow()) { gState = State::OPENING; return; }
 
   gState = State::SYNCING;
   gBtnLatched = false; // Boot-Bounce verwerfen — der Initial-Sync läuft ohnehin
@@ -800,15 +830,7 @@ void loop() {
         } else if (!gBox.locked && shouldClose) {
           log_i("Policy: Sperren (serverLocked, bis %ld / %s)", (long)gPolicy.lockUntil,
                 fmtLocal(gPolicy.lockUntil).c_str());
-          gBox.locked        = true;
-          gBox.lockedSince   = time(nullptr);
-          gBox.lockedSeconds = 0; // Sperrdauer-Zähler startet frisch (HardCap)
-          NVS::saveState(gBox);
-          Stepper::lock();
-          gLastActivityMs = millis();
-          // Neuen Zustand sofort an Server melden — sonst zeigt das Web "Offen"
-          // bis zum nächsten Wake (Diskrepanz zur LED).
-          ServerSync::run(gCreds, gBox, gPolicy, true);
+          lockBox(); // meldet den neuen Zustand sofort (sonst zeigt das Web "Offen")
           gState = State::LOCKED;
         } else {
           gState = gBox.locked ? State::LOCKED : State::IDLE_OPEN;
@@ -853,13 +875,16 @@ void loop() {
     // ── OPENING ───────────────────────────────────────────────────────────
     case State::OPENING:
       log_i("OPENING …");
-      Stepper::unlock();
+      if (gReopen) { gReopen = false; Stepper::reopen(); } // Riegel-Retry (Wiggle) statt normalem Öffnen
+      else         { Stepper::unlock(); }
       gBox.locked = false;
       NVS::saveState(gBox);
       gState = State::IDLE_OPEN;
       gLastActivityMs = millis();
-      // Best-effort Sync nach Öffnen (wakeReason landet im Event-Log)
-      ServerSync::run(gCreds, gBox, gPolicy);
+      // Best-effort Sync nach Öffnen (wakeReason landet im Event-Log). keepWifi=true:
+      // im aktiven Fenster bleibt WiFi an, damit MQTT weiterlebt; auf dem Sleep-Pfad
+      // schaltet goDeepSleep WiFi ohnehin ab.
+      ServerSync::run(gCreds, gBox, gPolicy, true);
       break;
 
     // ── LOCKED / IDLE_OPEN ────────────────────────────────────────────────
@@ -885,16 +910,16 @@ void loop() {
       // anderen Zustands (SYNCING/Boot) kam. Flag konsumieren und syncen.
       if (gBtnLatched) {
         gBtnLatched = false;
-        log_i("Button (wach) → Sync");
         ledAck();
         gLastActivityMs = millis();
+        // Button: erst Sofort-Öffnung prüfen (abgelaufen/Failsafe), DANN Sync.
+        if (shouldOpenNow()) { gState = State::OPENING; break; }
+        log_i("Button (wach) → Sync");
         gState = State::SYNCING;
         break;
       }
 
-      // Status-Seite in jedem Wach-Fenster bedienen — entkoppelt von der
-      // unzuverlässigen Power-Erkennung. Nach IDLE_SLEEP_MS ohne Aktivität
-      // Deep-Sleep; der periodische Re-Sync läuft über den Timer-Wake.
+      // Status-Seite in jedem Wach-Fenster bedienen.
       ensureStatusServer();
       gWeb.handleClient();
 
@@ -907,25 +932,68 @@ void loop() {
         if (checkFailsafes()) { gState = State::OPENING; break; }
       }
 
-      // Wach bleiben, solange USB/Netz anliegt (GPIO26) → Debug-Seite jederzeit erreichbar;
-      // sonst auf Akku normal nach IDLE_SLEEP_MS schlafen. Kein Dauer-Wach über debugMode mehr.
-      static unsigned long gLastAwakeSync = 0;
       readChargeState(); // aktualisiert gBox.charging (GPIO26)
+      // Aktives Fenster = Button/Power-on-Wake ODER am USB. Ein reiner Heartbeat-Wake
+      // (rtc_timer) auf Akku öffnet KEIN Fenster → nur Sync (schon gelaufen), dann Sleep.
+      bool activeWindow = gBox.charging || gWindowWake;
+
+      if (activeWindow) {
+        // MQTT im Fenster verbinden (throttled) + bedienen. mq.enabled=false → kein MQTT
+        // (heartbeat-only-Box), Fenster läuft trotzdem für Web/Button.
+        static unsigned long gLastMqttTry = 0;
+        static bool          gMqttFirstTry = true;
+        if (!Mqtt::connected() && (gMqttFirstTry || millis() - gLastMqttTry > 10000)) {
+          gMqttFirstTry = false; gLastMqttTry = millis();
+          MqttConfig mq; NVS::loadMqtt(mq);
+          if (mq.enabled) Mqtt::connect(mq, gCreds.deviceToken);
+        }
+        Mqtt::loop();
+
+        // Sofort-Kommando aus dem Wachfenster → bestehende Aktionen (Failsafes bleiben
+        // autoritativ; die Box meldet das Ergebnis danach per Sync).
+        Mqtt::Command cmd = Mqtt::takeCommand();
+        if (cmd != Mqtt::Command::NONE) {
+          gLastActivityMs = millis(); // Aktivität → Fenster verlängern
+          switch (cmd) {
+            case Mqtt::Command::OPEN:
+              gState = State::OPENING; break;
+            case Mqtt::Command::REOPEN: // Riegel-Retry: OPENING mit Wiggle statt normalem Hub
+              gReopen = true; gState = State::OPENING; break;
+            case Mqtt::Command::CLOSE:
+            case Mqtt::Command::LOCK:
+              if (!gBox.locked) lockBox();
+              gState = State::LOCKED; break;
+            case Mqtt::Command::SYNC:
+              gState = State::SYNCING; break;
+            default: break;
+          }
+          break; // Zustandswechsel greift im nächsten loop()
+        }
+      }
+
+      // Sleep-/Resync-Logik nach Kontext.
+      static unsigned long gLastAwakeSync = 0;
       if (gBox.charging) {
+        // Am USB: wach + MQTT verbunden bleiben, periodisch resyncen (Policy/OTA/IP/Akku frisch).
         if (gLastAwakeSync == 0) gLastAwakeSync = millis();
         if (millis() - gLastAwakeSync > DEBUG_RESYNC_MS) {
           gLastAwakeSync = millis();
-          gState = State::SYNCING; // periodisch re-syncen, hält Policy/OTA/IP/Akku frisch
+          gState = State::SYNCING;
         } else {
           delay(5);
         }
-      } else {
-        gLastAwakeSync = 0; // beim nächsten Einstecken sauber neu takten (kein Sofort-Sync)
-        if (millis() - gLastActivityMs > IDLE_SLEEP_MS) {
+      } else if (gWindowWake) {
+        // Akku-Wachfenster (Button/Power-on): nach ACTIVE_WINDOW_MS ohne Aktivität schlafen.
+        gLastAwakeSync = 0;
+        if (millis() - gLastActivityMs > ACTIVE_WINDOW_MS) {
+          Mqtt::disconnect();
           goDeepSleep();
         } else {
           delay(10);
         }
+      } else {
+        // Heartbeat-Wake auf Akku: kein Fenster — Sync ist gelaufen, sofort schlafen.
+        goDeepSleep();
       }
       break;
     }

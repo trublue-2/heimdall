@@ -33,6 +33,15 @@ struct BoxState {
   time_t   lastTick;       // time() beim letzten Wake (für Delta-Berechnung)
 };
 
+// MQTT-Konfig für den Session-Fenster-Push. Kommt pro Box aus der Sync-Response
+// (über den gehärteten HTTPS-Kanal provisioniert) und wird in NVS gecacht.
+// enabled=false (oder fehlender Block) → Box bleibt heartbeat-only, kein MQTT.
+struct MqttConfig {
+  bool enabled;
+  char host[128];    // Broker-Host (mqtts, Port aus config.h)
+  char deviceId[40]; // cuid der Box — clientId/username + Topic-Segment
+};
+
 // Letzte vom Server empfangene Policy.
 struct BoxPolicy {
   bool   serverLocked; // Server-Vorgabe "soll zu sein" (Simple-Lock ODER aktive Zeit).
@@ -54,6 +63,9 @@ namespace NVS {
 
   bool loadPolicy(BoxPolicy& out);
   void savePolicy(const BoxPolicy& in);
+
+  bool loadMqtt(MqttConfig& out);   // false, wenn nie ein Block gespeichert wurde
+  void saveMqtt(const MqttConfig& in);
 
   int  loadExtraNets(WifiNet* out, int maxN);          // gibt Anzahl zurück
   void saveExtraNet(const char* ssid, const char* pass); // dedup nach SSID, max MAX_EXTRA_NETS

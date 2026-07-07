@@ -46,6 +46,10 @@ model Device {
   // Server-Log: Box hängt ihr serielles Log bei jedem Sync an (auch schlafend, ~5 min).
   // Hält die Box NICHT wach (anders als debugMode).
   logToServer Boolean  @default(false)
+  // MQTT-Push (Session-Fenster): Server liefert der Box im Sync die Broker-Konfig, die Box
+  // hält im Wachfenster (Button/USB) eine MQTT-Verbindung für <2s-Kommandos. Default aus →
+  // schrittweiser Rollout; ohne Flag bleibt die Box heartbeat-only.
+  mqttEnabled Boolean  @default(false)
   lastSyncAt  DateTime?
   wakeReason  String?
   wifiSsid    String?

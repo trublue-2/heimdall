@@ -46,6 +46,19 @@ void Stepper::unlock() {
   powerOff();
 }
 
+// Riegel-Retry ohne Endlage (User-Meldung „klemmt"). Ein Verkanten löst sich eher durch
+// Richtungswechsel als durch stumpfes Weiterdrücken gegen den Anschlag (Schrittverluste,
+// Stromspitze — auf 350 mAh unerwünscht). Darum: kurzer Rückzug Richtung ZU (entlasten),
+// dann EIN voller Öffnungshub. Bewusst auf den bekannten Gesamtweg gedeckelt — kein
+// „immer weiter in Öffnungsrichtung".
+void Stepper::reopen() {
+  const int nudge = STEPPER_LOCK_STEPS / 8; // ~11° zurück zum Lösen
+  log_i("Stepper: reopen (nudge %d zurück, dann %d auf)", nudge, STEPPER_LOCK_STEPS);
+  driveSteps(STEPPER_DIR_LOCK, nudge);                  // kurz Richtung ZU (entlasten/lösen)
+  driveSteps(-(STEPPER_DIR_LOCK), STEPPER_LOCK_STEPS);  // voller Öffnungshub (gedeckelt)
+  powerOff();
+}
+
 void Stepper::powerOff() {
   for (uint8_t pin : PINS) {
     digitalWrite(pin, LOW);

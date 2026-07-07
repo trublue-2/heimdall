@@ -269,6 +269,12 @@ export async function POST(req: NextRequest) {
     otaSig: otaPending ? otaSig : null,
     debugMode: device.debugMode, // Box bleibt wach + serviert lokale Debug-Seite
     logToServer: device.logToServer, // Box schickt ihr serielles Log bei jedem Sync mit
+    // MQTT-Push-Konfig (Session-Fenster): nur wenn für diese Box aktiviert UND ein Broker-
+    // Host konfiguriert ist. Fehlt der Block → Box bleibt heartbeat-only (abwärtskompatibel).
+    mqtt:
+      device.mqttEnabled && process.env.MQTT_PUBLIC_HOST
+        ? { enabled: true, host: process.env.MQTT_PUBLIC_HOST, deviceId: device.id }
+        : undefined,
     wifiNetworks: pendingNets.map((n) => ({ ssid: n.ssid, pass: n.password })),
     preferredSsid: device.preferredSsid ?? null, // Server-Präferenz (Box gewinnt-lassen); null = Box behält lokale Wahl
     commands: [],
