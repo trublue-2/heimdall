@@ -84,7 +84,9 @@ static void udpLogTask(void*) {
   bool up = false;
   for (;;) {
     if (WiFi.isConnected()) {
-      if (!up) { gUdp.begin(0); up = true; }
+      // FESTER Quellport (nicht begin(0)): BSD `nc -ul 9999` rastet auf den ersten
+      // (Quell-IP,Quell-Port) ein — ein wechselnder Ephemer-Port nach Reconnect macht nc taub.
+      if (!up) { gUdp.begin(LOG_UDP_PORT); up = true; }
       uint32_t head = gLogHead;
       uint32_t oldest = head > LOG_CAP ? head - LOG_CAP : 0;
       if (gUdpCursor < oldest) gUdpCursor = oldest;
@@ -270,8 +272,99 @@ static void handleStatus() {
           + " · Reset: " + String(gResetReason) + "</p>";
   html += "<p class=m>Uptime: " + String(millis() / 1000) + " s · Heap: "
           + String(ESP.getFreeHeap() / 1024) + " kB</p>";
+  html += "<p class=m><a href=/wifi style='color:#4ade80'>📶 WLAN verwalten</a></p>";
   html += "</body></html>";
   gWeb.send(200, "text/html", html);
+}
+
+// ── WLAN-Verwaltung (normale Site, /wifi) ─────────────────────────────────────
+// Bekannte Netze listen, Extra-Netz hinzufügen/entfernen, eins als „bevorzugt" markieren.
+// Bevorzugt greift beim NÄCHSTEN Verbinden (kein sofortiger Wechsel); ist es nicht
+// erreichbar, nimmt connectWifi das stärkste andere bekannte. Eigene Seite statt Statusseite,
+// weil die sich alle 5 s neu lädt (würde Eingaben leeren). JSON→JS-Rendering via textContent
+// (kein HTML-Escape nötig, XSS-sicher).
+static String jsonEsc(const String& s) { // nur " und \ escapen (SSIDs ohne Steuerzeichen)
+  String o; for (char c : s) { if (c == '"' || c == '\\') o += '\\'; o += c; } return o;
+}
+static void handleNetList() {
+  char pref[64] = {0}; NVS::getPreferredSsid(pref, sizeof(pref));
+  WifiNet extra[MAX_EXTRA_NETS]; int ne = NVS::loadExtraNets(extra, MAX_EXTRA_NETS);
+  String cur = WiFi.isConnected() ? WiFi.SSID() : String("");
+  String j = "{\"current\":\"" + jsonEsc(cur) + "\",\"preferred\":\"" + jsonEsc(pref) + "\",";
+  String es, em; // letzter Connect-Fehler (z.B. „Passwort falsch?"), null wenn keiner offen
+  j += "\"error\":" + (ServerSync::lastWifiError(es, em)
+        ? ("{\"ssid\":\"" + jsonEsc(es) + "\",\"msg\":\"" + jsonEsc(em) + "\"}")
+        : String("null")) + ",\"nets\":[";
+  j += "{\"ssid\":\"" + jsonEsc(gCreds.ssid) + "\",\"primary\":true}";
+  for (int i = 0; i < ne; i++) j += ",{\"ssid\":\"" + jsonEsc(extra[i].ssid) + "\",\"primary\":false}";
+  j += "]}";
+  gWeb.send(200, "application/json", j);
+}
+static void handleNetPref() {
+  String ssid = gWeb.arg("ssid");
+  NVS::setPreferredSsid(ssid.c_str()); // leer = Präferenz löschen
+  gWeb.send(200, "text/plain", ssid.isEmpty()
+    ? "Präferenz aufgehoben" : ("Bevorzugt: " + ssid + " — greift beim nächsten Verbinden"));
+}
+static void handleNetAdd() {
+  String ssid = gWeb.arg("ssid");
+  if (ssid.isEmpty()) { gWeb.send(400, "text/plain", "SSID fehlt"); return; }
+  NVS::saveExtraNet(ssid.c_str(), gWeb.arg("pass").c_str());
+  gWeb.send(200, "text/plain", "Hinzugefügt: " + ssid);
+}
+static void handleNetDel() {
+  String ssid = gWeb.arg("ssid");
+  if (ssid.isEmpty()) { gWeb.send(400, "text/plain", "SSID fehlt"); return; }
+  NVS::deleteExtraNet(ssid.c_str()); // räumt eine ggf. auf dieses Netz zeigende Präferenz mit auf
+  gWeb.send(200, "text/plain", "Entfernt: " + ssid);
+}
+static void handleWifiPage() {
+  gWeb.send(200, "text/html",
+    "<!DOCTYPE html><html lang=de><head><meta charset=utf-8>"
+    "<meta name=viewport content='width=device-width,initial-scale=1'>"
+    "<title>Heimdall WLAN</title><style>"
+    "body{font-family:system-ui,sans-serif;margin:0;padding:1.5rem;max-width:32rem;background:#0f1115;color:#e6e6e6}"
+    "h2{margin:.2rem 0}h3{color:#8a8a8a;font-size:.85rem;text-transform:uppercase;margin:1.2rem 0 .4rem}a{color:#4ade80}"
+    ".net{display:flex;align-items:center;gap:.5rem;padding:.55rem .7rem;margin:.4rem 0;background:#1a1d23;border-radius:.5rem}"
+    ".net b{flex:1;overflow:hidden;text-overflow:ellipsis}"
+    ".tag{font-size:.68rem;padding:.12rem .4rem;border-radius:.3rem;background:#2a3340;color:#8a8a8a}"
+    ".tag.pref{background:#13241a;color:#4ade80}.tag.cur{background:#1e2b3a;color:#7db3ff}"
+    "button{padding:.35rem .6rem;border:0;border-radius:.4rem;background:#2a3340;color:#e6e6e6;font-size:.8rem}"
+    "button.go{background:#4ade80;color:#04130a;font-weight:700}"
+    "input{width:100%;box-sizing:border-box;padding:.5rem;margin:.3rem 0;border-radius:.4rem;border:1px solid #333;background:#1a1d23;color:#e6e6e6}"
+    "#st{color:#8a8a8a;font-size:.85rem;margin-top:.6rem;min-height:1.2rem}</style></head><body>"
+    "<h2>📶 WLAN</h2><p><a href=/>← Status</a></p>"
+    "<div id=list>lade…</div>"
+    "<h3>Netz hinzufügen</h3>"
+    "<input id=ss placeholder='WLAN-Name (SSID)'>"
+    "<input id=pw type=password placeholder='Passwort'>"
+    "<button class=go onclick=add()>+ hinzufügen</button>"
+    "<div id=st></div>"
+    "<script>"
+    "function S(t){document.getElementById('st').textContent=t}"
+    "async function api(u){S(await(await fetch(u)).text());load();}"
+    "function pref(s){api('/net/pref?ssid='+encodeURIComponent(s))}"
+    "function del(s){if(confirm('Netz entfernen: '+s+'?'))api('/net/del?ssid='+encodeURIComponent(s))}"
+    "function add(){let s=document.getElementById('ss').value.trim();if(!s){S('SSID fehlt');return;}"
+    "api('/net/add?ssid='+encodeURIComponent(s)+'&pass='+encodeURIComponent(document.getElementById('pw').value));"
+    "document.getElementById('ss').value='';document.getElementById('pw').value='';}"
+    "function tag(cls,txt){let t=document.createElement('span');t.className='tag '+cls;t.textContent=txt;return t;}"
+    "function btn(txt,fn){let b=document.createElement('button');b.textContent=txt;b.onclick=fn;return b;}"
+    "async function load(){let d=await(await fetch('/net/list')).json();"
+    "let L=document.getElementById('list');L.innerHTML='';"
+    "if(d.error){let e=document.createElement('div');"
+    "e.style='background:#2a1416;color:#ff6b6b;padding:.6rem;border-radius:.5rem;margin:.4rem 0;font-size:.85rem';"
+    "e.textContent='⚠ '+(d.error.ssid?d.error.ssid+': ':'')+d.error.msg;L.appendChild(e);}"
+    "for(let net of d.nets){let r=document.createElement('div');r.className='net';"
+    "let b=document.createElement('b');b.textContent=net.ssid;r.appendChild(b);"
+    "if(net.ssid==d.current)r.appendChild(tag('cur','verbunden'));"
+    "if(net.primary)r.appendChild(tag('','Primär'));"
+    "if(net.ssid==d.preferred){r.appendChild(tag('pref','★ bevorzugt'));r.appendChild(btn('aufheben',()=>pref('')));}"
+    "else r.appendChild(btn('bevorzugen',()=>pref(net.ssid)));"
+    "if(!net.primary)r.appendChild(btn('✕',()=>del(net.ssid)));"
+    "L.appendChild(r);}}"
+    "load();"
+    "</script></body></html>");
 }
 
 // ── Debug-Mode: lokale Monitoring-Seite (Info + Serial + FW-Flashen) ──────────
@@ -399,7 +492,7 @@ static void handleDebugPage() {
     "<div id=info>lade…</div>"
     "<h3>Firmware</h3>"
     "<button class=go onclick=ota()>⬇ Neue FW flashen</button>"
-    "<button onclick=revert()>⟲ Zurück ins Original</button>"
+    "<button onclick=revert()>⟲ Anderen OTA-Slot booten</button>"
     "<div id=st>bereit</div>"
     "<h3>Serial (live)</h3>"
     "<p style='color:#8a8a8a;font-size:.78rem;margin:.2rem 0'>Live-Remote am Mac (auch OTA-Fortschritt): "
@@ -413,7 +506,7 @@ static void handleDebugPage() {
     "async function ota(){S('OTA: prüfe & flashe…');"
     "try{S(await(await fetch('/dbg/ota')).text())}"
     "catch(e){S('Verbindung weg — vermutlich Reboot nach erfolgreichem Flash ✓')}}"
-    "async function revert(){if(!confirm('⚠️ Bootet die FW im anderen Slot (nach Übernahme: Original-LMB) und übergibt ihr die Kontrolle — Heimdalls Sperre & Failsafes gelten dann nicht mehr. Einbahn aus dieser Oberfläche. Fortfahren?'))return;S('Slot-Switch…');"
+    "async function revert(){if(!confirm('⚠️ Bootet die FW im anderen OTA-Slot und übergibt ihr die Kontrolle — Heimdalls Sperre & Failsafes gelten dann nicht mehr. Der andere Slot enthält (falls belegt) die vorige FW, nach LMB-Übernahme das Original. Einbahn aus dieser Oberfläche. Fortfahren?'))return;S('Slot-Switch…');"
     "try{S(await(await fetch('/dbg/switch')).text())}"
     "catch(e){S('Verbindung weg — vermutlich Reboot in den anderen Slot ✓')}}"
     "async function refreshInfo(){try{let d=await(await fetch('/dbg/info')).json();"
@@ -538,9 +631,14 @@ void setup() {
   gWeb.on("/", handleStatus); // Statusseite-Route einmalig registrieren
   gWeb.on("/debug",    handleDebugPage); // Debug-Mode-Routen (nur wirksam, wenn debugMode aktiv)
   gWeb.on("/dbg/ota",  handleDbgOta);
-  gWeb.on("/dbg/switch", handleDbgSwitch); // Fallback: Boot-Zeiger auf anderen Slot (Original)
+  gWeb.on("/dbg/switch", handleDbgSwitch); // Fallback: Boot-Zeiger auf den anderen OTA-Slot
   gWeb.on("/dbg/info", handleDbgInfo);
   gWeb.on("/dbg/log",  handleDbgLog);
+  gWeb.on("/wifi",     handleWifiPage);  // WLAN-Verwaltung (normale Site)
+  gWeb.on("/net/list", handleNetList);
+  gWeb.on("/net/pref", handleNetPref);
+  gWeb.on("/net/add",  handleNetAdd);
+  gWeb.on("/net/del",  handleNetDel);
   pinMode(PIN_BUTTON, INPUT_PULLUP); // HIGH per Pull-up, LOW bei Druck (PIN_BUTTON)
   attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), onButtonIsr, FALLING);
   gLastActivityMs = millis();

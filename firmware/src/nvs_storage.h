@@ -57,4 +57,7 @@ namespace NVS {
 
   int  loadExtraNets(WifiNet* out, int maxN);          // gibt Anzahl zurück
   void saveExtraNet(const char* ssid, const char* pass); // dedup nach SSID, max MAX_EXTRA_NETS
+  void deleteExtraNet(const char* ssid);                 // Extra-Netz entfernen (nach SSID)
+  void setPreferredSsid(const char* ssid);               // bevorzugtes Netz (leer = löscht Präferenz)
+  bool getPreferredSsid(char* out, size_t cap);          // true, wenn eine Präferenz gesetzt ist
 }

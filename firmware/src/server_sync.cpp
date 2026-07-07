@@ -49,6 +49,35 @@ RTC_DATA_ATTR static bool     rtcWifiHint = false;
 RTC_DATA_ATTR static char     rtcSsid[64] = {0};
 RTC_DATA_ATTR static char     rtcPass[64] = {0};
 
+// Letzter WLAN-Connect-Fehler (für /wifi). Der Disconnect-Grund kommt per WiFi-Event —
+// nur so lässt sich „Passwort falsch" von „ausser Reichweite" unterscheiden.
+static volatile uint8_t gDiscReason  = 0;
+static char             gWifiErrSsid[64] = {0};
+static char             gWifiErrMsg[48]  = {0};
+
+static void onWifiEvent(WiFiEvent_t ev, WiFiEventInfo_t info) {
+  if (ev == ARDUINO_EVENT_WIFI_STA_DISCONNECTED)
+    gDiscReason = info.wifi_sta_disconnected.reason;
+}
+static const char* wifiReasonMsg(uint8_t r) {
+  switch (r) {
+    case WIFI_REASON_NO_AP_FOUND:           return "nicht gefunden / ausser Reichweite";
+    case WIFI_REASON_AUTH_FAIL:
+    case WIFI_REASON_AUTH_EXPIRE:
+    case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT: return "Passwort falsch?";
+    default:                                return "Verbindung fehlgeschlagen";
+  }
+}
+static void setWifiErr(const char* ssid, const char* msg) {
+  strlcpy(gWifiErrSsid, ssid ? ssid : "", sizeof(gWifiErrSsid));
+  strlcpy(gWifiErrMsg,  msg,               sizeof(gWifiErrMsg));
+}
+bool ServerSync::lastWifiError(String& ssid, String& msg) {
+  if (!gWifiErrMsg[0]) return false;         // kein Fehler offen
+  ssid = gWifiErrSsid; msg = gWifiErrMsg;
+  return true;
+}
+
 static bool waitConnected(unsigned long timeoutMs) {
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED) {
@@ -71,15 +100,25 @@ static bool tryConnect(const char* ssid, const char* pass, unsigned long timeout
 static bool connectWifi(const WifiCredentials& creds) {
   WiFi.persistent(false); // keine Flash-Writes pro Connect
   WiFi.mode(WIFI_STA);
+  static bool evtReg = false; // Disconnect-Grund einmalig abgreifen (für /wifi-Fehleranzeige)
+  if (!evtReg) { WiFi.onEvent(onWifiEvent, ARDUINO_EVENT_WIFI_STA_DISCONNECTED); evtReg = true; }
 
   WifiNet known[1 + MAX_EXTRA_NETS];
   strlcpy(known[0].ssid, creds.ssid,     sizeof(known[0].ssid));
   strlcpy(known[0].pass, creds.password, sizeof(known[0].pass));
   int n = 1 + NVS::loadExtraNets(&known[1], MAX_EXTRA_NETS);
 
-  // Schnellpfad: letztes erfolgreiches Netz direkt (kein Scan).
-  if (rtcWifiHint && rtcSsid[0]) {
+  // Bevorzugtes Netz (vom Nutzer auf /wifi gesetzt): gewinnt, wenn sichtbar — sonst
+  // Fallback aufs stärkste bekannte. Leer = keine Präferenz.
+  char pref[64] = {0};
+  NVS::getPreferredSsid(pref, sizeof(pref));
+
+  // Schnellpfad: letztes erfolgreiches Netz direkt (kein Scan). Übersprungen, wenn ein
+  // ANDERES Netz bevorzugt ist — sonst würde die Präferenz nie greifen (der Hint zeigt aufs
+  // zuletzt Verbundene). Ist das Bevorzugte == Hint, gilt der Schnellpfad normal.
+  if (rtcWifiHint && rtcSsid[0] && (!pref[0] || strcmp(pref, rtcSsid) == 0)) {
     if (tryConnect(rtcSsid, rtcPass, WIFI_CONNECT_TIMEOUT_MS / 2, rtcChannel, rtcBssid)) {
+      gWifiErrMsg[0] = '\0'; // Erfolg → letzten Fehler löschen
       log_i("WiFi OK (fast): %s @ %s", rtcSsid, WiFi.localIP().toString().c_str());
       return true;
     }
@@ -87,31 +126,45 @@ static bool connectWifi(const WifiCredentials& creds) {
     WiFi.disconnect();
   }
 
-  // Scan → stärkstes bekanntes Netz wählen.
+  // Scan → bevorzugtes Netz zuerst, sonst stärkstes bekanntes.
   int found = WiFi.scanNetworks();
   int bestNet = -1, bestRssi = -999, bestChannel = 0;
   uint8_t bestBssid[6] = {0};
+  bool bestPref = false;
   for (int s = 0; s < found; s++) {
     for (int k = 0; k < n; k++) {
-      if (WiFi.SSID(s) == known[k].ssid && WiFi.RSSI(s) > bestRssi) {
+      if (WiFi.SSID(s) != known[k].ssid) continue;
+      bool isPref = pref[0] && strcmp(known[k].ssid, pref) == 0;
+      // Bevorzugtes gewinnt immer; sonst das mit stärkstem RSSI.
+      if ((isPref && !bestPref) || (isPref == bestPref && WiFi.RSSI(s) > bestRssi)) {
         bestRssi = WiFi.RSSI(s); bestNet = k; bestChannel = WiFi.channel(s);
-        memcpy(bestBssid, WiFi.BSSID(s), 6);
+        memcpy(bestBssid, WiFi.BSSID(s), 6); bestPref = isPref;
       }
     }
   }
   WiFi.scanDelete();
 
-  if (bestNet < 0) { log_w("Kein bekanntes WLAN sichtbar (%d APs)", found); return false; }
+  if (bestNet < 0) {
+    log_w("Kein bekanntes WLAN sichtbar (%d APs)", found);
+    setWifiErr("", "kein bekanntes WLAN in Reichweite");
+    return false;
+  }
 
-  log_i("Verbinde '%s' (%d dBm)", known[bestNet].ssid, bestRssi);
+  log_i("Verbinde '%s'%s (%d dBm)", known[bestNet].ssid, bestPref ? " [bevorzugt]" : "", bestRssi);
+  gDiscReason = 0; // frischen Grund fürs kommende Disconnect-Event
   if (!tryConnect(known[bestNet].ssid, known[bestNet].pass, WIFI_CONNECT_TIMEOUT_MS,
-                  bestChannel, bestBssid)) return false;
+                  bestChannel, bestBssid)) {
+    setWifiErr(known[bestNet].ssid, wifiReasonMsg(gDiscReason));
+    log_w("WiFi-Fehler '%s': %s (reason %u)", known[bestNet].ssid, gWifiErrMsg, gDiscReason);
+    return false;
+  }
 
   memcpy(rtcBssid, WiFi.BSSID(), 6);
   rtcChannel = WiFi.channel();
   strlcpy(rtcSsid, known[bestNet].ssid, sizeof(rtcSsid));
   strlcpy(rtcPass, known[bestNet].pass, sizeof(rtcPass));
   rtcWifiHint = true;
+  gWifiErrMsg[0] = '\0'; // Erfolg → letzten Fehler löschen
   log_i("WiFi OK: %s @ %s", known[bestNet].ssid, WiFi.localIP().toString().c_str());
   return true;
 }

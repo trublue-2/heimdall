@@ -24,4 +24,8 @@ namespace ServerSync {
   // debugMode (optional): true, wenn der Server den Debug-Mode für diese Box aktiviert.
   SyncResult run(const WifiCredentials& creds, BoxState& state, BoxPolicy& policy,
                  bool keepWifi = false, OtaInfo* ota = nullptr, bool* debugMode = nullptr);
+
+  // Letzter WLAN-Connect-Fehler für die /wifi-Anzeige. true, wenn der letzte Versuch
+  // scheiterte; füllt ssid (ggf. leer) + msg (z.B. "Passwort falsch?"). Erfolg löscht ihn.
+  bool lastWifiError(String& ssid, String& msg);
 }

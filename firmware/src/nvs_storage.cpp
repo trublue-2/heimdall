@@ -111,6 +111,18 @@ int NVS::loadExtraNets(WifiNet* out, int maxN) {
   return count;
 }
 
+// Schreibt die komplette Extra-Netz-Liste in den "nets"-Namespace (count + s%d/p%d).
+static void writeNets(const WifiNet* nets, int count) {
+  prefs.begin("nets", false);
+  prefs.putInt("count", count);
+  char key[8];
+  for (int i = 0; i < count; i++) {
+    snprintf(key, sizeof(key), "s%d", i); prefs.putString(key, nets[i].ssid);
+    snprintf(key, sizeof(key), "p%d", i); prefs.putString(key, nets[i].pass);
+  }
+  prefs.end();
+}
+
 void NVS::saveExtraNet(const char* ssid, const char* pass) {
   if (!ssid || ssid[0] == '\0') return;
   WifiNet nets[MAX_EXTRA_NETS];
@@ -129,15 +141,39 @@ void NVS::saveExtraNet(const char* ssid, const char* pass) {
     strlcpy(nets[idx].ssid, ssid, sizeof(nets[idx].ssid));
   }
   strlcpy(nets[idx].pass, pass ? pass : "", sizeof(nets[idx].pass));
+  writeNets(nets, count);
+}
 
+void NVS::deleteExtraNet(const char* ssid) {
+  if (!ssid || ssid[0] == '\0') return;
+  WifiNet nets[MAX_EXTRA_NETS];
+  int count = loadExtraNets(nets, MAX_EXTRA_NETS);
+  int idx = -1;
+  for (int i = 0; i < count; i++)
+    if (strcmp(nets[i].ssid, ssid) == 0) { idx = i; break; }
+  if (idx < 0) return;                       // nicht vorhanden
+  for (int i = idx + 1; i < count; i++) nets[i - 1] = nets[i]; // Lücke schließen
+  count--;
+  writeNets(nets, count);
+
+  // War dieses Netz das bevorzugte, die Präferenz mit entfernen — die Integrität der
+  // "nets"-Daten (pref darf nur auf ein existierendes Netz zeigen) gehört in diese Schicht.
+  char pref[64] = {0};
+  if (getPreferredSsid(pref, sizeof(pref)) && strcmp(pref, ssid) == 0) setPreferredSsid("");
+}
+
+// Bevorzugtes Netz (im selben "nets"-Namespace, Schlüssel "pref"). Leer = keine Präferenz.
+void NVS::setPreferredSsid(const char* ssid) {
   prefs.begin("nets", false);
-  prefs.putInt("count", count);
-  char key[8];
-  for (int i = 0; i < count; i++) {
-    snprintf(key, sizeof(key), "s%d", i);
-    prefs.putString(key, nets[i].ssid);
-    snprintf(key, sizeof(key), "p%d", i);
-    prefs.putString(key, nets[i].pass);
-  }
+  if (ssid && ssid[0]) prefs.putString("pref", ssid);
+  else                 prefs.remove("pref");
   prefs.end();
+}
+
+bool NVS::getPreferredSsid(char* out, size_t cap) {
+  prefs.begin("nets", true);
+  String s = prefs.getString("pref", "");
+  prefs.end();
+  strlcpy(out, s.c_str(), cap);
+  return out[0] != '\0';
 }
