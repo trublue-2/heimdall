@@ -80,6 +80,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
         fwVersion={device.fwVersion}
         wifiRssi={device.wifiRssi ?? null}
         mqttLive={mqttLive}
+        emergencyOpensLeft={device.emergencyOpensLeft}
       />
 
       {/* Einstellungen — Werte (mit Speichern) getrennt von Schaltern (sofort wirksam) */}
@@ -90,6 +91,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
             deviceId={device.id}
             name={device.name}
             offlineOpenHours={device.policy?.offlineOpenHours ?? 24}
+            emergencyOpensLeft={device.emergencyOpensLeft}
           />
         </Card>
         <Card className="space-y-4">

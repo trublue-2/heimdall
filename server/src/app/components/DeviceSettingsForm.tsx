@@ -13,14 +13,17 @@ export function DeviceSettingsForm({
   deviceId,
   name,
   offlineOpenHours,
+  emergencyOpensLeft,
 }: {
   deviceId: string;
   name: string;
   offlineOpenHours: number;
+  emergencyOpensLeft: number;
 }) {
   const router = useRouter();
   const [nameVal, setNameVal] = useState(name);
   const [offline, setOffline] = useState(String(offlineOpenHours));
+  const [emergency, setEmergency] = useState(String(emergencyOpensLeft));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
@@ -31,11 +34,15 @@ export function DeviceSettingsForm({
     setError(null);
     setOk(false);
     try {
-      if (nameVal.trim() && nameVal.trim() !== name) {
+      const devPatch: Record<string, unknown> = {};
+      if (nameVal.trim() && nameVal.trim() !== name) devPatch.name = nameVal.trim();
+      const emVal = parseInt(emergency, 10);
+      if (!Number.isNaN(emVal) && emVal !== emergencyOpensLeft) devPatch.emergencyOpensLeft = emVal;
+      if (Object.keys(devPatch).length) {
         const r = await fetch(`/api/devices/${deviceId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: nameVal.trim() }),
+          body: JSON.stringify(devPatch),
         });
         if (!r.ok) throw new Error(await r.text());
       }
@@ -77,6 +84,15 @@ export function DeviceSettingsForm({
             max={168}
             value={offline}
             onChange={(e) => setOffline(e.target.value)}
+          />
+          <Input
+            id={`emergency-${deviceId}`}
+            label="Notöffnungen (Kontingent, 0–99) — vorzeitiges Öffnen ohne Passwort"
+            type="number"
+            min={0}
+            max={99}
+            value={emergency}
+            onChange={(e) => setEmergency(e.target.value)}
           />
         </div>
       </details>

@@ -33,6 +33,9 @@ model Device {
   // Einmal-Marker: koppelt eine vom Menschen ausgelöste Öffnung an das nächste
   // Box-Sync-Event (kein Doppel-Eintrag). "early" → EARLY_OPEN, "silent" → kein Event.
   pendingOpenReason String?
+  // Kontingent für vorzeitiges Notfall-Öffnen ("Trotzdem öffnen" ohne Passwort). Dekrementiert
+  // je Early-Open; bei 0 blockiert (nur Keyholderin/Failsafes öffnen). Keyholder füllt auf.
+  emergencyOpensLeft Int @default(3)
   battery     Int? // 0–100
   boltPos     String? // "OPEN" | "CLOSED" | "UNKNOWN"
   fwVersion   String?

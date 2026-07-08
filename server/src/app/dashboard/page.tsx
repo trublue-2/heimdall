@@ -61,6 +61,7 @@ export default async function DashboardPage() {
               fwVersion={device.fwVersion}
               wifiRssi={device.wifiRssi ?? null}
               mqttLive={deviceOnline(device.id)}
+              emergencyOpensLeft={device.emergencyOpensLeft}
             />
             );
           })}

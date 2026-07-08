@@ -25,6 +25,7 @@ export interface DeviceControlCardProps {
   fwVersion: string | null;
   wifiRssi: number | null;
   mqttLive?: boolean; // Box gerade MQTT-verbunden (Wachfenster) → "Live"; sonst "letzter Sync"
+  emergencyOpensLeft: number; // Kontingent für vorzeitiges Notfall-Öffnen (0 = blockiert)
   linkToDetail?: boolean; // Kachel auf die Detailseite verlinken (Default nein — Dashboard = nur öffnen/schliessen)
 }
 
@@ -77,8 +78,11 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(extra),
       });
-      if (res.status === 403) { setError("Passwort falsch."); return; }
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(res.status === 403 ? "Passwort falsch." : body.error || "Öffnen fehlgeschlagen — bitte erneut versuchen.");
+        return;
+      }
       setPwOpen(false);
       setPw("");
       setEmergencyOpen(false);
@@ -96,7 +100,13 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
     e.stopPropagation();
     setError(null);
     if (isEarly && props.hasOpenPassword) { setPwOpen(true); return; }
-    if (isEarly && !props.hasOpenPassword) { setEmergencyText(""); setEmergencyOpen(true); return; }
+    if (isEarly && !props.hasOpenPassword) {
+      if (props.emergencyOpensLeft <= 0) {
+        setError("Keine Notöffnungen mehr übrig — nur die Keyholderin oder die Failsafes öffnen.");
+        return;
+      }
+      setEmergencyText(""); setEmergencyOpen(true); return;
+    }
     doOpen({}); // Simple-Lock / bereits abgelaufen → lautlos
   }
 
@@ -221,15 +231,28 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
                   <Lock className="h-4 w-4 shrink-0" />
                   Durch Sperrzeit gehalten — öffnet die Keyholderin oder bei Ablauf
                 </div>
+              ) : isEarly && !props.hasOpenPassword && props.emergencyOpensLeft <= 0 ? (
+                // Notöffnungs-Kontingent aufgebraucht — nur Keyholderin/Failsafes öffnen.
+                <div className="w-full rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] py-3 text-center text-sm text-[var(--foreground-muted)] flex items-center justify-center gap-2">
+                  <Lock className="h-4 w-4 shrink-0" />
+                  Keine Notöffnungen mehr — nur die Keyholderin oder die Failsafes
+                </div>
               ) : (
-                <button
-                  onClick={openDevice}
-                  disabled={saving}
-                  className="w-full rounded-xl bg-[var(--color-ok)] py-3 font-semibold text-[var(--foreground-invert)] hover:opacity-90 disabled:opacity-50 transition flex items-center justify-center gap-2"
-                >
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unlock className="h-4 w-4" />}
-                  Öffnen
-                </button>
+                <>
+                  <button
+                    onClick={openDevice}
+                    disabled={saving}
+                    className="w-full rounded-xl bg-[var(--color-ok)] py-3 font-semibold text-[var(--foreground-invert)] hover:opacity-90 disabled:opacity-50 transition flex items-center justify-center gap-2"
+                  >
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unlock className="h-4 w-4" />}
+                    Öffnen
+                  </button>
+                  {isEarly && !props.hasOpenPassword && (
+                    <p className="text-center text-xs text-[var(--foreground-muted)]">
+                      Vorzeitig — {props.emergencyOpensLeft} Notöffnung{props.emergencyOpensLeft === 1 ? "" : "en"} übrig
+                    </p>
+                  )}
+                </>
               )
             ) : (
               <>
@@ -285,6 +308,10 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
         <Modal title={`${props.name} vorzeitig öffnen`} onClose={() => { setEmergencyOpen(false); setEmergencyText(""); setError(null); }}>
           <p className="text-sm font-medium text-[var(--color-warn)]">
             Die Zeit ist noch nicht abgelaufen. Das Öffnen wird im Strafbuch dokumentiert.
+          </p>
+          <p className="rounded-lg bg-[var(--color-warn-bg)] border border-[var(--color-warn-border)] px-3 py-2 text-sm text-[var(--color-warn)]">
+            Notöffnungs-Kontingent: <b>{props.emergencyOpensLeft}</b> übrig — nach dieser Öffnung noch{" "}
+            <b>{Math.max(0, props.emergencyOpensLeft - 1)}</b>.
           </p>
           <p className="text-sm text-[var(--foreground-muted)]">Zum Bestätigen tippe exakt diesen Satz:</p>
           <p className="rounded-lg bg-[var(--surface-raised)] border border-[var(--border)] px-3 py-2 text-sm font-mono text-[var(--foreground)] select-all">

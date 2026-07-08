@@ -19,6 +19,7 @@ export async function PATCH(
     name?: string;
     otaDisabled?: boolean;
     logToServer?: boolean;
+    emergencyOpensLeft?: number;
     trackerSync?: boolean;
     trackerInstanceId?: string | null;
     trackerUsername?: string | null;
@@ -28,6 +29,13 @@ export async function PATCH(
     const name = (body.name as string)?.trim();
     if (!name) return NextResponse.json({ error: "Name erforderlich" }, { status: 400 });
     data.name = name;
+  }
+  if (body.emergencyOpensLeft !== undefined) {
+    const n = Number(body.emergencyOpensLeft);
+    if (!Number.isInteger(n) || n < 0 || n > 99) {
+      return NextResponse.json({ error: "Notöffnungen: 0–99" }, { status: 400 });
+    }
+    data.emergencyOpensLeft = n;
   }
   if (body.otaDisabled !== undefined) data.otaDisabled = !!body.otaDisabled;
   if (body.logToServer !== undefined) data.logToServer = !!body.logToServer;

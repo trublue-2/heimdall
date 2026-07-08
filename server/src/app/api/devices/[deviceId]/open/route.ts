@@ -55,9 +55,16 @@ export async function POST(
       }
       reason = "silent"; // mit korrektem Passwort = autorisiert, kein Eintrag
     } else {
-      // Kein Passwort → vorzeitiges Öffnen muss bestätigt werden und wird dokumentiert.
+      // Kein Passwort → vorzeitiges Öffnen muss bestätigt werden, wird dokumentiert UND aus dem
+      // Notöffnungs-Kontingent gedeckt sein. Kontingent leer → blockiert (nur Keyholderin/Failsafes).
       if (!confirmEarly) {
         return NextResponse.json({ needsConfirm: true }, { status: 409 });
+      }
+      if (device.emergencyOpensLeft <= 0) {
+        return NextResponse.json(
+          { error: "Keine Notöffnungen mehr übrig — nur die Keyholderin oder die Failsafes öffnen.", noEmergencyLeft: true },
+          { status: 409 }
+        );
       }
       reason = "early";
     }
@@ -72,7 +79,13 @@ export async function POST(
           data: { lockUntil: null, simpleLock: false, openPasswordHash: null },
         })]
       : []),
-    prisma.device.update({ where: { id: deviceId }, data: { pendingOpenReason: reason } }),
+    prisma.device.update({
+      where: { id: deviceId },
+      data: {
+        pendingOpenReason: reason,
+        ...(reason === "early" ? { emergencyOpensLeft: { decrement: 1 } } : {}),
+      },
+    }),
   ]);
 
   notifyDeviceChange();
