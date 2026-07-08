@@ -8,6 +8,21 @@ void NVS::begin() {
   // Preferences öffnet intern — nichts zu tun.
 }
 
+// Read-only-Zugriffe (loadState/Policy/Mqtt/ExtraNets/getPreferredSsid) öffnen ihren Namespace
+// mit begin(ns, true). Fehlt er (fabrikfrische Box, oder "nets" ohne Extra-WLAN), loggt
+// Preferences::begin ein hässliches — aber harmloses — "nvs_open failed: NOT_FOUND". "nets"
+// wird bei JEDEM Sync gelesen (knownSsids) → Dauer-Spam. Hier je Namespace einmal read-write
+// öffnen (legt ihn an) + neutralen Marker schreiben (persistiert den leeren Namespace). Die
+// Loader prüfen ihre echten Keys ("locked"/"lockUntil"/"host"/"count"/…) — der Marker ändert nichts.
+void NVS::ensureNamespaces() {
+  static const char* NS[] = { "state", "policy", "mqtt", "nets", "wifi" };
+  for (const char* ns : NS) {
+    prefs.begin(ns, false); // READWRITE legt den Namespace an, falls er fehlt
+    if (!prefs.isKey("_ns")) prefs.putUChar("_ns", 1);
+    prefs.end();
+  }
+}
+
 // ── Credentials ─────────────────────────────────────────────────────────────
 
 bool NVS::loadCredentials(WifiCredentials& out) {

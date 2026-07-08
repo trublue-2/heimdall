@@ -702,6 +702,7 @@ void setup() {
   recordBoot();   // Reset-Grund + Zähler (über WLAN/Statusseite sichtbar)
   otaCheckBoot(); // OTA-Validierung/Rollback (S14) — vor allem anderen
   NVS::begin();
+  NVS::ensureNamespaces(); // read-only gelesene Namespaces einmal anlegen → kein NOT_FOUND-Spam
   Stepper::begin();
   gWeb.on("/", handleStatus); // Statusseite-Route einmalig registrieren
   gWeb.on("/debug",    handleDebugPage); // erreichbar, sobald die Box wach ist (Wachfenster/USB)

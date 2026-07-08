@@ -52,6 +52,7 @@ struct BoxPolicy {
 
 namespace NVS {
   void begin();
+  void ensureNamespaces();       // read-only gelesene Namespaces einmal anlegen (still statt NOT_FOUND-Spam)
 
   bool loadCredentials(WifiCredentials& out);
   void saveCredentials(const WifiCredentials& in);
