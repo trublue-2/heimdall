@@ -3,6 +3,7 @@
 #include "certs.h"
 #include "logbuf.h"
 #include "watchdog.h"
+#include "log.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -136,7 +137,7 @@ static bool connectWifi(const WifiCredentials& creds) {
   if (rtcWifiHint && rtcSsid[0] && (!pref[0] || strcmp(pref, rtcSsid) == 0)) {
     if (tryConnect(rtcSsid, rtcPass, WIFI_CONNECT_TIMEOUT_MS / 2, rtcChannel, rtcBssid)) {
       gWifiErrMsg[0] = '\0'; // Erfolg → letzten Fehler löschen
-      log_i("WiFi OK (fast): %s @ %s", rtcSsid, WiFi.localIP().toString().c_str());
+      LOGI("WiFi: connected (fast path) to '%s' @ %s", rtcSsid, WiFi.localIP().toString().c_str());
       return true;
     }
     rtcWifiHint = false;
@@ -162,17 +163,17 @@ static bool connectWifi(const WifiCredentials& creds) {
   WiFi.scanDelete();
 
   if (bestNet < 0) {
-    log_w("Kein bekanntes WLAN sichtbar (%d APs)", found);
+    LOGW("WiFi: no known network in range (%d APs scanned)", found);
     setWifiErr("", "kein bekanntes WLAN in Reichweite");
     return false;
   }
 
-  log_i("Verbinde '%s'%s (%d dBm)", known[bestNet].ssid, bestPref ? " [bevorzugt]" : "", bestRssi);
+  LOGI("WiFi: connecting to '%s'%s (%d dBm)", known[bestNet].ssid, bestPref ? " [preferred]" : "", bestRssi);
   gDiscReason = 0; // frischen Grund fürs kommende Disconnect-Event
   if (!tryConnect(known[bestNet].ssid, known[bestNet].pass, WIFI_CONNECT_TIMEOUT_MS,
                   bestChannel, bestBssid)) {
     setWifiErr(known[bestNet].ssid, wifiReasonMsg(gDiscReason));
-    log_w("WiFi-Fehler '%s': %s (reason %u)", known[bestNet].ssid, gWifiErrMsg, gDiscReason);
+    LOGW("WiFi: connect to '%s' failed: %s (reason %u)", known[bestNet].ssid, gWifiErrMsg, gDiscReason);
     return false;
   }
 
@@ -182,7 +183,7 @@ static bool connectWifi(const WifiCredentials& creds) {
   strlcpy(rtcPass, known[bestNet].pass, sizeof(rtcPass));
   rtcWifiHint = true;
   gWifiErrMsg[0] = '\0'; // Erfolg → letzten Fehler löschen
-  log_i("WiFi OK: %s @ %s", known[bestNet].ssid, WiFi.localIP().toString().c_str());
+  LOGI("WiFi: connected to '%s' @ %s (%d dBm)", known[bestNet].ssid, WiFi.localIP().toString().c_str(), bestRssi);
   return true;
 }
 
@@ -265,7 +266,7 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   serializeJson(req, body);
 
   int code = http.POST(body);
-  log_i("Sync POST %s → %d", url.c_str(), code);
+  LOGI("Sync: HTTP %d from %s", code, url.c_str());
 
   if (code == 401 || code == 403) { cleanup(); return SyncResult::AUTH_ERROR; }
   if (code != 200)                 { cleanup(); return SyncResult::SERVER_ERROR; }
@@ -312,13 +313,13 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   for (JsonObject net : nets) {
     const char* nssid = net["ssid"] | "";
     const char* npass = net["pass"] | "";
-    if (nssid[0]) { NVS::saveExtraNet(nssid, npass); log_i("Neues WLAN: %s", nssid); }
+    if (nssid[0]) { NVS::saveExtraNet(nssid, npass); LOGI("WiFi: stored extra network from server: '%s'", nssid); }
   }
 
   // Bevorzugtes Netz (Server gewinnt): nur setzen, wenn der Server eins liefert.
   // Leer/fehlt → die lokale /wifi-Wahl der Box bleibt unberührt.
   const char* prefSsid = resp["preferredSsid"] | "";
-  if (prefSsid[0]) { NVS::setPreferredSsid(prefSsid); log_i("Bevorzugtes WLAN (Server): %s", prefSsid); }
+  if (prefSsid[0]) { NVS::setPreferredSsid(prefSsid); LOGI("WiFi: preferred network set by server: '%s'", prefSsid); }
 
   // Server-Log-Schalter für den nächsten Sync merken.
   gLogToServer = resp["logToServer"] | false;
@@ -340,7 +341,7 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   char lu[20] = "—";
   if (policy.lockUntil > 0) { struct tm t; time_t v = policy.lockUntil; localtime_r(&v, &t);
     strftime(lu, sizeof(lu), "%d.%m.%Y %H:%M", &t); }
-  log_i("Policy: locked=%d lockUntil=%ld (%s) offlineH=%d",
-        policy.serverLocked, (long)policy.lockUntil, lu, policy.offlineOpenH);
+  LOGI("Policy from server: serverLocked=%d lockUntil=%s offlineOpenH=%d",
+        policy.serverLocked, lu, policy.offlineOpenH);
   return SyncResult::OK;
 }

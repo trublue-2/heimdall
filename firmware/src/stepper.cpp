@@ -1,5 +1,6 @@
 #include "stepper.h"
 #include "config.h"
+#include "log.h"
 
 // Half-Step-Sequenz für 28BYJ-48 (8 Phasen, 4 Spulen).
 // Mehr Drehmoment als Full-Step, geringeres Rucken.
@@ -35,15 +36,17 @@ static void driveSteps(int direction, int steps) {
 }
 
 void Stepper::lock() {
-  log_i("Stepper: lock (%d steps)", STEPPER_LOCK_STEPS);
+  LOGI("Bolt: driving to LOCKED (%d steps)", STEPPER_LOCK_STEPS);
   driveSteps(STEPPER_DIR_LOCK, STEPPER_LOCK_STEPS); // STEPPER_DIR_LOCK fährt auf ZU (board-abh.)
   powerOff();
+  LOGI("Bolt: LOCKED (motor off)");
 }
 
 void Stepper::unlock() {
-  log_i("Stepper: unlock (%d steps)", STEPPER_LOCK_STEPS);
+  LOGI("Bolt: driving to OPEN (%d steps)", STEPPER_LOCK_STEPS);
   driveSteps(-(STEPPER_DIR_LOCK), STEPPER_LOCK_STEPS); // Gegenrichtung = auf AUF
   powerOff();
+  LOGI("Bolt: OPEN (motor off)");
 }
 
 // Riegel-Retry ohne Endlage (User-Meldung „klemmt"). Ein Verkanten löst sich eher durch
@@ -53,10 +56,11 @@ void Stepper::unlock() {
 // „immer weiter in Öffnungsrichtung".
 void Stepper::reopen() {
   const int nudge = STEPPER_LOCK_STEPS / 8; // ~11° zurück zum Lösen
-  log_i("Stepper: reopen (nudge %d zurück, dann %d auf)", nudge, STEPPER_LOCK_STEPS);
+  LOGI("Bolt: reopen — nudge %d back to unjam, then full %d open", nudge, STEPPER_LOCK_STEPS);
   driveSteps(STEPPER_DIR_LOCK, nudge);                  // kurz Richtung ZU (entlasten/lösen)
   driveSteps(-(STEPPER_DIR_LOCK), STEPPER_LOCK_STEPS);  // voller Öffnungshub (gedeckelt)
   powerOff();
+  LOGI("Bolt: reopen done (motor off)");
 }
 
 void Stepper::powerOff() {

@@ -4,6 +4,7 @@
 #include "failsafe.h"
 #include "watchdog.h"
 #include "stepper.h"
+#include "log.h"
 #include <WiFi.h>
 #include <DNSServer.h>
 #include <WebServer.h>
@@ -167,7 +168,7 @@ void handleProvision() {
   if (serverFrozen) {
     strlcpy(c.serverUrl,   cur.serverUrl,   sizeof(c.serverUrl));
     strlcpy(c.deviceToken, cur.deviceToken, sizeof(c.deviceToken));
-    log_w("Verschluss aktiv — Server/Token eingefroren, nur WLAN aktualisiert");
+    LOGW("Provisioning: lock active — server/token frozen, only WiFi updated");
   } else {
     strlcpy(c.serverUrl,
             server.hasArg("url") && !server.arg("url").isEmpty()
@@ -177,7 +178,7 @@ void handleProvision() {
   }
   NVS::saveCredentials(c);
 
-  log_i("Provisioned: ssid=%s url=%s", c.ssid, c.serverUrl);
+  LOGI("Provisioning: stored — ssid=%s server=%s (rebooting into normal operation)", c.ssid, c.serverUrl);
   server.send(200, "text/html",
               String(PAGE_HEAD) + "<h2>✅ Gespeichert</h2>"
               "<p class=m>Die Box startet neu und verbindet sich mit <b>" + htmlAttr(c.ssid) +
@@ -198,7 +199,7 @@ void Provisioning::run() {
   String ssid = apName();
   WiFi.softAP(ssid.c_str()); // offenes Setup-Netz
   IPAddress ip = WiFi.softAPIP();
-  log_w("SETUP-HOTSPOT aktiv: SSID='%s'  http://%s/", ssid.c_str(), ip.toString().c_str());
+  LOGW("Setup hotspot up: SSID='%s' — open http://%s/ to provision", ssid.c_str(), ip.toString().c_str());
 
   dns.start(53, "*", ip);                 // Captive-Portal: alles auf die Box
   server.on("/", handleRoot);
@@ -243,11 +244,11 @@ void Provisioning::run() {
       // lastTick mitschreiben, damit der Tick nach einem Reboot nicht doppelt zählt.
       st.lastTick = time(nullptr);
       NVS::saveState(st);
-      log_i("Hotspot-Failsafe: offline %us/%us, batt %d%%",
+      LOGI("Setup hotspot failsafe check: offline %us/%us, battery %d%%",
             st.offlineSeconds, (uint32_t)pol.offlineOpenH * 3600u,
             Failsafe::batteryPercent());
       if (Failsafe::isLowBattery(st) || Failsafe::isOfflineTimeout(st, pol)) {
-        log_w("FAILSAFE im Setup-Hotspot → ÖFFNEN (offline=%us)",
+        LOGW("Failsafe in setup hotspot → OPENING lock (offline=%us)",
               st.offlineSeconds);
         WiFi.softAPdisconnect(true); // AP aus → voller Strom für den Motor
         WiFi.mode(WIFI_OFF);

@@ -19,6 +19,7 @@
 #include "ota.h"
 #include "logbuf.h"
 #include "mqtt_client.h"
+#include "log.h"
 
 // ── State-Machine ───────────────────────────────────────────────────────────
 enum class State {
@@ -201,9 +202,9 @@ static void recordBoot() {
   // Brownout-Detector explizit verifizieren + loggen (wir deaktivieren ihn nie). Die
   // Schwelle ist der Arduino-Core-Default (~2,43 V); ein BOD-Trip erscheint als reset=BROWNOUT.
   uint32_t bo = READ_PERI_REG(RTC_CNTL_BROWN_OUT_REG);
-  log_i("Brownout-Detector: %s (Reset-on-BOD %s, reg=0x%08x)",
-        (bo & RTC_CNTL_BROWN_OUT_ENA)     ? "aktiv" : "AUS!",
-        (bo & RTC_CNTL_BROWN_OUT_RST_ENA) ? "an" : "aus", bo);
+  LOGI("Brownout detector: %s (reset-on-brownout %s, reg=0x%08x)",
+        (bo & RTC_CNTL_BROWN_OUT_ENA)     ? "enabled" : "DISABLED!",
+        (bo & RTC_CNTL_BROWN_OUT_RST_ENA) ? "on" : "off", bo);
 }
 
 // Taster (GND↔GPIO14) gehalten beim Boot → Setup-Hotspot. Zwei Stufen (Intent; der
@@ -215,7 +216,7 @@ static void recordBoot() {
 enum class ResetIntent { None, WifiChange, FullWipe };
 static ResetIntent checkFactoryReset() {
   if (digitalRead(PIN_BUTTON) != LOW) return ResetIntent::None; // nicht gedrückt
-  log_w("Button gehalten — 3 s = WLAN-Wechsel, 10 s = Vollreset …");
+  LOGW("Button held at boot — hold 3s = WiFi change, 10s = full reset …");
   unsigned long t0 = millis();
   bool acked = false;
   while (digitalRead(PIN_BUTTON) == LOW) {
@@ -225,13 +226,13 @@ static ResetIntent checkFactoryReset() {
       for (int i = 0; i < 2; i++) { digitalWrite(PIN_LED, LED_ON); delay(60); digitalWrite(PIN_LED, LED_OFF); delay(60); }
     }
     if (held >= 10000) {          // 10 s: Vollreset
-      log_w("VOLLRESET (10 s): Credentials werden gelöscht → leerer Setup-Hotspot");
+      LOGW("Full reset (10s hold): clearing credentials → empty setup hotspot");
       for (int i = 0; i < 6; i++) { digitalWrite(PIN_LED, LED_ON); delay(80); digitalWrite(PIN_LED, LED_OFF); delay(80); }
       return ResetIntent::FullWipe;
     }
     delay(20);
   }
-  if (acked) log_w("WLAN-Wechsel (Taster): Credentials bleiben, Portal vorausgefüllt → Setup-Hotspot");
+  if (acked) LOGW("WiFi change (button): credentials kept, portal prefilled → setup hotspot");
   return acked ? ResetIntent::WifiChange : ResetIntent::None;
 }
 
@@ -246,9 +247,9 @@ static void otaCheckBoot() {
   if (gOtaPending) {
     uint32_t boots = p.getUInt("boots", 0) + 1;
     p.putUInt("boots", boots);
-    log_w("OTA-Validierung: Boot %u — warte auf erfolgreichen Sync", boots);
+    LOGW("OTA validation: boot %u/3 — waiting for a successful sync to confirm new firmware", boots);
     if (boots > 3) { // neue FW bootet, validiert sich aber nicht → Rollback
-      log_e("OTA-Validierung fehlgeschlagen → Rollback auf vorige Partition");
+      LOGE("OTA validation failed → rolling back to previous partition");
       p.putBool("pending", false);
       p.end();
       const esp_partition_t* prev = esp_ota_get_next_update_partition(NULL);
@@ -265,7 +266,7 @@ static void otaCommit() {
   gOtaPending = false;
   Preferences p; p.begin("ota", false); p.putBool("pending", false); p.end();
   esp_ota_mark_app_valid_cancel_rollback(); // no-op falls Bootloader-Rollback aus
-  log_i("OTA-Validierung: Sync OK → neue FW bestätigt");
+  LOGI("OTA validation: sync ok → new firmware confirmed (rollback cancelled)");
 }
 
 // LED-Sofortquittung: 3× gegen den aktuellen Pegel blitzen (Knopfdruck angekommen).
@@ -458,7 +459,7 @@ static void handleDbgOta() {
   gWeb.send(200, "text/plain", "Flashe " + String(ota.version) + " … Box rebootet bei Erfolg.");
   delay(200); // Response rausschicken, bevor der blockierende Flash + Reboot startet
   OTA::apply(ota.url, gCreds.deviceToken, ota.sig); // Erfolg → Reboot (kehrt nicht zurück)
-  log_e("Manuelle OTA fehlgeschlagen — weiter mit aktueller FW");
+  LOGE("Manual OTA failed — staying on current firmware");
 }
 
 // Slot-Switch (Fallback): Boot-Zeiger auf den inaktiven OTA-Slot legen und neu starten.
@@ -487,7 +488,7 @@ static void handleDbgSwitch() {
               " — Ziel-Slot " + tgt + " enthält keine gültige FW");
     return;
   }
-  log_w("Slot-Switch → %s, reboot", tgt.c_str());
+  LOGW("OTA slot switch → %s, rebooting", tgt.c_str());
   gWeb.send(200, "text/plain", "Schalte auf Slot " + tgt + " … Box rebootet.");
   delay(200);
   esp_restart();
@@ -566,7 +567,7 @@ static void ensureStatusServer() {
   if (!gWebOn) {
     gWeb.begin();
     gWebOn = true;
-    log_i("Statusseite live: http://%s/", WiFi.localIP().toString().c_str());
+    LOGI("Status page live: http://%s/", WiFi.localIP().toString().c_str());
   }
 }
 
@@ -589,7 +590,7 @@ static void goDeepSleep() {
     if (remaining > 60 && remaining < (long)timerS) timerS = (uint64_t)remaining;
   }
 
-  log_i("Deep-Sleep — button=GPIO%d LOW, timer=%llus", PIN_BUTTON, timerS);
+  LOGI("Sleeping now — wake on button (GPIO%d) or timer in %llus", PIN_BUTTON, timerS);
   digitalWrite(PIN_LED, LED_OFF); // dunkel = schläft (Verbindungsanzeige aus)
   detachInterrupt(digitalPinToInterrupt(PIN_BUTTON)); // GPIO-ISR freigeben, EXT0 übernimmt
   Stepper::powerOff();
@@ -649,11 +650,11 @@ static bool checkFailsafes() {
   NVS::saveState(gBox); // persistieren — überlebt Brownout
 
   if (Failsafe::isLowBattery(gBox)) {
-    log_w("FAILSAFE: Low-Battery (%d%%) → OPENING", Failsafe::batteryPercent());
+    LOGW("Failsafe: battery %d%% below limit → opening lock", Failsafe::batteryPercent());
     strlcpy(gBox.wakeReason, "low_battery", sizeof(gBox.wakeReason)); return true;
   }
   if (gBox.locked && Failsafe::isOfflineTimeout(gBox, gPolicy)) {
-    log_w("FAILSAFE: Offline-Timeout (%dh, %us offline) → OPENING", gPolicy.offlineOpenH, gBox.offlineSeconds);
+    LOGW("Failsafe: offline timeout reached (%dh limit, %us offline) → opening lock", gPolicy.offlineOpenH, gBox.offlineSeconds);
     strlcpy(gBox.wakeReason, "offline_timeout", sizeof(gBox.wakeReason)); return true;
   }
   return false;
@@ -735,51 +736,8 @@ void setup() {
   // Ein-Zeilen-Wake-Spur: wake=warum wach (button/rtc_timer/power_on), reset=WIE gebootet
   // (DEEPSLEEP=sauberer Wake, BROWNOUT/POWERON/PANIC=Reset → kein Ack-Blink), boot#/unexp=
   // kumulative Zähler, batt=letzter LIVE-Wert aus NVS, ack=hat's quittiert.
-  log_i("=== Heimdall %s | wake=%s reset=%s boot#%u unexp=%u batt=%d%% ack=%s ===",
-        FW_VERSION, reason, gResetReason, gBootCount, gUnexpected, gBox.batteryPct, extWake ? "JA" : "nein");
-
-  // ── Bench-Test: Stepper/GPIO manuell testen ──────────────────────────────
-#if defined(GPIO_TEST) || defined(STEPPER_TEST)
-  const uint8_t testPins[4] = {STEPPER_IN1, STEPPER_IN2, STEPPER_IN3, STEPPER_IN4};
-  log_i("[GPIO_TEST] IN1=GPIO%d IN2=GPIO%d IN3=GPIO%d IN4=GPIO%d",
-        STEPPER_IN1, STEPPER_IN2, STEPPER_IN3, STEPPER_IN4);
-#if defined(GPIO_TEST) && !defined(STEPPER_TEST)
-  // Reiner LED-Dauertest: IN1→IN4 endlos der Reihe nach (kein Motor).
-  for (;;) {
-    for (int i = 0; i < 4; i++) {
-      digitalWrite(testPins[i], HIGH); delay(400);
-      digitalWrite(testPins[i], LOW);  delay(150);
-    }
-  }
-#else
-  for (int i = 0; i < 4; i++) {
-    log_i("[GPIO_TEST] IN%d (GPIO%d) HIGH …", i+1, testPins[i]);
-    digitalWrite(testPins[i], HIGH);
-    delay(1000);
-    digitalWrite(testPins[i], LOW);
-    delay(300);
-  }
-  log_i("[GPIO_TEST] Fertig.");
-#endif
-#endif
-#ifdef STEPPER_TEST
-  pinMode(PIN_LED, OUTPUT);
-  delay(1000);
-  log_i("[STEPPER_TEST] DAUERSCHLEIFE Steps=%d Delay=%dus", STEPPER_LOCK_STEPS, STEPPER_STEP_DELAY_US);
-  for (uint32_t round = 1; ; round++) { // endlos
-    log_i("[STEPPER_TEST] %u — fahre auf ZU", round);
-    Stepper::lock();
-    digitalWrite(PIN_LED, LED_ON);  // jetzt in ZU → blaue LED an
-    delay(2000);
-    digitalWrite(PIN_LED, LED_OFF); // LED aus, DANN zurückfahren
-    log_i("[STEPPER_TEST] %u — fahre auf OFFEN", round);
-    Stepper::unlock();
-    delay(2000);
-  }
-#endif
-#if defined(GPIO_TEST) || defined(STEPPER_TEST)
-  return;
-#endif
+  LOGI("=== Heimdall %s | wake=%s reset=%s boot#%u unexpected=%u battery=%d%% button-ack=%s ===",
+        FW_VERSION, reason, gResetReason, gBootCount, gUnexpected, gBox.batteryPct, extWake ? "yes" : "no");
 
   // Taster-Intent: Hotspot über die eine Provisioning-Route betreten. Vollreset löscht
   // vorher die Credentials (→ leeres Portal); WLAN-Wechsel behält sie (→ vorausgefüllt).
@@ -799,21 +757,8 @@ void setup() {
   // LED = Verbindungsanzeige (nicht mehr Lock): beim Boot noch aus (WiFi kommt erst),
   // geht an, sobald WiFi/Sync steht; erlischt im Deep-Sleep (Akku).
   digitalWrite(PIN_LED, LED_OFF);
-  log_i("Zustand (NVS): hasState=%d locked=%d lockedSince=%ld",
+  LOGI("Restored state from NVS: hasState=%d locked=%d lockedSince=%ld",
         hasState, gBox.locked, (long)gBox.lockedSince);
-
-  // ── Bench-Test: Credentials aus config.h flashen ─────────────────────────
-#if defined(TEST_WIFI_SSID) && defined(TEST_DEVICE_TOKEN)
-  if (!hasCreds) {
-    log_w("Bench-Test: Schreibe Test-Credentials in NVS …");
-    strlcpy(gCreds.ssid,        TEST_WIFI_SSID,    sizeof(gCreds.ssid));
-    strlcpy(gCreds.password,    TEST_WIFI_PASS,    sizeof(gCreds.password));
-    strlcpy(gCreds.serverUrl,   TEST_SERVER_URL,   sizeof(gCreds.serverUrl));
-    strlcpy(gCreds.deviceToken, TEST_DEVICE_TOKEN, sizeof(gCreds.deviceToken));
-    NVS::saveCredentials(gCreds);
-    hasCreds = true;
-  }
-#endif
 
   if (!hasCreds) {
     gState = State::PROVISIONING;
@@ -851,7 +796,7 @@ void loop() {
 
     // ── SYNCING ───────────────────────────────────────────────────────────
     case State::SYNCING: {
-      log_i("SYNCING …");
+      LOGI("Sync: starting");
       readChargeState();                              // Lade-Status frisch (folgt USB ohne Reboot)
       gBox.batteryPct = Failsafe::batteryPercent();   // Akku-% frisch (friert im Debug sonst ein)
       OtaInfo ota = {};
@@ -866,15 +811,15 @@ void loop() {
         // wieder zugefahren → Oszillation (Motorzyklen, Dauer-wach, Akku-Drain). Ein Failsafe
         // gewinnt und die Box bleibt offen, bis die Bedingung wegfällt (Hysterese ≥25 %).
         bool shouldClose = !Failsafe::shouldOpen(gBox, gPolicy);
-        log_i("Entscheidung: locked=%d serverLocked=%d lockUntil=%ld (%s) shouldClose=%d",
-              gBox.locked, gPolicy.serverLocked, (long)gPolicy.lockUntil,
-              fmtLocal(gPolicy.lockUntil).c_str(), shouldClose);
+        LOGI("State: currently %s, serverLocked=%d until=%s → should be %s",
+              gBox.locked ? "LOCKED" : "OPEN", gPolicy.serverLocked,
+              fmtLocal(gPolicy.lockUntil).c_str(), shouldClose ? "LOCKED" : "OPEN");
 
         if (gBox.locked && !shouldClose) {
+          LOGI("Opening: no longer required closed (policy/failsafe)");
           gState = State::OPENING;
         } else if (!gBox.locked && shouldClose) {
-          log_i("Policy: Sperren (serverLocked, bis %ld / %s)", (long)gPolicy.lockUntil,
-                fmtLocal(gPolicy.lockUntil).c_str());
+          LOGI("Locking: server policy requires closed (until %s)", fmtLocal(gPolicy.lockUntil).c_str());
           lockBox(); // meldet den neuen Zustand sofort (sonst zeigt das Web "Offen")
           gState = State::LOCKED;
         } else {
@@ -887,22 +832,27 @@ void loop() {
         // Akku-Gate: unbekannt (kein Sensor, z.B. Dev-Board) → erlaubt; nur ein BEKANNTER
         // Tiefstand <40% blockiert (Flash bei echt leerem Akku könnte abbrechen).
         const int otaBatt = Failsafe::batteryPercent();
-        if (ota.version[0] && strcmp(ota.version, FW_VERSION) != 0 &&
-            gState == State::IDLE_OPEN && // nur offen flashen (Brick-bei-ZU-Schutz)
+        const bool otaAvailable = ota.version[0] && strcmp(ota.version, FW_VERSION) != 0;
+        if (otaAvailable && gState == State::IDLE_OPEN && // nur offen flashen (Brick-bei-ZU-Schutz)
             (otaBatt == BATT_UNKNOWN || otaBatt >= 40)) { // Batterie-Gate: Server zeigt den Hold an
-          log_w("OTA: Server bietet %s an (aktuell %s) → Update", ota.version, FW_VERSION);
+          LOGW("OTA: server offers %s (current %s) → updating", ota.version, FW_VERSION);
           OTA::apply(ota.url, gCreds.deviceToken, ota.sig); // Erfolg → Reboot (kehrt nicht zurück)
-          log_e("OTA fehlgeschlagen — weiter mit aktueller FW");
+          LOGE("OTA failed — staying on current firmware");
+        } else if (otaAvailable) {
+          // Update angeboten, aber zurückgestellt — Grund benennen (sonst wirkt es "hängend").
+          LOGI("OTA: %s available but deferred (%s)", ota.version,
+               gState != State::IDLE_OPEN ? "lock is closed — only flash when open"
+                                          : "battery below 40%");
         }
       } else {
-        log_e("Sync fehlgeschlagen (code=%d) — arbeite mit Cache", (int)res);
+        LOGE("Sync failed (code=%d) — running from cached policy", (int)res);
         // Selbstheilung (S8): wiederholter 401 = Token passt nicht mehr (z.B. nach
         // Server-Token-Rotation) → Credentials löschen → Setup-Hotspot.
         if (res == SyncResult::AUTH_ERROR) {
           gAuthFails++;
-          log_w("AUTH-Fehler %u/%d", gAuthFails, AUTH_FAIL_LIMIT);
+          LOGW("Auth failed (401/403) %u/%d — token may be stale", gAuthFails, AUTH_FAIL_LIMIT);
           if (gAuthFails >= AUTH_FAIL_LIMIT) {
-            log_w("Wiederholter 401 → Credentials löschen, Setup-Hotspot");
+            LOGW("Repeated auth failure → clearing credentials, entering setup hotspot");
             NVS::clearCredentials();
             delay(100);
             ESP.restart();
@@ -919,13 +869,13 @@ void loop() {
 
     // ── OPENING ───────────────────────────────────────────────────────────
     case State::OPENING:
-      log_i("OPENING …");
       // Stepper NUR fahren, wenn die Box wirklich zu ist — sonst (schon offen, z.B. redundanter
       // „open" oder nach Failsafe-Öffnen) würde unlock() den Riegel weiter gegen den mechanischen
       // Anschlag treiben (open-loop, kein Endlagensensor) → Stall/Stromspitze/Motorschaden.
       // reopen bleibt bewusst ein Re-Fahren (User meldet „Riegel klemmt").
-      if (gReopen) { gReopen = false; Stepper::reopen(); }
+      if (gReopen) { LOGI("Opening: reopen requested (bolt reported stuck)"); gReopen = false; Stepper::reopen(); }
       else if (gBox.locked) { Stepper::unlock(); }
+      else LOGI("Opening: already open — skipping motor (no end-stop)");
       gBox.locked = false;
       NVS::saveState(gBox);
       gState = State::IDLE_OPEN;
@@ -957,7 +907,7 @@ void loop() {
         // aufs 2-min-Fenster-Timeout zu warten). btnLowSince überlebt den Zwischen-Sync (Pin
         // bleibt LOW → kein Reset), die Schwelle zählt also ab dem ursprünglichen Druck.
         if (millis() - btnLowSince >= BTN_SLEEP_HOLD_MS) {
-          log_i("Button ~%lums gehalten → Deep-Sleep", (unsigned long)(millis() - btnLowSince));
+          LOGI("Button held ~%lums → deep sleep", (unsigned long)(millis() - btnLowSince));
           ledAck();
           goDeepSleep(); // kehrt nicht zurück
         }
@@ -976,7 +926,7 @@ void loop() {
         gLastActivityMs = millis();
         // Button: erst Sofort-Öffnung prüfen (abgelaufen/Failsafe), DANN Sync.
         if (shouldOpenNow()) { gState = State::OPENING; break; }
-        log_i("Button (wach) → Sync");
+        LOGI("Button tap (awake) → sync");
         gState = State::SYNCING;
         break;
       }
@@ -1029,20 +979,24 @@ void loop() {
           gLastActivityMs = millis(); // Aktivität → Fenster verlängern
           switch (cmd) {
             case Mqtt::Command::OPEN:
+              LOGI("Command applied: open (from server)");
               gState = State::OPENING; break;
             case Mqtt::Command::REOPEN: // Riegel-Retry: OPENING mit Wiggle statt normalem Hub
+              LOGI("Command applied: reopen (from server)");
               gReopen = true; gState = State::OPENING; break;
             case Mqtt::Command::CLOSE:
             case Mqtt::Command::LOCK:
+              LOGI("Command applied: lock (from server)");
               if (!gBox.locked) lockBox();
               gState = State::LOCKED; break;
             case Mqtt::Command::SYNC:
+              LOGI("Command applied: sync (from server)");
               gState = State::SYNCING; break;
             case Mqtt::Command::FORGET_WIFI: {
               // WLAN aus der NVS-Extra-Liste entfernen (Primär bleibt unberührt — nicht in
               // "nets"). Danach syncen, damit die reduzierten knownSsids beim Server ankommen.
               const char* ssid = Mqtt::pendingArg();
-              if (ssid[0]) { NVS::deleteExtraNet(ssid); log_i("WLAN vergessen: %s", ssid); }
+              if (ssid[0]) { NVS::deleteExtraNet(ssid); LOGI("WiFi: forgot network '%s' (server command)", ssid); }
               gState = State::SYNCING; break;
             }
             default: break;

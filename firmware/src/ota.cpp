@@ -2,6 +2,7 @@
 #include "config.h"
 #include "certs.h"
 #include "watchdog.h"
+#include "log.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <Update.h>
@@ -30,7 +31,7 @@ bool OTA::apply(const char* url, const char* token, const char* sigHex) {
   // Signatur ZUERST prüfen — kein Download/Flash, wenn sie formal schon kaputt ist.
   uint8_t sig[64];
   if (!sigHex || !hexToBytes(sigHex, sig, sizeof(sig))) {
-    log_e("OTA: keine/ungültige Signatur — abgelehnt (fail-closed)");
+    LOGE("OTA: rejected — missing/invalid signature (fail-closed)");
     return false;
   }
 
@@ -38,16 +39,18 @@ bool OTA::apply(const char* url, const char* token, const char* sigHex) {
   client.setCACert(ROOT_CA_BUNDLE); // Cert-Pinning (siehe certs.h) — nur echter Server
 
   HTTPClient http;
-  if (!http.begin(client, url)) { log_e("OTA: begin fehlgeschlagen"); return false; }
+  if (!http.begin(client, url)) { LOGE("OTA: HTTP client init failed"); return false; }
   http.addHeader("Authorization", String("Bearer ") + token);
 
+  LOGI("OTA: downloading firmware from %s", url);
   int code = http.GET();
-  if (code != 200) { log_e("OTA: HTTP %d", code); http.end(); return false; }
+  if (code != 200) { LOGE("OTA: download failed — HTTP %d", code); http.end(); return false; }
 
   int len = http.getSize();
   if (!Update.begin(len > 0 ? (size_t)len : UPDATE_SIZE_UNKNOWN)) {
-    log_e("OTA: Update.begin fehlgeschlagen (Platz?)"); http.end(); return false;
+    LOGE("OTA: cannot start flash (not enough space?)"); http.end(); return false;
   }
+  LOGI("OTA: flashing %d bytes to inactive slot", len);
 
   // .bin streamen: jeden Chunk in den inaktiven Slot schreiben UND mithashen.
   // Nie ganz im RAM (~1 MB) — wir verifizieren am Ende über den 32-Byte-Digest.
@@ -62,18 +65,18 @@ bool OTA::apply(const char* url, const char* token, const char* sigHex) {
     int n = stream.readBytes(buf, sizeof(buf));
     if (n <= 0) break; // Stream zu Ende / Timeout
     if (Update.write(buf, n) != (size_t)n) {
-      log_e("OTA: Flash-Write-Fehler (err=%d)", Update.getError());
+      LOGE("OTA: flash write error (err=%d)", Update.getError());
       Update.abort(); http.end(); return false;
     }
     sha.update(buf, n);
     written += n;
     int pct = len > 0 ? (int)(written * 100 / len) : -1;
-    if (pct >= lastPct + 10) { log_i("OTA: %d%%", pct); lastPct = pct; }
+    if (pct >= lastPct + 10) { LOGI("OTA: download %d%%", pct); lastPct = pct; }
   }
   http.end();
 
   if (len > 0 && written != (size_t)len) {
-    log_e("OTA: unvollständig (%u/%d) — abgelehnt", (unsigned)written, len);
+    LOGE("OTA: incomplete download (%u/%d bytes) — rejected", (unsigned)written, len);
     Update.abort(); return false;
   }
 
@@ -81,16 +84,16 @@ bool OTA::apply(const char* url, const char* token, const char* sigHex) {
   uint8_t digest[32];
   sha.finalize(digest, sizeof(digest));
   if (!Ed25519::verify(sig, OTA_PUBKEY, digest, sizeof(digest))) {
-    log_e("OTA: SIGNATUR UNGÜLTIG — Flash verworfen (fail-closed)");
+    LOGE("OTA: SIGNATURE INVALID — flash discarded (fail-closed)");
     Update.abort();
     return false;
   }
 
   if (!Update.end(true) || !Update.isFinished()) {
-    log_e("OTA: Abschluss fehlgeschlagen (err=%d)", Update.getError());
+    LOGE("OTA: finalize failed (err=%d)", Update.getError());
     return false;
   }
-  log_i("OTA: signiert & OK (%u Bytes) → Reboot in neue Firmware", (unsigned)written);
+  LOGI("OTA: verified & flashed (%u bytes) — rebooting into new firmware", (unsigned)written);
   // Validierung anstoßen (S14): neue FW muss sich durch erfolgreichen Sync bestätigen,
   // sonst Rollback. Flag überlebt den Reboot in NVS.
   { Preferences p; p.begin("ota", false); p.putBool("pending", true); p.putUInt("boots", 0); p.end(); }

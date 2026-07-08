@@ -2,6 +2,7 @@
 #include "config.h"
 #include "certs.h"
 #include "logbuf.h"
+#include "log.h"
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
@@ -33,7 +34,7 @@ static void onMsg(char* /*topic*/, byte* payload, unsigned int len) {
   const char* c = doc["cmd"] | "";
   Mqtt::Command cmd = parseCmd(c);
   if (cmd == Mqtt::Command::FORGET_WIFI) strlcpy(gPendingArg, doc["ssid"] | "", sizeof(gPendingArg));
-  if (cmd != Mqtt::Command::NONE) { gPending = cmd; log_i("MQTT cmd: %s", c); }
+  if (cmd != Mqtt::Command::NONE) { gPending = cmd; LOGI("MQTT: command received: %s", c); }
 }
 
 bool Mqtt::connect(const MqttConfig& cfg, const char* token) {
@@ -58,10 +59,10 @@ bool Mqtt::connect(const MqttConfig& cfg, const char* token) {
     gClient.subscribe(gCmdTopic, 1);
     // Heap-Watermark direkt nach dem 2. TLS-Handshake (Sync + MQTT) — die eigentliche
     // ESP32-TLS-Engstelle. min = tiefster je erreichter Stand (deckt den Handshake-Peak ab).
-    log_i("MQTT verbunden: %s:%d (%s) | Heap frei=%u min=%u",
+    LOGI("MQTT: connected to %s:%d (cmd topic %s) | heap free=%u min=%u",
           cfg.host, MQTT_PORT, gCmdTopic, ESP.getFreeHeap(), ESP.getMinFreeHeap());
   } else {
-    log_w("MQTT-Connect fehlgeschlagen (state=%d) | Heap frei=%u min=%u",
+    LOGW("MQTT: connect failed (state=%d, 5=unauthorized) | heap free=%u min=%u",
           gClient.state(), ESP.getFreeHeap(), ESP.getMinFreeHeap());
   }
   return ok;
