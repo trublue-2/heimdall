@@ -316,7 +316,6 @@ export async function POST(req: NextRequest) {
     otaVersion: otaPending ? targetVersion : null,
     otaUrl: otaPending ? `${process.env.NEXTAUTH_URL ?? ""}/api/box/firmware` : null,
     otaSig: otaPending ? otaSig : null,
-    debugMode: device.debugMode, // pausiert nur das Auto-OTA-Gate (nicht die /debug-Seite, nicht wach-halten)
     logToServer: device.logToServer, // Box schickt ihr serielles Log bei jedem Sync mit
     // MQTT-Push-Konfig (Session-Fenster): standardmässig für JEDE Box, sobald ein Broker-Host
     // konfiguriert ist (nicht mehr pro Box abschaltbar). Ohne MQTT_PUBLIC_HOST fehlt der Block

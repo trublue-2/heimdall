@@ -40,11 +40,7 @@ model Device {
   // OTA-Freeze: Server lässt die OTA-Felder im Sync weg → Box updatet nicht. Not-Aus
   // für den Multi-Board-Rollout (verhindert versehentliches Flashen eines falschen Profils).
   otaDisabled Boolean  @default(false)
-  // Debug-Mode: Box bleibt wach + serviert lokale Debug-Seite (Pin-Test ohne Reflash).
-  // Nicht persistent auf der Box — endet bei Server-Aus oder Zeit-Obergrenze.
-  debugMode   Boolean  @default(false)
   // Server-Log: Box hängt ihr serielles Log bei jedem Sync an (auch schlafend, ~5 min).
-  // Hält die Box NICHT wach (anders als debugMode).
   logToServer Boolean  @default(false)
   // MQTT-Push (Session-Fenster) ist Standard für jede Box: der Server liefert die Broker-Konfig
   // im Sync, sobald MQTT_PUBLIC_HOST gesetzt ist (nicht mehr pro Box abschaltbar). Ohne Broker-

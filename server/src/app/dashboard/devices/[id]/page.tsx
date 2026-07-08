@@ -14,6 +14,7 @@ import { DeviceLogViewer } from "@/app/components/DeviceLogViewer";
 import { TrackerLinkForm } from "@/app/components/TrackerLinkForm";
 import { LiveRefresh } from "@/app/components/LiveRefresh";
 import { deviceLockView } from "@/lib/device-auth";
+import { getTargetVersion } from "@/lib/firmware";
 import { deviceOnline } from "@/lib/mqttBridge";
 import { formatDateTime, isOnline } from "@/lib/utils";
 
@@ -49,6 +50,13 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
   const online = isOnline(device.lastSyncAt);
   const mqttLive = deviceOnline(device.id); // MQTT-Präsenz (Wachfenster) für die Live-Anzeige
   const lockView = deviceLockView(device.policy, new Date());
+
+  // Auto-OTA-Hold sichtbar machen: der Server bietet die Ziel-FW an (ausser otaDisabled), die
+  // Box flasht sie aber lokal nur bei Akku ≥ 40 % (unbekannt/am Strom zählt als ok). Erklärt,
+  // warum eine hinterherhinkende Box nicht automatisch updatet — manuell (/debug) geht immer.
+  const targetFw = await getTargetVersion();
+  const otaBehind = !!targetFw && !!device.fwVersion && targetFw !== device.fwVersion && !device.otaDisabled;
+  const otaBattHold = otaBehind && device.battery != null && device.battery < 40 && !device.charging;
 
   return (
     <div className="space-y-6">
@@ -95,13 +103,6 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
             title="OTA einfrieren"
             desc="Box zieht keine Firmware-Updates mehr (Not-Aus für den Board-Rollout)."
           />
-          <SettingToggle
-            deviceId={device.id}
-            field="debugMode"
-            checked={device.debugMode}
-            title="Debug-Modus"
-            desc="Pausiert Auto-OTA, damit die Box während einer Debug-/Flash-Session nicht mitten im Test überschrieben wird. Schaltet die /debug-Seite NICHT frei und hält die Box NICHT wach — /debug ist ohnehin erreichbar, solange die Box wach ist (Wachfenster/USB, gleiches WLAN)."
-          />
         </Card>
       </section>
 
@@ -113,7 +114,20 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
           <Info label="Signal" value={device.wifiRssi != null ? `${device.wifiRssi} dBm` : "—"} />
           <Info label="Akku" value={device.battery != null ? `${device.battery}%${device.charging ? " ⚡ lädt" : ""}` : "—"} />
           <Info label="Letzter Sync" value={formatDateTime(device.lastSyncAt)} />
-          <Info label="Firmware" value={device.fwVersion ? `v${device.fwVersion}` : "—"} mono />
+          <Info label="Firmware" mono value={
+            <>
+              {device.fwVersion ? `v${device.fwVersion}` : "—"}
+              {otaBattHold ? (
+                <span className="block font-sans text-xs text-[var(--color-warn)] mt-0.5">
+                  ⚠ v{targetFw} verfügbar — Auto-OTA pausiert (Akku {device.battery}%, unter 40%). Manuell über /debug.
+                </span>
+              ) : otaBehind ? (
+                <span className="block font-sans text-xs text-[var(--foreground-faint)] mt-0.5">
+                  v{targetFw} verfügbar — lädt beim nächsten offenen Sync.
+                </span>
+              ) : null}
+            </>
+          } />
           <Info label="MAC (Hardware-ID)" value={device.mac ?? "—"} mono />
           <Info
             label="Box-IP (nur im selben WLAN, Box wach)"
