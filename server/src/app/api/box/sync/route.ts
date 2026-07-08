@@ -246,6 +246,21 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Failsafe-Öffnen (Low-Batt/Offline): die Box hat sich selbst geöffnet — die Heimdall-eigene
+  // Sperre ist damit beendet. Sonst will der Server weiter „zu" (Kachel „wird geschlossen"), die
+  // Box bleibt aber per Failsafe offen → widersprüchliche Anzeige. Tracker-Sperre bleibt (die
+  // entscheidet der Tracker/Keyholder).
+  if (
+    prevLocked && !state.locked &&
+    (state.wakeReason === "low_battery" || state.wakeReason === "offline_timeout") &&
+    policy && (policy.lockUntil || policy.simpleLock)
+  ) {
+    policy = await prisma.lockPolicy.update({
+      where: { deviceId: device.id },
+      data: { lockUntil: null, simpleLock: false },
+    });
+  }
+
   const lockUntil = effectiveLockUntil(policy, now);
 
   if (eventType) {

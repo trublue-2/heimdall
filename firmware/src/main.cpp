@@ -689,6 +689,7 @@ static bool shouldOpenNow() {
 // Kanonische Sperr-Sequenz (Sperrbeginn merken, Riegel zu, Zustand melden). Genutzt von
 // der Policy-Entscheidung im Sync UND vom MQTT-lock-Kommando — eine Quelle statt zwei.
 static void lockBox() {
+  if (gBox.locked) return; // schon zu → nicht erneut gegen den Anschlag fahren (Aufrufer sind ohnehin geschützt)
   gBox.locked        = true;
   gBox.lockedSince   = time(nullptr);
   NVS::saveState(gBox);
@@ -882,10 +883,11 @@ void loop() {
       if (res == SyncResult::OK) {
         gAuthFails = 0; // erfolgreicher Sync → 401-Zähler zurücksetzen
         otaCommit();    // neue FW (falls OTA gerade lief) bestätigen
-        // "Soll zu" = !isPolicyExpired (serverLocked autoritativ, deckt Simple-Lock +
-        // Zeit-Lock ab; öffnet bei serverLocked=false oder abgelaufener Zeit-Deadline).
-        // Nach erfolgreichem Sync ist die Uhr gültig (TLS-Cert-Check setzt das voraus).
-        bool shouldClose = !Failsafe::isPolicyExpired(gPolicy);
+        // "Soll zu" = serverLocked UND kein Failsafe will offen. Über shouldOpen() (Low-Batt ∨
+        // Offline ∨ PolicyExpired) — sonst würde ein Failsafe-Öffnen (z.B. Low-Batt) sofort
+        // wieder zugefahren → Oszillation (Motorzyklen, Dauer-wach, Akku-Drain). Ein Failsafe
+        // gewinnt und die Box bleibt offen, bis die Bedingung wegfällt (Hysterese ≥25 %).
+        bool shouldClose = !Failsafe::shouldOpen(gBox, gPolicy);
         log_i("Entscheidung: locked=%d serverLocked=%d lockUntil=%ld (%s) shouldClose=%d",
               gBox.locked, gPolicy.serverLocked, (long)gPolicy.lockUntil,
               fmtLocal(gPolicy.lockUntil).c_str(), shouldClose);
@@ -940,8 +942,12 @@ void loop() {
     // ── OPENING ───────────────────────────────────────────────────────────
     case State::OPENING:
       log_i("OPENING …");
-      if (gReopen) { gReopen = false; Stepper::reopen(); } // Riegel-Retry (Wiggle) statt normalem Öffnen
-      else         { Stepper::unlock(); }
+      // Stepper NUR fahren, wenn die Box wirklich zu ist — sonst (schon offen, z.B. redundanter
+      // „open" oder nach Failsafe-Öffnen) würde unlock() den Riegel weiter gegen den mechanischen
+      // Anschlag treiben (open-loop, kein Endlagensensor) → Stall/Stromspitze/Motorschaden.
+      // reopen bleibt bewusst ein Re-Fahren (User meldet „Riegel klemmt").
+      if (gReopen) { gReopen = false; Stepper::reopen(); }
+      else if (gBox.locked) { Stepper::unlock(); }
       gBox.locked = false;
       NVS::saveState(gBox);
       gState = State::IDLE_OPEN;
