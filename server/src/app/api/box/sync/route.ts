@@ -64,15 +64,23 @@ export async function POST(req: NextRequest) {
   // wird NICHT vertraut, damit der Server die Wahrheit über den Sperrbeginn hält.
   const newLockedSince = state.locked ? (prevLocked ? device.lockedSince : now) : null;
 
-  // Regulärer Sperrzeit-Ablauf? Eine timed Sperre (eigene ODER aus dem Tracker) ist
-  // abgelaufen UND der Server hält die Box selbst nicht mehr geschlossen (kein Simple-Lock,
-  // keine noch laufende Deadline). Dann ist die Box-Selbstöffnung erwartungskonform — auch
-  // ohne Server-Kommando und ohne „bekannten" wakeReason (Timer-Wake). Öffnet die Box
-  // dagegen, während der Server sie noch gesperrt sieht, bleibt es unten Tamper.
+  // Regulärer Sperrzeit-Ablauf? Legitim, wenn keine Dauer-Sperre (Simple/Tracker-Simple) die
+  // Box hält UND eine timed Deadline erreicht ist. WICHTIG: mit Drift-Toleranz davor — die
+  // Box-RTC driftet im Deep-Sleep (interner RC-Oszillator, ~1 %/h), sie weckt/öffnet an IHRER
+  // Deadline, die bis zu einigen Minuten VOR der Server-Deadline liegen kann. Ohne Toleranz
+  // sähe der Server lockUntil dann noch knapp in der Zukunft → boxLocked=true → Fehlalarm
+  // UNAUTHORIZED_OPEN (real: Öffnung ~39 s vor lockUntil). Öffnet die Box dagegen DEUTLICH
+  // (> Grace) vor der Deadline oder ganz ohne timed Sperre, bleibt es unten Tamper.
+  const DEADLINE_DRIFT_MS = 10 * 60 * 1000; // deckt RTC-Drift über das max. 1-h-Heartbeat-Intervall
+  const indefiniteHold = !!device.policy?.simpleLock || !!device.policy?.trackerSimpleLock;
+  const timedEnd = Math.max(
+    device.policy?.lockUntil ? device.policy.lockUntil.getTime() : -Infinity,
+    device.policy?.trackerLockUntil ? device.policy.trackerLockUntil.getTime() : -Infinity,
+  );
   const timedLockExpired =
-    !boxLocked(device.policy, now) &&
-    ((device.policy?.lockUntil != null && device.policy.lockUntil <= now) ||
-      (device.policy?.trackerLockUntil != null && device.policy.trackerLockUntil <= now));
+    !indefiniteHold &&
+    Number.isFinite(timedEnd) &&
+    timedEnd - now.getTime() <= DEADLINE_DRIFT_MS;
 
   // Determine event type from state transition
   let eventType: string | null = null;
