@@ -593,6 +593,10 @@ static void goDeepSleep() {
   digitalWrite(PIN_LED, LED_OFF); // dunkel = schläft (Verbindungsanzeige aus)
   detachInterrupt(digitalPinToInterrupt(PIN_BUTTON)); // GPIO-ISR freigeben, EXT0 übernimmt
   Stepper::powerOff();
+  // Sauber vom Broker abmelden BEVOR WiFi ausgeht — publisht "offline" (retained), sonst
+  // bliebe die Präsenz bis zum LWT-Keepalive (~45 s) fälschlich "online". Zentral hier, damit
+  // KEIN Sleep-Pfad (Button-Hold, Heartbeat, Web-Sleep) das vergessen kann. No-op wenn nicht verbunden.
+  Mqtt::disconnect();
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
   // Button-Pin hat keinen externen Pull-up → im Deep-Sleep RTC-Pull-up aktivieren,
@@ -1049,8 +1053,8 @@ void loop() {
         }
       } else if (gWindowWake) {
         // Akku-Wachfenster (Button/Power-on): nach ACTIVE_WINDOW_MS ohne Aktivität schlafen.
+        // (goDeepSleep meldet sich selbst sauber vom Broker ab.)
         if (millis() - gLastActivityMs > ACTIVE_WINDOW_MS) {
-          Mqtt::disconnect();
           goDeepSleep();
         } else {
           // Solange wach (= "Live"): periodisch resyncen, damit Akku/RSSI im Dashboard live
