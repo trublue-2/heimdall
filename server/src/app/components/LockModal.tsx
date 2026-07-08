@@ -193,15 +193,15 @@ export function LockModal({
             <div>
               <p className="text-xs font-medium mb-1">Kürzeste Dauer</p>
               <div className="flex gap-2">
-                <Input id="min-h" label="Stunden" type="number" min="0" value={minH} onChange={(e) => setMinH(e.target.value)} />
-                <Input id="min-m" label="Minuten" type="number" min="0" max="59" value={minM} onChange={(e) => setMinM(e.target.value)} />
+                <div className="flex-1"><Input id="min-h" label="Stunden" type="number" min="0" value={minH} onChange={(e) => setMinH(e.target.value)} /></div>
+                <div className="flex-1"><Input id="min-m" label="Minuten" type="number" min="0" max="59" value={minM} onChange={(e) => setMinM(e.target.value)} /></div>
               </div>
             </div>
             <div>
               <p className="text-xs font-medium mb-1">Längste Dauer</p>
               <div className="flex gap-2">
-                <Input id="max-h" label="Stunden" type="number" min="0" value={maxH} onChange={(e) => setMaxH(e.target.value)} />
-                <Input id="max-m" label="Minuten" type="number" min="0" max="59" value={maxM} onChange={(e) => setMaxM(e.target.value)} />
+                <div className="flex-1"><Input id="max-h" label="Stunden" type="number" min="0" value={maxH} onChange={(e) => setMaxH(e.target.value)} /></div>
+                <div className="flex-1"><Input id="max-m" label="Minuten" type="number" min="0" max="59" value={maxM} onChange={(e) => setMaxM(e.target.value)} /></div>
               </div>
             </div>
           </div>
