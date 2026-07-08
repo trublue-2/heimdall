@@ -57,17 +57,14 @@ export default auth((req) => {
     }
   }
 
-  // Box-API + MQTT-Auth-Backend: pro-IP-Limit schützt die teure Token-Prüfung (bcrypt)
-  // vor CPU-DoS. go-auth cacht ohnehin, das Limit deckelt nur Missbrauch.
-  if (req.nextUrl.pathname.startsWith("/api/box/") || req.nextUrl.pathname.startsWith("/api/mqtt/")) {
-    const ip = clientIp(req);
-    // /api/mqtt/* kommt vom INTERNEN Broker (direkt aufs Docker-Netz, kein X-Forwarded-For →
-    // ip="unknown"): NICHT drosseln. Sonst teilt sich der GANZE Fleet EINEN "unknown"-Bucket
-    // (~8/min); ein Reconnect-Burst (jeder Deploy trennt alle Boxen → verbinden gleichzeitig
-    // neu) oder Retry-Storm → 429 → go-auth cacht das als deny → Boxen bekommen state=5
-    // (unauthorized). Externe /api/mqtt/*-Zugriffe (via Traefik, echte IP) bleiben gedrosselt.
-    const skipBroker = req.nextUrl.pathname.startsWith("/api/mqtt/") && ip === "unknown";
-    if (!skipBroker && isRateLimited(boxBucket, ip, BOX_LIMIT)) {
+  // Box-API: pro-IP-Limit schützt die teure bcrypt-Token-Prüfung vor CPU-DoS.
+  // /api/mqtt/* wird hier bewusst NICHT gedrosselt: das ist das interne go-auth-Backend,
+  // mosquitto ist der einzige legitime Aufrufer und macht selbst die bcrypt-Prüfung. Next.js
+  // setzt x-forwarded-for auf die Socket-IP → eine "intern erkennen"-Heuristik (ip=="unknown")
+  // trägt nicht, ein Limit hier drosselte den Broker selbst (429 → go-auth deny → Boxen state=5).
+  // Externer Zugriff auf /api/mqtt/* wird auf Traefik-Ebene geblockt (nur intern erreichbar).
+  if (req.nextUrl.pathname.startsWith("/api/box/")) {
+    if (isRateLimited(boxBucket, clientIp(req), BOX_LIMIT)) {
       return NextResponse.json({ error: "Rate limit" }, { status: 429, headers: { "Retry-After": "60" } });
     }
   }
