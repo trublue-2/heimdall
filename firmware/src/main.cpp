@@ -1084,12 +1084,21 @@ void loop() {
         }
       } else if (gWindowWake) {
         // Akku-Wachfenster (Button/Power-on): nach ACTIVE_WINDOW_MS ohne Aktivität schlafen.
-        gLastAwakeSync = 0;
         if (millis() - gLastActivityMs > ACTIVE_WINDOW_MS) {
           Mqtt::disconnect();
           goDeepSleep();
         } else {
-          delay(10);
+          // Solange wach (= "Live"): periodisch resyncen, damit Akku/RSSI im Dashboard live
+          // bleiben (nicht nur am USB). gLastAwakeSync ab Fenster-Start (der Sync lief eben) →
+          // erster Resync erst nach DEBUG_RESYNC_MS. Fenster kurz (~2 min) → wenige Extra-Syncs;
+          // gLastActivityMs unberührt → verlängert das Fenster NICHT (schläft weiter nach 2 min).
+          if (gLastAwakeSync == 0) gLastAwakeSync = millis();
+          if (millis() - gLastAwakeSync > DEBUG_RESYNC_MS) {
+            gLastAwakeSync = millis();
+            gState = State::SYNCING;
+          } else {
+            delay(10);
+          }
         }
       } else {
         // Heartbeat-Wake auf Akku: kein Fenster — Sync ist gelaufen, sofort schlafen.
