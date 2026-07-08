@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/authGuards";
 import { prisma } from "@/lib/prisma";
 import { notifyDeviceChange } from "@/lib/events";
+import { publishCommand } from "@/lib/mqttBridge";
+
+// Gemeldete Namensliste der Box (JSON-Array-String im Device) → String[].
+function parseKnown(json: string | null | undefined): string[] {
+  if (!json) return [];
+  try {
+    const a = JSON.parse(json);
+    return Array.isArray(a) ? a.filter((s): s is string => typeof s === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 // Zusatz-WLANs eines Geräts + bevorzugtes Netz auflisten (ohne Passwörter).
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ deviceId: string }> }) {
@@ -9,7 +21,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ dev
   if (response) return response;
   const { deviceId } = await params;
   const [device, nets] = await Promise.all([
-    prisma.device.findUnique({ where: { id: deviceId }, select: { preferredSsid: true, primaryLastUsedAt: true } }),
+    prisma.device.findUnique({ where: { id: deviceId }, select: { preferredSsid: true, primaryLastUsedAt: true, primarySsid: true, knownSsids: true } }),
     prisma.wifiNetwork.findMany({
       where: { deviceId },
       orderBy: { createdAt: "asc" },
@@ -19,6 +31,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ dev
   return NextResponse.json({
     preferredSsid: device?.preferredSsid ?? null,
     primaryLastUsedAt: device?.primaryLastUsedAt?.toISOString() ?? null,
+    primarySsid: device?.primarySsid ?? null,
+    knownSsids: parseKnown(device?.knownSsids), // von der Box gemeldet (NVS: Primär + Extras)
     nets: nets.map((n) => ({
       id: n.id,
       ssid: n.ssid,
@@ -52,7 +66,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ de
   const { response } = await requireAdminApi();
   if (response) return response;
   const { deviceId } = await params;
-  const { preferredSsid } = await req.json();
+  const body = await req.json();
+
+  // „Vergessen": ein von der Box gemeldetes Extra-WLAN aus deren NVS entfernen. Primär ist
+  // geschützt (das braucht die Box zum Verbinden). Das MQTT-Kommando ist der Trigger (wirkt im
+  // Wachfenster; die Box bestätigt die reduzierte Liste per nächstem Sync). Serverseitig gleich
+  // aus Anzeige- + Push-Liste nehmen, damit es nicht sofort wieder auftaucht/neu gepusht wird.
+  if (typeof body.forgetSsid === "string" && body.forgetSsid) {
+    const ssid = body.forgetSsid;
+    const device = await prisma.device.findUnique({ where: { id: deviceId }, select: { primarySsid: true, knownSsids: true } });
+    if (device?.primarySsid === ssid) {
+      return NextResponse.json({ error: "Primär-WLAN kann nicht vergessen werden" }, { status: 400 });
+    }
+    publishCommand(deviceId, "forget_wifi", { ssid });
+    const known = parseKnown(device?.knownSsids).filter((s) => s !== ssid);
+    await prisma.device.update({ where: { id: deviceId }, data: { knownSsids: JSON.stringify(known) } });
+    await prisma.wifiNetwork.deleteMany({ where: { deviceId, ssid } });
+    notifyDeviceChange();
+    return NextResponse.json({ forgotten: ssid });
+  }
+
+  const { preferredSsid } = body;
   if (preferredSsid !== null && typeof preferredSsid !== "string") {
     return NextResponse.json({ error: "preferredSsid muss String oder null sein" }, { status: 400 });
   }

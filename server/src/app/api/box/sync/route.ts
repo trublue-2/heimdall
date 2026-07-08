@@ -130,6 +130,8 @@ export async function POST(req: NextRequest) {
         boxIp:    state.ip        ?? null,
         mac:      state.mac       ?? device.mac,
         primarySsid: body.knownSsids?.[0] ?? device.primarySsid,
+        // Volle gemeldete Namensliste (NVS der Box) für die Anzeige/Bereinigung im Dashboard.
+        knownSsids: body.knownSsids ? JSON.stringify(body.knownSsids) : device.knownSsids,
         // Primär-Netz zuletzt-verwendet: nur setzen, wenn die Box gerade darauf verbunden ist.
         primaryLastUsedAt:
           state.wifiSsid && state.wifiSsid === (body.knownSsids?.[0] ?? device.primarySsid)

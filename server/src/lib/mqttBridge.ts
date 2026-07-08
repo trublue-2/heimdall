@@ -77,10 +77,10 @@ async function ingestLog(deviceId: string, chunk: string): Promise<void> {
 
 /** Sofort-Kommando an die Box pushen (fire-and-forget). Wirkt nur, wenn die Box gerade
  *  im Wachfenster verbunden ist; sonst greift es beim nächsten Sync/Heartbeat. */
-export function publishCommand(deviceId: string, cmd: string): void {
+export function publishCommand(deviceId: string, cmd: string, extra?: Record<string, string>): void {
   try {
     const client = ensureClient();
-    client?.publish(`${MQTT_TOPIC_PREFIX}${deviceId}/cmd`, JSON.stringify({ cmd }), { qos: 1 });
+    client?.publish(`${MQTT_TOPIC_PREFIX}${deviceId}/cmd`, JSON.stringify({ cmd, ...extra }), { qos: 1 });
   } catch (e) {
     console.warn(`[mqttBridge] publish failed: ${(e as Error).message}`);
   }

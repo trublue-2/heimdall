@@ -17,6 +17,8 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
   const [nets, setNets] = useState<Net[]>([]);
   const [preferred, setPreferred] = useState<string | null>(null);
   const [primaryLastUsedAt, setPrimaryLastUsedAt] = useState<string | null>(null);
+  const [reportedSsids, setReportedSsids] = useState<string[]>([]); // von der Box gemeldet (NVS)
+  const [reportedPrimary, setReportedPrimary] = useState<string | null>(null);
   const [ssid, setSsid] = useState("");
   const [pass, setPass] = useState("");
   const [adding, setAdding] = useState(false); // Felder erst nach Klick zeigen
@@ -30,6 +32,25 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
       setNets(d.nets);
       setPreferred(d.preferredSsid);
       setPrimaryLastUsedAt(d.primaryLastUsedAt);
+      setReportedSsids(d.knownSsids ?? []);
+      setReportedPrimary(d.primarySsid ?? null);
+    }
+  }
+
+  // Ein von der Box gemeldetes Extra-WLAN aus deren NVS vergessen (MQTT-Kommando; Primär geschützt).
+  async function forget(s: string) {
+    if (!confirm(`WLAN „${s}" von der Box vergessen?`)) return;
+    setError(null);
+    try {
+      const r = await fetch(`/api/admin/devices/${deviceId}/wifi`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ forgetSsid: s }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      load();
+    } catch (e) {
+      setError(String(e));
     }
   }
   useEffect(() => {
@@ -133,6 +154,35 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
             </li>
           ))}
         </ul>
+      )}
+
+      {reportedSsids.length > 0 && (
+        <div className="space-y-1 pt-1">
+          <p className="text-xs font-semibold text-[var(--foreground-muted)]">Von der Box gemeldet (NVS)</p>
+          <ul className="divide-y divide-[var(--border-subtle)]">
+            {reportedSsids.map((s) => (
+              <li key={s} className="flex items-center justify-between gap-3 py-1.5">
+                <span className="flex items-center gap-2 min-w-0">
+                  <Wifi className="h-4 w-4 text-[var(--foreground-faint)] shrink-0" />
+                  <span className="truncate">{s}</span>
+                  {s === reportedPrimary && <Badge variant="lock">Primär</Badge>}
+                </span>
+                {s !== reportedPrimary && (
+                  <button
+                    onClick={() => forget(s)}
+                    className="flex items-center gap-1 text-xs text-[var(--color-warn)] hover:opacity-70 shrink-0"
+                    aria-label="Vergessen"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> vergessen
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-[var(--foreground-faint)]">
+            Was die Box tatsächlich im NVS hat. „vergessen" schickt ihr (im Wachfenster) den Befehl, das Netz zu löschen; das Primär-Netz bleibt.
+          </p>
+        </div>
       )}
 
       {adding ? (

@@ -52,6 +52,9 @@ model Device {
   charging    Boolean?
   boxIp       String?
   primarySsid String? // Provisioning-Netz (knownSsids[0] der Box)
+  // Zuletzt von der Box gemeldete WLAN-Namen (NVS: Primär + Extras), JSON-Array-String.
+  // Nur zur Anzeige/Bereinigung (stale Netze sichtbar); die Box bleibt Quelle der Wahrheit.
+  knownSsids  String?
   primaryLastUsedAt DateTime? // wann die Box zuletzt aufs Primär-Netz verbunden war
   // Operator-Wahl: dieses Netz bevorzugt verbinden (an die Box gepusht, Server gewinnt).
   // null = keine Server-Präferenz → Box behält ihre lokale /wifi-Wahl.
