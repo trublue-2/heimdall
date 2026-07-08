@@ -107,7 +107,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
             field="debugMode"
             checked={device.debugMode}
             title="Debug-Modus"
-            desc="Schaltet die lokale /debug-Pin-Test-Seite frei (nur erreichbar, solange die Box wach ist) und pausiert Auto-OTA während der Session. Hält die Box NICHT wach."
+            desc="Pausiert Auto-OTA, damit die Box während einer Debug-/Flash-Session nicht mitten im Test überschrieben wird. Schaltet die /debug-Seite NICHT frei und hält die Box NICHT wach — /debug ist ohnehin erreichbar, solange die Box wach ist (Wachfenster/USB, gleiches WLAN)."
           />
         </Card>
       </section>

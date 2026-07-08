@@ -302,7 +302,7 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
     strlcpy(ota->sig,     resp["otaSig"]     | "", sizeof(ota->sig));
   }
 
-  // Debug-Mode-Direktive vom Server (für lokales Pin-Testen ohne Reflash).
+  // Debug-Mode-Direktive vom Server: pausiert lokal nur das Auto-OTA-Gate.
   if (debugMode) *debugMode = resp["debugMode"] | false;
 
   // Zusatz-WLANs vom Server übernehmen (Passwort wird serverseitig danach genullt).

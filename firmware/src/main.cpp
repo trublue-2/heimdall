@@ -45,8 +45,10 @@ static bool            gReopen         = false;
 RTC_DATA_ATTR static uint32_t gAuthFails = 0;
 static bool            gOtaPending     = false; // läuft eine OTA-Validierung? (S14)
 
-// Debug-Mode (server-aktiviert): Box bleibt wach + serviert die lokale Debug-Seite
-// zum Pin-Testen ohne Reflash. Nicht persistent — endet bei Server-Aus oder Obergrenze.
+// Debug-Mode (server-aktiviert): pausiert NUR das Auto-OTA-Gate, damit eine Debug-/
+// Flash-Session nicht mitten im Test überschrieben wird. Hält die Box NICHT wach und
+// schaltet die /debug-Seite NICHT frei — die ist ohnehin erreichbar, solange die Box
+// wach ist (Wachfenster/USB), unabhängig von diesem Flag.
 static bool            gDebugMode      = false; // Server-Flag; steuert nur noch das Auto-OTA-Gate
 
 // ── Log-Ringpuffer für die Browser-Serial ───────────────────────────────────
@@ -684,7 +686,7 @@ void setup() {
   NVS::begin();
   Stepper::begin();
   gWeb.on("/", handleStatus); // Statusseite-Route einmalig registrieren
-  gWeb.on("/debug",    handleDebugPage); // Debug-Mode-Routen (nur wirksam, wenn debugMode aktiv)
+  gWeb.on("/debug",    handleDebugPage); // erreichbar, sobald die Box wach ist — NICHT an debugMode gekoppelt
   gWeb.on("/dbg/ota",  handleDbgOta);
   gWeb.on("/dbg/switch", handleDbgSwitch); // Fallback: Boot-Zeiger auf den anderen OTA-Slot
   gWeb.on("/dbg/info", handleDbgInfo);
