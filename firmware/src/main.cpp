@@ -293,43 +293,115 @@ static String fmtLocal(time_t t) {
   return String(buf);
 }
 
+// ── Eine Seite für alles (/) ──────────────────────────────────────────────────
+// Kopf (Name · Status · Netzwerk · Box) live per /dbg/info-Poll, darunter aufklappbare
+// Funktionen/Log/WLAN. Ersetzt die früher getrennten /, /debug, /wifi. Rein statisch —
+// alle Werte holt das JS aus /dbg/info, /dbg/log, /net/list (kein Full-Reload mehr, der
+// war der Grund, warum WLAN mal eine eigene Seite brauchte). JSON→textContent = XSS-sicher.
 static void handleStatus() {
-  bool   locked = gBox.locked;
-  String html = "<!DOCTYPE html><html lang=de><head><meta charset=utf-8>"
-                "<meta name=viewport content='width=device-width,initial-scale=1'>"
-                "<meta http-equiv=refresh content=5>"
-                "<title>Heimdall</title><style>"
-                "body{font-family:system-ui,sans-serif;margin:0;padding:2rem;"
-                "background:#0f1115;color:#e6e6e6;text-align:center}"
-                ".s{font-size:2rem;font-weight:700;margin:1rem 0;padding:1rem;border-radius:1rem}"
-                ".lock{background:#2a1416;color:#ff6b6b}.open{background:#13241a;color:#4ade80}"
-                ".m{color:#8a8a8a;font-size:.9rem;margin:.3rem}</style></head><body>"
-                "<h2>🔒 " + String(gBox.deviceName[0] ? gBox.deviceName : "Heimdall") + "</h2>";
-  if (locked) {
-    html += "<div class='s lock'>GESCHLOSSEN";
-    if (gPolicy.lockUntil > 0)
-      html += "<div style='font-size:1.3rem;font-weight:600;margin-top:.4rem'>bis "
-              + fmtLocal(gPolicy.lockUntil) + "</div>";
-    html += "</div>";
-  } else {
-    html += "<div class='s open'>OFFEN</div>";
-  }
-  html += "<p class=m>Zeit: " + fmtLocal(time(nullptr)) + "</p>";
-  html += "<p class=m>Akku: " + (gBox.batteryPct < 0 ? String("—") : String(gBox.batteryPct) + "%")
-          + (gChargeFull ? String(" ✅voll") : (gBox.charging ? String(" ⚡lädt") : String(""))) + " · "
-          + String(WiFi.RSSI()) + " dBm · fw " + FW_VERSION + "</p>";
-  // Diagnose: gUnexpected > Boot-Power-On = Brownout-Verdacht (über WLAN sichtbar).
-  html += "<p class=m>Boots: " + String(gBootCount)
-          + " · unerwartet: " + String(gUnexpected)
-          + " · Reset: " + String(gResetReason) + "</p>";
-  html += "<p class=m>Uptime: " + String(millis() / 1000) + " s · Heap: "
-          + String(ESP.getFreeHeap() / 1024) + " kB</p>";
-  html += "<p class=m><a href=/wifi style='color:#4ade80'>📶 WLAN verwalten</a></p>";
-  html += "</body></html>";
-  gWeb.send(200, "text/html", html);
+  gWeb.send(200, "text/html",
+    "<!DOCTYPE html><html lang=de><head><meta charset=utf-8>"
+    "<meta name=viewport content='width=device-width,initial-scale=1'>"
+    "<title>Heimdall</title><style>"
+    "body{font-family:system-ui,sans-serif;margin:0;padding:1.2rem;max-width:34rem;background:#0f1115;color:#e6e6e6}"
+    "h2{margin:.2rem 0;font-size:1.35rem}"
+    ".s{font-size:1.6rem;font-weight:700;margin:.7rem 0;padding:.9rem;border-radius:.8rem;text-align:center}"
+    ".lock{background:#2a1416;color:#ff6b6b}.open{background:#13241a;color:#4ade80}"
+    ".s .u{display:block;font-size:1rem;font-weight:600;margin-top:.3rem}"
+    ".card{background:#1a1d23;border-radius:.6rem;padding:.7rem .8rem;margin:.5rem 0;font-size:.9rem;line-height:1.75}"
+    ".k{color:#8a8a8a}"
+    "details{background:#1a1d23;border-radius:.6rem;margin:.5rem 0}"
+    "summary{padding:.7rem .8rem;cursor:pointer;font-weight:600;user-select:none}"
+    ".bd{padding:0 .8rem .8rem}"
+    "h3{color:#8a8a8a;font-size:.78rem;text-transform:uppercase;margin:.9rem 0 .4rem}"
+    "button{margin:.2rem .2rem .2rem 0;padding:.5rem .8rem;border:0;border-radius:.5rem;background:#2a3340;color:#e6e6e6;font-size:.9rem}"
+    "button.go{background:#4ade80;color:#04130a;font-weight:700}"
+    "input{width:100%;box-sizing:border-box;padding:.5rem;margin:.3rem 0;border-radius:.4rem;border:1px solid #333;background:#0f1115;color:#e6e6e6}"
+    ".net{display:flex;align-items:center;gap:.5rem;padding:.5rem .6rem;margin:.4rem 0;background:#0f1115;border-radius:.5rem}"
+    ".net b{flex:1;overflow:hidden;text-overflow:ellipsis}.net button{font-size:.78rem;padding:.35rem .55rem;margin:0}"
+    ".tag{font-size:.68rem;padding:.12rem .4rem;border-radius:.3rem;background:#2a3340;color:#8a8a8a}"
+    ".tag.pref{background:#13241a;color:#4ade80}.tag.cur{background:#1e2b3a;color:#7db3ff}"
+    "#st,#wst{color:#8a8a8a;font-size:.85rem;margin-top:.5rem;min-height:1.1rem}"
+    "#log{margin-top:.4rem;padding:.6rem;border-radius:.5rem;background:#000;color:#9fe7b0;"
+    "font-family:monospace;font-size:.72rem;height:14rem;overflow:auto;white-space:pre-wrap;resize:vertical}"
+    "</style></head><body>"
+    "<h2 id=nm>🔒 Heimdall</h2>"
+    "<div id=stat class='s open'>…</div>"
+    "<div class=card id=net>Netzwerk lädt…</div>"
+    "<div class=card id=box>Box lädt…</div>"
+
+    "<details><summary>⚙ Funktionen</summary><div class=bd>"
+    "<h3>Firmware</h3>"
+    "<button class=go onclick=ota()>⬇ Neue FW flashen</button>"
+    "<button onclick=revert()>⟲ Anderen OTA-Slot booten</button>"
+    "<h3>Gerät</h3>"
+    "<button onclick=reboot()>↻ Reboot</button>"
+    "<button onclick=slp()>💤 Schlafen</button>"
+    "<div id=st>bereit</div>"
+    "</div></details>"
+
+    "<details id=dlog><summary>📜 Log</summary><div class=bd>"
+    "<p style='color:#8a8a8a;font-size:.78rem;margin:.2rem 0'>Live-Remote am Mac (auch OTA-Fortschritt): "
+    "<code style='background:#000;padding:.1rem .3rem;border-radius:.3rem'>nc -ul 9999</code> — UDP-Broadcast Port 9999.</p>"
+    "<button onclick=clg()>Leeren</button>"
+    "<button onclick=\"navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('log').textContent)\">Kopieren</button>"
+    "<pre id=log></pre>"
+    "</div></details>"
+
+    "<details><summary>📶 WLAN</summary><div class=bd>"
+    "<div id=list>lade…</div>"
+    "<h3>Netz hinzufügen</h3>"
+    "<input id=ss placeholder='WLAN-Name (SSID)'>"
+    "<input id=pw type=password placeholder='Passwort'>"
+    "<button class=go onclick=wadd()>+ hinzufügen</button>"
+    "<div id=wst></div>"
+    "</div></details>"
+
+    "<script>"
+    "function $(i){return document.getElementById(i)}"
+    "function esc(s){let e=document.createElement('div');e.textContent=s;return e.innerHTML;}" // SSID/Namen sind fremdbestimmbar → escapen
+    "async function ri(){try{let d=await(await fetch('/dbg/info')).json();"
+    "$('nm').textContent='🔒 '+d.name;"
+    "let s=$('stat');if(d.locked){s.className='s lock';s.innerHTML='GESCHLOSSEN'+(d.lockUntil?'<span class=u>bis '+esc(d.lockUntil)+'</span>':'');}"
+    "else{s.className='s open';s.textContent='OFFEN';}"
+    "$('net').innerHTML='<span class=k>WLAN</span> '+esc(d.ssid)+' ('+d.rssi+' dBm)<br><span class=k>IP</span> '+esc(d.ip)+'<br><span class=k>MAC</span> '+esc(d.mac);"
+    "$('box').innerHTML='<span class=k>FW</span> '+esc(d.fw)+' · <span class=k>Akku</span> '+d.batt+'% ('+d.vbat+' V)<br>'+"
+    "'<span class=k>Laden</span> '+(d.full?'✅voll':(d.charging?'⚡ja':'nein'))+' · <span class=k>USB</span> '+(d.usb?'ja':'nein')+'<br>'+"
+    "'<span class=k>Heap</span> '+d.heap+' kB · <span class=k>Up</span> '+d.uptime+' s<br>'+"
+    "'<span class=k>Boots</span> '+d.boots+' · <span class=k>unerw.</span> '+d.unexp+' · <span class=k>Reset</span> '+esc(d.reset);"
+    "}catch(e){}}"
+    "function S(t){$('st').textContent=t}"
+    "async function ota(){S('OTA: prüfe & flashe…');try{S(await(await fetch('/dbg/ota')).text())}catch(e){S('Verbindung weg — vermutlich Reboot nach Flash ✓')}}"
+    "async function revert(){if(!confirm('⚠️ Bootet die FW im anderen OTA-Slot und übergibt ihr die Kontrolle — Heimdalls Sperre & Failsafes gelten dann nicht mehr. Einbahn aus dieser Oberfläche. Fortfahren?'))return;S('Slot-Switch…');try{S(await(await fetch('/dbg/switch')).text())}catch(e){S('Verbindung weg — vermutlich Reboot ✓')}}"
+    "async function reboot(){if(!confirm('Box neu starten?'))return;S('Reboot…');try{S(await(await fetch('/dbg/reboot')).text())}catch(e){S('Verbindung weg — Box rebootet ✓')}}"
+    "async function slp(){if(!confirm('Box in den Deep-Sleep legen? Danach nur per Taster/USB wieder erreichbar.'))return;S('Schlafen…');try{S(await(await fetch('/dbg/sleep')).text())}catch(e){S('Verbindung weg — Box schläft ✓')}}"
+    "let lc=0;async function pl(){if(!$('dlog').open)return;try{let t=await(await fetch('/dbg/log?since='+lc)).text();"
+    "let nl=t.indexOf('\\n');lc=parseInt(t.slice(0,nl));let d=t.slice(nl+1);"
+    "if(d){let e=$('log');let b=e.scrollTop+e.clientHeight>=e.scrollHeight-20;e.textContent+=d;if(b)e.scrollTop=e.scrollHeight;}}catch(e){}}"
+    "function clg(){$('log').textContent='';}"
+    "function W(t){$('wst').textContent=t}"
+    "async function wapi(u){W(await(await fetch(u)).text());wl();}"
+    "function wpref(s){wapi('/net/pref?ssid='+encodeURIComponent(s))}"
+    "function wdel(s){if(confirm('Netz entfernen: '+s+'?'))wapi('/net/del?ssid='+encodeURIComponent(s))}"
+    "function wadd(){let s=$('ss').value.trim();if(!s){W('SSID fehlt');return;}"
+    "wapi('/net/add?ssid='+encodeURIComponent(s)+'&pass='+encodeURIComponent($('pw').value));$('ss').value='';$('pw').value='';}"
+    "function tg(c,t){let x=document.createElement('span');x.className='tag '+c;x.textContent=t;return x;}"
+    "function bt(t,f){let b=document.createElement('button');b.textContent=t;b.onclick=f;return b;}"
+    "async function wl(){let d=await(await fetch('/net/list')).json();let L=$('list');L.innerHTML='';"
+    "if(d.error){let e=document.createElement('div');e.style='background:#2a1416;color:#ff6b6b;padding:.6rem;border-radius:.5rem;margin:.4rem 0;font-size:.85rem';"
+    "e.textContent='⚠ '+(d.error.ssid?d.error.ssid+': ':'')+d.error.msg;L.appendChild(e);}"
+    "for(let n of d.nets){let r=document.createElement('div');r.className='net';let b=document.createElement('b');b.textContent=n.ssid;r.appendChild(b);"
+    "if(n.ssid==d.current)r.appendChild(tg('cur','verbunden'));"
+    "if(n.primary)r.appendChild(tg('','Primär'));"
+    "if(n.ssid==d.preferred){r.appendChild(tg('pref','★ bevorzugt'));r.appendChild(bt('aufheben',()=>wpref('')));}"
+    "else r.appendChild(bt('bevorzugen',()=>wpref(n.ssid)));"
+    "if(!n.primary)r.appendChild(bt('✕',()=>wdel(n.ssid)));"
+    "L.appendChild(r);}}"
+    "ri();setInterval(ri,2000);setInterval(pl,1000);wl();"
+    "</script></body></html>");
 }
 
-// ── WLAN-Verwaltung (normale Site, /wifi) ─────────────────────────────────────
+// ── WLAN-Endpoints (/net/*, backen den WLAN-Bereich der Statusseite) ──────────
 // Bekannte Netze listen, Extra-Netz hinzufügen/entfernen, eins als „bevorzugt" markieren.
 // Bevorzugt greift beim NÄCHSTEN Verbinden (kein sofortiger Wechsel); ist es nicht
 // erreichbar, nimmt connectWifi das stärkste andere bekannte. Eigene Seite statt Statusseite,
@@ -370,58 +442,9 @@ static void handleNetDel() {
   NVS::deleteExtraNet(ssid.c_str()); // räumt eine ggf. auf dieses Netz zeigende Präferenz mit auf
   gWeb.send(200, "text/plain", "Entfernt: " + ssid);
 }
-static void handleWifiPage() {
-  gWeb.send(200, "text/html",
-    "<!DOCTYPE html><html lang=de><head><meta charset=utf-8>"
-    "<meta name=viewport content='width=device-width,initial-scale=1'>"
-    "<title>Heimdall WLAN</title><style>"
-    "body{font-family:system-ui,sans-serif;margin:0;padding:1.5rem;max-width:32rem;background:#0f1115;color:#e6e6e6}"
-    "h2{margin:.2rem 0}h3{color:#8a8a8a;font-size:.85rem;text-transform:uppercase;margin:1.2rem 0 .4rem}a{color:#4ade80}"
-    ".net{display:flex;align-items:center;gap:.5rem;padding:.55rem .7rem;margin:.4rem 0;background:#1a1d23;border-radius:.5rem}"
-    ".net b{flex:1;overflow:hidden;text-overflow:ellipsis}"
-    ".tag{font-size:.68rem;padding:.12rem .4rem;border-radius:.3rem;background:#2a3340;color:#8a8a8a}"
-    ".tag.pref{background:#13241a;color:#4ade80}.tag.cur{background:#1e2b3a;color:#7db3ff}"
-    "button{padding:.35rem .6rem;border:0;border-radius:.4rem;background:#2a3340;color:#e6e6e6;font-size:.8rem}"
-    "button.go{background:#4ade80;color:#04130a;font-weight:700}"
-    "input{width:100%;box-sizing:border-box;padding:.5rem;margin:.3rem 0;border-radius:.4rem;border:1px solid #333;background:#1a1d23;color:#e6e6e6}"
-    "#st{color:#8a8a8a;font-size:.85rem;margin-top:.6rem;min-height:1.2rem}</style></head><body>"
-    "<h2>📶 WLAN</h2><p><a href=/>← Status</a></p>"
-    "<div id=list>lade…</div>"
-    "<h3>Netz hinzufügen</h3>"
-    "<input id=ss placeholder='WLAN-Name (SSID)'>"
-    "<input id=pw type=password placeholder='Passwort'>"
-    "<button class=go onclick=add()>+ hinzufügen</button>"
-    "<div id=st></div>"
-    "<script>"
-    "function S(t){document.getElementById('st').textContent=t}"
-    "async function api(u){S(await(await fetch(u)).text());load();}"
-    "function pref(s){api('/net/pref?ssid='+encodeURIComponent(s))}"
-    "function del(s){if(confirm('Netz entfernen: '+s+'?'))api('/net/del?ssid='+encodeURIComponent(s))}"
-    "function add(){let s=document.getElementById('ss').value.trim();if(!s){S('SSID fehlt');return;}"
-    "api('/net/add?ssid='+encodeURIComponent(s)+'&pass='+encodeURIComponent(document.getElementById('pw').value));"
-    "document.getElementById('ss').value='';document.getElementById('pw').value='';}"
-    "function tag(cls,txt){let t=document.createElement('span');t.className='tag '+cls;t.textContent=txt;return t;}"
-    "function btn(txt,fn){let b=document.createElement('button');b.textContent=txt;b.onclick=fn;return b;}"
-    "async function load(){let d=await(await fetch('/net/list')).json();"
-    "let L=document.getElementById('list');L.innerHTML='';"
-    "if(d.error){let e=document.createElement('div');"
-    "e.style='background:#2a1416;color:#ff6b6b;padding:.6rem;border-radius:.5rem;margin:.4rem 0;font-size:.85rem';"
-    "e.textContent='⚠ '+(d.error.ssid?d.error.ssid+': ':'')+d.error.msg;L.appendChild(e);}"
-    "for(let net of d.nets){let r=document.createElement('div');r.className='net';"
-    "let b=document.createElement('b');b.textContent=net.ssid;r.appendChild(b);"
-    "if(net.ssid==d.current)r.appendChild(tag('cur','verbunden'));"
-    "if(net.primary)r.appendChild(tag('','Primär'));"
-    "if(net.ssid==d.preferred){r.appendChild(tag('pref','★ bevorzugt'));r.appendChild(btn('aufheben',()=>pref('')));}"
-    "else r.appendChild(btn('bevorzugen',()=>pref(net.ssid)));"
-    "if(!net.primary)r.appendChild(btn('✕',()=>del(net.ssid)));"
-    "L.appendChild(r);}}"
-    "load();"
-    "</script></body></html>");
-}
-
-// ── Debug-Mode: lokale Monitoring-Seite (Info + Serial + FW-Flashen) ──────────
-// Pin-Finde-Tools (Pins setzen, Testfahrt, Sweep, Einzel-Puls, ADC-Scan, Pin-Dump)
-// wurden nach abgeschlossenem Bring-up entfernt — alle Board-Pins stehen in config.h.
+// ── Aktions-Endpoints der Statusseite (/dbg/*) ────────────────────────────────
+// Backen die aufklappbaren Funktionen-/Log-Bereiche von handleStatus. Pin-Finde-Tools
+// (Testfahrt/Sweep/ADC-Scan) wurden nach dem Bring-up entfernt — Pins stehen in config.h.
 
 // OTA manuell anstoßen. Verschluss-Sperre BLEIBT: bei geschlossener Box nie flashen
 // (gebrickter Flash = nicht mehr öffenbar; Safety > Function).
@@ -494,6 +517,7 @@ static void handleDbgInfo() {
   readChargeState();
   int usb = gBox.charging ? 1 : 0;
   String j = "{";
+  j += "\"name\":\"" + jsonEsc(String(gBox.deviceName[0] ? gBox.deviceName : "Heimdall")) + "\",";
   j += "\"fw\":\"" FW_VERSION "\",";
   j += "\"batt\":" + String(Failsafe::batteryPercent()) + ","; // frisch, konsistent zu vbat
   j += "\"vbat\":" + String(vbat, 2) + ",";
@@ -506,6 +530,10 @@ static void handleDbgInfo() {
   j += "\"ssid\":\"" + WiFi.SSID() + "\",";
   j += "\"rssi\":" + String(WiFi.RSSI()) + ",";
   j += "\"uptime\":" + String(millis() / 1000) + ",";
+  j += "\"lockUntil\":\"" + (gPolicy.lockUntil > 0 ? fmtLocal(gPolicy.lockUntil) : String("")) + "\","; // Simple-Lock: leer → nur „GESCHLOSSEN"
+  j += "\"boots\":" + String(gBootCount) + ",";
+  j += "\"unexp\":" + String(gUnexpected) + ",";
+  j += "\"reset\":\"" + jsonEsc(String(gResetReason)) + "\",";
   j += "\"heap\":" + String(ESP.getFreeHeap() / 1024);
   j += "}";
   gWeb.send(200, "application/json", j);
@@ -522,67 +550,6 @@ static void handleDbgLog() {
   out += String(head); out += "\n";
   for (uint32_t i = since; i < head; i++) out += gLog[i % LOG_CAP];
   gWeb.send(200, "text/plain", out);
-}
-
-static void handleDebugPage() {
-  String h =
-    "<!DOCTYPE html><html lang=de><head><meta charset=utf-8>"
-    "<meta name=viewport content='width=device-width,initial-scale=1'>"
-    "<title>Heimdall Debug</title><style>"
-    "body{font-family:system-ui,sans-serif;margin:0;padding:1.2rem;max-width:min(60rem,95vw);"
-    "background:#0f1115;color:#e6e6e6}h2{margin:.2rem 0}h3{margin:1.1rem 0 .4rem;font-size:.85rem;"
-    "color:#8a8a8a;text-transform:uppercase}input{width:3.4rem;padding:.4rem;border-radius:.4rem;"
-    "border:1px solid #333;background:#1a1d23;color:#e6e6e6;font-size:1rem}"
-    "button{margin:.2rem;padding:.5rem .8rem;border:0;border-radius:.5rem;background:#2a3340;"
-    "color:#e6e6e6;font-size:.95rem}button.go{background:#4ade80;color:#04130a;font-weight:700}"
-    "#st{margin-top:1rem;padding:.7rem;border-radius:.5rem;background:#1a1d23;font-family:monospace;white-space:pre-wrap}"
-    "#info{background:#1a1d23;border-radius:.5rem;padding:.7rem;font-size:.85rem;line-height:1.7;margin:.4rem 0 .2rem}"
-    "#info b{color:#4ade80}#info .k{color:#8a8a8a}"
-    "#log{margin-top:.4rem;padding:.6rem;border-radius:.5rem;background:#000;color:#9fe7b0;"
-    "font-family:monospace;font-size:.72rem;height:16rem;min-height:8rem;overflow:auto;white-space:pre-wrap;resize:both}"
-    "</style></head><body><h2>🔧 Heimdall Debug</h2>"
-    "<div id=info>lade…</div>"
-    "<h3>Firmware</h3>"
-    "<button class=go onclick=ota()>⬇ Neue FW flashen</button>"
-    "<button onclick=revert()>⟲ Anderen OTA-Slot booten</button>"
-    "<div id=st>bereit</div>"
-    "<h3>Gerät</h3>"
-    "<button onclick=reboot()>↻ Reboot</button>"
-    "<button onclick=slp()>💤 Schlafen</button>"
-    "<h3>Serial (live)</h3>"
-    "<p style='color:#8a8a8a;font-size:.78rem;margin:.2rem 0'>Live-Remote am Mac (auch OTA-Fortschritt): "
-    "<code style='background:#000;padding:.1rem .3rem;border-radius:.3rem'>nc -ul 9999</code> "
-    "— UDP-Broadcast auf Port 9999, blockiert nicht beim Flash.</p>"
-    "<button onclick=clg()>Leeren</button>"
-    "<button onclick=\"navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('log').textContent)\">Kopieren</button>"
-    "<pre id=log></pre>"
-    "<script>"
-    "function S(t){document.getElementById('st').textContent=t}"
-    "async function ota(){S('OTA: prüfe & flashe…');"
-    "try{S(await(await fetch('/dbg/ota')).text())}"
-    "catch(e){S('Verbindung weg — vermutlich Reboot nach erfolgreichem Flash ✓')}}"
-    "async function revert(){if(!confirm('⚠️ Bootet die FW im anderen OTA-Slot und übergibt ihr die Kontrolle — Heimdalls Sperre & Failsafes gelten dann nicht mehr. Der andere Slot enthält (falls belegt) die vorige FW, nach der Übernahme die Werks-Firmware. Einbahn aus dieser Oberfläche. Fortfahren?'))return;S('Slot-Switch…');"
-    "try{S(await(await fetch('/dbg/switch')).text())}"
-    "catch(e){S('Verbindung weg — vermutlich Reboot in den anderen Slot ✓')}}"
-    "async function reboot(){if(!confirm('Box neu starten?'))return;S('Reboot…');"
-    "try{S(await(await fetch('/dbg/reboot')).text())}catch(e){S('Verbindung weg — Box rebootet ✓')}}"
-    "async function slp(){if(!confirm('Box in den Deep-Sleep legen? Danach nur per Taster/USB wieder erreichbar.'))return;S('Schlafen…');"
-    "try{S(await(await fetch('/dbg/sleep')).text())}catch(e){S('Verbindung weg — Box schläft ✓')}}"
-    "async function refreshInfo(){try{let d=await(await fetch('/dbg/info')).json();"
-    "document.getElementById('info').innerHTML="
-    "'<span class=k>FW</span> <b>'+d.fw+'</b> · <span class=k>MAC</span> '+d.mac+'<br>'+"
-    "'<span class=k>Akku</span> <b>'+d.batt+'%</b> ('+d.vbat+' V) · <span class=k>USB</span> '+(d.usb?'ja':'nein')+' · <span class=k>Laden</span> '+(d.full?'✅voll':(d.charging?'⚡ja':'nein'))+'<br>'+"
-    "'<span class=k>Lock</span> '+(d.locked?'ZU':'OFFEN')+' · <span class=k>WLAN</span> '+d.ssid+' ('+d.rssi+' dBm)<br>'+"
-    "'<span class=k>IP</span> '+d.ip+' · <span class=k>Up</span> '+d.uptime+'s · <span class=k>Heap</span> '+d.heap+'kB';"
-    "}catch(e){}}"
-    "let lc=0;async function pollLog(){try{let t=await(await fetch('/dbg/log?since='+lc)).text();"
-    "let nl=t.indexOf('\\n');lc=parseInt(t.slice(0,nl));let d=t.slice(nl+1);"
-    "if(d){let el=document.getElementById('log');let b=el.scrollTop+el.clientHeight>=el.scrollHeight-20;"
-    "el.textContent+=d;if(b)el.scrollTop=el.scrollHeight;}}catch(e){}}"
-    "function clg(){document.getElementById('log').textContent='';}"
-    "refreshInfo();setInterval(refreshInfo,2000);pollLog();setInterval(pollLog,1000);"
-    "</script></body></html>";
-  gWeb.send(200, "text/html", h);
 }
 
 // Stellt WiFi + Web-Server sicher (für die Statusseite am Strom).
@@ -722,15 +689,13 @@ void setup() {
   NVS::begin();
   NVS::ensureNamespaces(); // read-only gelesene Namespaces einmal anlegen → kein NOT_FOUND-Spam
   Stepper::begin();
-  gWeb.on("/", handleStatus); // Statusseite-Route einmalig registrieren
-  gWeb.on("/debug",    handleDebugPage); // erreichbar, sobald die Box wach ist (Wachfenster/USB)
+  gWeb.on("/", handleStatus); // konsolidierte Statusseite (Info + Funktionen + Log + WLAN), einmalig
   gWeb.on("/dbg/ota",  handleDbgOta);
   gWeb.on("/dbg/switch", handleDbgSwitch); // Fallback: Boot-Zeiger auf den anderen OTA-Slot
   gWeb.on("/dbg/info", handleDbgInfo);
   gWeb.on("/dbg/log",  handleDbgLog);
   gWeb.on("/dbg/reboot", handleDbgReboot);
   gWeb.on("/dbg/sleep",  handleDbgSleep);
-  gWeb.on("/wifi",     handleWifiPage);  // WLAN-Verwaltung (normale Site)
   gWeb.on("/net/list", handleNetList);
   gWeb.on("/net/pref", handleNetPref);
   gWeb.on("/net/add",  handleNetAdd);

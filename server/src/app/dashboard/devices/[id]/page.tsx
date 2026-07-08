@@ -52,7 +52,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
 
   // Auto-OTA-Hold sichtbar machen: der Server bietet die Ziel-FW an (ausser otaDisabled), die
   // Box flasht sie aber lokal nur bei Akku ≥ 40 % (unbekannt/am Strom zählt als ok). Erklärt,
-  // warum eine hinterherhinkende Box nicht automatisch updatet — manuell (/debug) geht immer.
+  // warum eine hinterherhinkende Box nicht automatisch updatet — manuell über die Box-Seite geht immer.
   const targetFw = await getTargetVersion();
   const otaBehind = !!targetFw && !!device.fwVersion && targetFw !== device.fwVersion && !device.otaDisabled;
   const otaBattHold = otaBehind && device.battery != null && device.battery < 40 && !device.charging;
@@ -119,7 +119,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
               {device.fwVersion ? `v${device.fwVersion}` : "—"}
               {otaBattHold ? (
                 <span className="block font-sans text-xs text-[var(--color-warn)] mt-0.5">
-                  ⚠ v{targetFw} verfügbar — Auto-OTA pausiert (Akku {device.battery}%, unter 40%). Manuell über /debug.
+                  ⚠ v{targetFw} verfügbar — Auto-OTA pausiert (Akku {device.battery}%, unter 40%). Manuell über die Box-Seite.
                 </span>
               ) : otaBehind ? (
                 <span className="block font-sans text-xs text-[var(--foreground-faint)] mt-0.5">
@@ -134,7 +134,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
             value={
               device.boxIp
                 ? mqttLive
-                  ? <a className="text-[var(--color-warn)] underline" href={`http://${device.boxIp}/debug`} target="_blank" rel="noopener noreferrer">{device.boxIp} → /debug</a>
+                  ? <a className="text-[var(--color-warn)] underline" href={`http://${device.boxIp}/`} target="_blank" rel="noopener noreferrer">{device.boxIp} ↗</a>
                   : device.boxIp
                 : "—"
             }
