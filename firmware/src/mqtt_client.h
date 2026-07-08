@@ -6,7 +6,7 @@
 // Trägt die Sofort-Kommandos der Website; die autoritative Policy bleibt beim HTTPS-Sync.
 // TLS mit demselben Cert-Pinning wie der Sync (ROOT_CA_BUNDLE).
 namespace Mqtt {
-  enum class Command { NONE, OPEN, CLOSE, LOCK, SYNC, REOPEN };
+  enum class Command { NONE, OPEN, CLOSE, LOCK, SYNC, REOPEN, FORGET_WIFI };
 
   // Verbindet zum Broker. token = MQTT-Passwort (username/clientId = cfg.deviceId).
   // false, wenn deaktiviert, unkonfiguriert oder Connect fehlschlägt.
@@ -18,4 +18,5 @@ namespace Mqtt {
 
   // Zuletzt empfangenes Kommando (consume-on-read), Command::NONE wenn keins.
   Command takeCommand();
+  const char* pendingArg(); // Argument des Kommandos (z.B. SSID bei FORGET_WIFI); "" wenn keins
 }

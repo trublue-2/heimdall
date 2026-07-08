@@ -1035,6 +1035,13 @@ void loop() {
               gState = State::LOCKED; break;
             case Mqtt::Command::SYNC:
               gState = State::SYNCING; break;
+            case Mqtt::Command::FORGET_WIFI: {
+              // WLAN aus der NVS-Extra-Liste entfernen (Primär bleibt unberührt — nicht in
+              // "nets"). Danach syncen, damit die reduzierten knownSsids beim Server ankommen.
+              const char* ssid = Mqtt::pendingArg();
+              if (ssid[0]) { NVS::deleteExtraNet(ssid); log_i("WLAN vergessen: %s", ssid); }
+              gState = State::SYNCING; break;
+            }
             default: break;
           }
           break; // Zustandswechsel greift im nächsten loop()

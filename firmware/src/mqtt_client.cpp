@@ -10,6 +10,7 @@
 static WiFiClientSecure   gTls;
 static PubSubClient       gClient(gTls);
 static volatile Mqtt::Command gPending = Mqtt::Command::NONE;
+static char gPendingArg[64] = {0}; // Argument (z.B. SSID bei forget_wifi); Callback läuft im Loop-Task, kein ISR
 static char gCmdTopic[160];
 static char gStatusTopic[160];
 static char gLogTopic[160];
@@ -21,15 +22,17 @@ static Mqtt::Command parseCmd(const char* c) {
   if (!strcmp(c, "lock"))   return Mqtt::Command::LOCK;
   if (!strcmp(c, "sync"))   return Mqtt::Command::SYNC;
   if (!strcmp(c, "reopen")) return Mqtt::Command::REOPEN;
+  if (!strcmp(c, "forget_wifi")) return Mqtt::Command::FORGET_WIFI;
   return Mqtt::Command::NONE;
 }
 
-// Payload z.B. {"cmd":"open"} — klein, per ArduinoJson geparst.
+// Payload z.B. {"cmd":"open"} bzw. {"cmd":"forget_wifi","ssid":"…"} — klein, per ArduinoJson geparst.
 static void onMsg(char* /*topic*/, byte* payload, unsigned int len) {
   JsonDocument doc;
   if (deserializeJson(doc, payload, len)) return;
   const char* c = doc["cmd"] | "";
   Mqtt::Command cmd = parseCmd(c);
+  if (cmd == Mqtt::Command::FORGET_WIFI) strlcpy(gPendingArg, doc["ssid"] | "", sizeof(gPendingArg));
   if (cmd != Mqtt::Command::NONE) { gPending = cmd; log_i("MQTT cmd: %s", c); }
 }
 
@@ -85,3 +88,5 @@ Mqtt::Command Mqtt::takeCommand() {
   gPending = Command::NONE;
   return c;
 }
+
+const char* Mqtt::pendingArg() { return gPendingArg; }
