@@ -55,6 +55,14 @@ export function LockModal({
   const minMinutes = Number(minH) * 60 + Number(minM);
   const maxMinutes = Number(maxH) * 60 + Number(maxM);
 
+  // Dauer aus Minuten menschenlesbar (für die Live-Vorschau der Zufallsspanne).
+  const fmtDur = (mins: number) => {
+    if (!Number.isFinite(mins) || mins <= 0) return "0 Min";
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return h > 0 ? (m > 0 ? `${h} h ${m} Min` : `${h} h`) : `${m} Min`;
+  };
+
   // Menschlich lesbare Zusammenfassung fürs Bestätigen (Endzeit/Dauer sichtbar → keine
   // versehentlichen 24-h-Sperren mehr).
   function summary(): string {
@@ -176,26 +184,30 @@ export function LockModal({
       )}
 
       {mode === "random" && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <p className="text-xs text-[var(--foreground-muted)]">
-            Der Server würfelt die Dauer zwischen Min und Max. Die echte Endzeit wird danach angezeigt.
+            Der Server würfelt die Dauer zwischen dem kürzesten und dem längsten Wert. Die echte
+            Endzeit wird erst nach dem Verschliessen angezeigt.
           </p>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <p className="text-xs text-[var(--foreground-faint)] mb-1">Min (Std / Min)</p>
+              <p className="text-xs font-medium mb-1">Kürzeste Dauer</p>
               <div className="flex gap-2">
-                <Input id="min-h" type="number" min="0" value={minH} onChange={(e) => setMinH(e.target.value)} />
-                <Input id="min-m" type="number" min="0" max="59" value={minM} onChange={(e) => setMinM(e.target.value)} />
+                <Input id="min-h" label="Stunden" type="number" min="0" value={minH} onChange={(e) => setMinH(e.target.value)} />
+                <Input id="min-m" label="Minuten" type="number" min="0" max="59" value={minM} onChange={(e) => setMinM(e.target.value)} />
               </div>
             </div>
             <div>
-              <p className="text-xs text-[var(--foreground-faint)] mb-1">Max (Std / Min)</p>
+              <p className="text-xs font-medium mb-1">Längste Dauer</p>
               <div className="flex gap-2">
-                <Input id="max-h" type="number" min="0" value={maxH} onChange={(e) => setMaxH(e.target.value)} />
-                <Input id="max-m" type="number" min="0" max="59" value={maxM} onChange={(e) => setMaxM(e.target.value)} />
+                <Input id="max-h" label="Stunden" type="number" min="0" value={maxH} onChange={(e) => setMaxH(e.target.value)} />
+                <Input id="max-m" label="Minuten" type="number" min="0" max="59" value={maxM} onChange={(e) => setMaxM(e.target.value)} />
               </div>
             </div>
           </div>
+          <p className="rounded-lg bg-[var(--surface-raised)] border border-[var(--border)] px-3 py-2 text-xs text-[var(--foreground-muted)]">
+            Die Box bleibt zwischen <b>{fmtDur(minMinutes)}</b> und <b>{fmtDur(maxMinutes)}</b> zu.
+          </p>
         </div>
       )}
 
