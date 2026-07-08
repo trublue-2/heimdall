@@ -52,6 +52,7 @@ model Device {
   wifiSsid    String?
   wifiRssi    Int?
   charging    Boolean?
+  chargeFull  Boolean?  // Ladeschluss (TP4056 STDBY / grüne LED) — nur mit charging aussagekräftig
   boxIp       String?
   primarySsid String? // Provisioning-Netz (knownSsids[0] der Box)
   // Zuletzt von der Box gemeldete WLAN-Namen (NVS: Primär + Extras), JSON-Array-String.

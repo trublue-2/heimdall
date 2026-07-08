@@ -35,7 +35,6 @@ static WifiCredentials gCreds          = {};
 static BoxState        gBox            = {};
 static BoxPolicy       gPolicy         = {};
 static unsigned long   gLastActivityMs = 0;
-static bool            gChargeFull     = false; // GPIO13 LOW & USB dran → Ladung fertig (nur Anzeige)
 // Öffnet dieser Wake ein aktives MQTT-Wachfenster? Button/Power-on = ja, Heartbeat
 // (rtc_timer) = nein (nur Sync, dann sofort weiterschlafen). USB überstimmt (immer Fenster).
 static bool            gWindowWake     = false;
@@ -514,9 +513,9 @@ static void readChargeState() {
 #endif
 #if PIN_CHARGE_FULL >= 0
   pinMode(PIN_CHARGE_FULL, INPUT_PULLUP);     // STDBY open-drain: LOW = voll/fertig
-  gChargeFull = gBox.charging && (digitalRead(PIN_CHARGE_FULL) == LOW);
+  gBox.chargeFull = gBox.charging && (digitalRead(PIN_CHARGE_FULL) == LOW);
 #else
-  gChargeFull = false;
+  gBox.chargeFull = false;
 #endif
 }
 
@@ -533,7 +532,7 @@ static void handleDbgInfo() {
   j += "\"vbat\":" + String(vbat, 2) + ",";
   j += "\"usb\":" + String(usb) + ",";
   j += "\"charging\":" + String(gBox.charging ? "true" : "false") + ",";
-  j += "\"full\":" + String(gChargeFull ? "true" : "false") + ",";
+  j += "\"full\":" + String(gBox.chargeFull ? "true" : "false") + ",";
   j += "\"locked\":" + String(gBox.locked ? "true" : "false") + ",";
   j += "\"mac\":\"" + WiFi.macAddress() + "\",";
   j += "\"ip\":\"" + WiFi.localIP().toString() + "\",";

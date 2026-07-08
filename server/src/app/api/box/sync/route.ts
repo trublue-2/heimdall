@@ -32,6 +32,7 @@ const syncBodySchema = z.object({
     wifiSsid: z.string().max(64).optional(),
     wifiRssi: z.number().int().min(-120).max(0).optional(),
     charging: z.boolean().optional(),
+    full: z.boolean().optional(), // Ladeschluss (TP4056 STDBY / grüne LED)
     ip: z.string().max(45).optional(),
     mac: z.string().max(32).optional(),
   }),
@@ -135,6 +136,7 @@ export async function POST(req: NextRequest) {
         wifiSsid: state.wifiSsid  ?? null,
         wifiRssi: state.wifiRssi  ?? null,
         charging: state.charging  ?? null,
+        chargeFull: state.full    ?? null,
         boxIp:    state.ip        ?? null,
         mac:      state.mac       ?? device.mac,
         primarySsid: body.knownSsids?.[0] ?? device.primarySsid,

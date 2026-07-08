@@ -58,6 +58,7 @@ export default async function DashboardPage() {
               lastSyncAt={device.lastSyncAt?.toISOString() ?? null}
               battery={device.battery}
               charging={device.charging ?? null}
+              chargeFull={device.chargeFull ?? null}
               fwVersion={device.fwVersion}
               wifiRssi={device.wifiRssi ?? null}
               mqttLive={deviceOnline(device.id)}

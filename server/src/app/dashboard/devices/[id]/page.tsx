@@ -77,6 +77,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
         lastSyncAt={device.lastSyncAt?.toISOString() ?? null}
         battery={device.battery}
         charging={device.charging ?? null}
+        chargeFull={device.chargeFull ?? null}
         fwVersion={device.fwVersion}
         wifiRssi={device.wifiRssi ?? null}
         mqttLive={mqttLive}
@@ -112,7 +113,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
         <Card className="grid grid-cols-2 gap-3 text-sm">
           <Info label="WLAN" value={device.wifiSsid ?? "—"} />
           <Info label="Signal" value={device.wifiRssi != null ? `${device.wifiRssi} dBm` : "—"} />
-          <Info label="Akku" value={device.battery != null ? `${device.battery}%${device.charging ? " ⚡ lädt" : ""}` : "—"} />
+          <Info label="Akku" value={device.battery != null ? `${device.battery}%${device.charging ? (device.chargeFull ? " ✅ voll" : " ⚡ lädt") : ""}` : "—"} />
           <Info label="Letzter Sync" value={formatDateTime(device.lastSyncAt)} />
           <Info label="Firmware" mono value={
             <>

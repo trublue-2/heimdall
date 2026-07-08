@@ -241,6 +241,7 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   }
   if (state.batteryPct >= 0) s["battery"] = state.batteryPct; // <0 = unbekannt → weglassen (Server zeigt „—")
   s["charging"]   = state.charging;
+  s["full"]       = state.chargeFull; // Ladeschluss (TP4056 STDBY / grüne LED) — Dashboard-Anzeige
   s["boltPos"]    = "UNKNOWN"; // TODO: Endlagensensor
   s["fwVersion"]  = FW_VERSION;
   s["wakeReason"] = state.wakeReason;

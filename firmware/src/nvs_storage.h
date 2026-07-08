@@ -24,6 +24,7 @@ struct BoxState {
   char   wakeReason[32];
   int    batteryPct;   // Aktuell gemessen, vor WiFi-Init (ADC ungestört)
   bool   charging;     // true = USB/Netz dran (GPIO26, PIN_CHARGE_DETECT)
+  bool   chargeFull;   // true = Ladeschluss (TP4056 STDBY, grüne LED, GPIO13); nur mit charging. Transient (nicht persistiert)
   char   deviceName[64]; // Anzeigename vom Server (nur RAM, je Sync gesetzt)
 
   // Monotoner Failsafe-Zähler — clock-UNABHÄNGIG (überlebt Brownout/1970-Uhr via NVS).

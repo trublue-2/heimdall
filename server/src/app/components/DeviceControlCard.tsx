@@ -22,6 +22,7 @@ export interface DeviceControlCardProps {
   lastSyncAt: string | null;
   battery: number | null;
   charging: boolean | null;
+  chargeFull: boolean | null;
   fwVersion: string | null;
   wifiRssi: number | null;
   mqttLive?: boolean; // Box gerade MQTT-verbunden (Wachfenster) → "Live"; sonst "letzter Sync"
@@ -153,7 +154,9 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
               {props.wifiRssi != null && <RssiBars rssi={props.wifiRssi} />}
               <span className={`flex items-center gap-0.5 ${lowBatt ? "text-[var(--color-warn)] font-semibold" : ""}`}>
                 {props.battery != null ? `${props.battery}%` : "—"}
-                {props.charging && <Zap className="h-3 w-3 text-[var(--color-ok)]" />}
+                {props.charging && (props.chargeFull
+                  ? <span title="voll geladen (Ladeschluss)" className="text-[var(--color-ok)]">✅</span>
+                  : <Zap className="h-3 w-3 text-[var(--color-ok)]" />)}
               </span>
             </div>
           </div>
