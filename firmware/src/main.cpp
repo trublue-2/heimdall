@@ -599,6 +599,15 @@ static void goDeepSleep() {
   Mqtt::disconnect();
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
+  // Knopf-Loslass-Guard: schlafen wir MITTEN im Halten ein (Button-Hold-Sleep), ist GPIO14
+  // noch LOW → EXT0 (Wake-auf-LOW) würde SOFORT wieder wecken (LED aus, beim Loslassen gleich
+  // wach). Also warten, bis der Taster losgelassen ist. Pin ist hier noch INPUT_PULLUP (RTC-
+  // Config kommt erst danach), digitalRead ist gültig. WDT-Feed + Timeout gegen einen
+  // klemmenden/gebrückten Taster (dann schlafen wir trotzdem).
+  {
+    unsigned long t0 = millis();
+    while (digitalRead(PIN_BUTTON) == LOW && millis() - t0 < 5000) { Watchdog::feed(); delay(20); }
+  }
   // Button-Pin hat keinen externen Pull-up → im Deep-Sleep RTC-Pull-up aktivieren,
   // sonst floatet der Pin und EXT0 (Wake auf LOW) triggert spontan/unzuverlässig.
   rtc_gpio_pullup_en((gpio_num_t)PIN_BUTTON);
