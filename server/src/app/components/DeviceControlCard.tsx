@@ -116,24 +116,6 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
     setModalOpen(true);
   }
 
-  // Riegel-Retry (Fallback ohne Endlagensensor): Box soll offen sein, Riegel klemmt →
-  // erneut Richtung "offen" fahren. Instant im Wachfenster, sonst beim nächsten Sync.
-  async function doReopen(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/devices/${props.id}/reopen`, { method: "POST" });
-      if (!res.ok) throw new Error();
-      router.refresh();
-    } catch {
-      setError("Erneutes Öffnen fehlgeschlagen — bitte erneut versuchen.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   // Kachel wahlweise als Detail-Link (Default nein — Dashboard verlinkt NICHT auf die Detailseite)
   // oder als neutraler Container. Die inneren Buttons/preventDefault bleiben in beiden Fällen gleich.
   const cardShell = (children: React.ReactNode) =>
@@ -263,14 +245,8 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
                   <Lock className="h-4 w-4" />
                   Verschliessen
                 </button>
-                {/* Fallback ohne Endlagensensor: Riegel klemmt → erneut öffnen fahren. */}
-                <button
-                  onClick={doReopen}
-                  disabled={saving}
-                  className="w-full py-1 text-xs text-[var(--foreground-muted)] hover:text-[var(--foreground)] disabled:opacity-50 transition"
-                >
-                  Riegel klemmt? Erneut öffnen fahren
-                </button>
+                {/* Riegel-Notfall (Entklemmen/manuell) liegt jetzt versteckt auf der Box-Seite
+                    selbst (⚙ Funktionen → „Riegel — Notfall", nur bei offener Box). */}
               </>
             )}
           </div>

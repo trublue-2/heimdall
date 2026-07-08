@@ -6,7 +6,7 @@
 // Trägt die Sofort-Kommandos der Website; die autoritative Policy bleibt beim HTTPS-Sync.
 // TLS mit demselben Cert-Pinning wie der Sync (ROOT_CA_BUNDLE).
 namespace Mqtt {
-  enum class Command { NONE, OPEN, CLOSE, LOCK, SYNC, REOPEN, FORGET_WIFI };
+  enum class Command { NONE, OPEN, CLOSE, LOCK, SYNC, FORGET_WIFI };
 
   // Verbindet zum Broker. token = MQTT-Passwort (username/clientId = cfg.deviceId).
   // false, wenn deaktiviert, unkonfiguriert oder Connect fehlschlägt.

@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.2.23"
+#define FW_VERSION "0.2.24"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Ziel-Board: ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
@@ -15,6 +15,9 @@
 // 28BYJ-48 Half-Step: 4096 Steps/Umdrehung (~11,4 Steps/°). 1024 Steps = 90° Riegelweg.
 #define STEPPER_LOCK_STEPS  1024
 #define STEPPER_STEP_DELAY_US 3000 // µs — langsamer = mehr Drehmoment; mit Last ≥3000
+// Manuelles Jogging (Notfall/Entklemmen auf der Box-Seite): kleiner Schritt pro Klick.
+// Bewusst klein (~5,6°) — ohne Endlagensensor gegen den Anschlag zu fahren soll wehtun-los bleiben.
+#define STEPPER_JOG_STEPS   (STEPPER_LOCK_STEPS / 16)
 // Drehrichtung: Vorzeichen, das auf ZU fährt. Ziel-Mechanik ggü. LOLIN gespiegelt.
 #define STEPPER_DIR_LOCK (+1) // +1 = zu (Ziel-Board); LOLIN-Dev war -1
 
@@ -99,14 +102,3 @@
 #define MQTT_PORT            8883            // mqtts (TLS) über Traefik-TCP-Router
 #define MQTT_KEEPALIVE_S     30              // PINGREQ-Intervall (kurz → zügige LWT-Offline-Erkennung)
 #define MQTT_TOPIC_PREFIX    "heimdall/box/" // + <deviceId>/cmd (sub) bzw. /status (LWT)
-
-// ── Bench-Test: Credentials (auskommentiert lassen, nur lokal setzen) ──────
-// #define TEST_WIFI_SSID    "MeinWLAN"
-// #define TEST_WIFI_PASS    "Passwort"
-// #define TEST_SERVER_URL   "https://heimdall.trublue.ch"
-// #define TEST_DEVICE_TOKEN "XXXX-XXXX-XXXX-XXXX"
-
-// ── Stepper-Kalibrierung: State-Machine überspringen, nur Stepper fahren ───
-// Einkommentieren, flashen, Riegel beobachten, STEPPER_LOCK_STEPS anpassen.
-// #define STEPPER_TEST
-// #define GPIO_TEST

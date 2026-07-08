@@ -22,7 +22,6 @@ static Mqtt::Command parseCmd(const char* c) {
   if (!strcmp(c, "close"))  return Mqtt::Command::CLOSE;
   if (!strcmp(c, "lock"))   return Mqtt::Command::LOCK;
   if (!strcmp(c, "sync"))   return Mqtt::Command::SYNC;
-  if (!strcmp(c, "reopen")) return Mqtt::Command::REOPEN;
   if (!strcmp(c, "forget_wifi")) return Mqtt::Command::FORGET_WIFI;
   return Mqtt::Command::NONE;
 }

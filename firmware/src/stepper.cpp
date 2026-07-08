@@ -63,6 +63,15 @@ void Stepper::reopen() {
   LOGI("Bolt: reopen done (motor off)");
 }
 
+// Manueller Notfall-Nudge (Box-Seite): N Schritte in eine Richtung, dann Motor aus.
+// Klein gehalten (STEPPER_JOG_STEPS); ohne Endlagensensor liegt die Verantwortung beim
+// Bediener (er sieht den Riegel). Der Aufrufer (Box-Endpoint) gated auf „nur bei offen".
+void Stepper::jog(bool open, int steps) {
+  LOGI("Bolt: manual jog %s (%d steps)", open ? "open" : "close", steps);
+  driveSteps(open ? -(STEPPER_DIR_LOCK) : STEPPER_DIR_LOCK, steps);
+  powerOff();
+}
+
 void Stepper::powerOff() {
   for (uint8_t pin : PINS) {
     digitalWrite(pin, LOW);

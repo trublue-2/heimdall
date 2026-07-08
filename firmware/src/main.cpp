@@ -39,8 +39,6 @@ static bool            gChargeFull     = false; // GPIO13 LOW & USB dran → Lad
 // Öffnet dieser Wake ein aktives MQTT-Wachfenster? Button/Power-on = ja, Heartbeat
 // (rtc_timer) = nein (nur Sync, dann sofort weiterschlafen). USB überstimmt (immer Fenster).
 static bool            gWindowWake     = false;
-// Nächste OPENING-Fahrt als Riegel-Retry (Wiggle) statt normalem Öffnen — via reopen-Kommando.
-static bool            gReopen         = false;
 
 // Aufeinanderfolgende 401 (überlebt Deep-Sleep) → Selbstheilung in den Hotspot (S8).
 RTC_DATA_ATTR static uint32_t gAuthFails = 0;
@@ -338,6 +336,14 @@ static void handleStatus() {
     "<h3>Gerät</h3>"
     "<button onclick=reboot()>↻ Reboot</button>"
     "<button onclick=slp()>💤 Schlafen</button>"
+    "<h3>Riegel — Notfall</h3>"
+    "<div id=boltbox>"
+    "<button onclick=\"jog('open')\">◂ auf</button>"
+    "<button onclick=\"jog('close')\">zu ▸</button>"
+    "<button onclick=reopen()>⟳ erneut öffnen</button>"
+    "<p class=k style='font-size:.75rem;margin:.3rem 0 0'>Kleiner Schritt pro Klick. Nur bei offener Box.</p>"
+    "</div>"
+    "<p id=boltlock class=k style='font-size:.8rem;display:none'>🔒 Gesperrt — manuelles Fahren nur bei offener Box.</p>"
     "<div id=st>bereit</div>"
     "</div></details>"
 
@@ -365,6 +371,7 @@ static void handleStatus() {
     "$('nm').textContent='🔒 '+d.name;"
     "let s=$('stat');if(d.locked){s.className='s lock';s.innerHTML='GESCHLOSSEN'+(d.lockUntil?'<span class=u>bis '+esc(d.lockUntil)+'</span>':'');}"
     "else{s.className='s open';s.textContent='OFFEN';}"
+    "$('boltbox').style.display=d.locked?'none':'';$('boltlock').style.display=d.locked?'':'none';" // manuelles Fahren nur bei offen
     "$('net').innerHTML='<span class=k>WLAN</span> '+esc(d.ssid)+' ('+d.rssi+' dBm)<br><span class=k>IP</span> '+esc(d.ip)+'<br><span class=k>MAC</span> '+esc(d.mac);"
     "$('box').innerHTML='<span class=k>FW</span> '+esc(d.fw)+' · <span class=k>Akku</span> '+d.batt+'% ('+d.vbat+' V)<br>'+"
     "'<span class=k>Laden</span> '+(d.full?'✅voll':(d.charging?'⚡ja':'nein'))+' · <span class=k>USB</span> '+(d.usb?'ja':'nein')+'<br>'+"
@@ -372,6 +379,8 @@ static void handleStatus() {
     "'<span class=k>Boots</span> '+d.boots+' · <span class=k>unerw.</span> '+d.unexp+' · <span class=k>Reset</span> '+esc(d.reset);"
     "}catch(e){}}"
     "function S(t){$('st').textContent=t}"
+    "async function jog(d){S('Fahre…');try{S(await(await fetch('/dbg/jog?dir='+d)).text())}catch(e){S('Fehler — nicht erreichbar')}}"
+    "async function reopen(){if(!confirm('Entklemm-Zyklus fahren (kurz zurück, dann voll auf)?'))return;S('Fahre…');try{S(await(await fetch('/dbg/reopen')).text())}catch(e){S('Fehler — nicht erreichbar')}}"
     "async function ota(){S('OTA: prüfe & flashe…');try{S(await(await fetch('/dbg/ota')).text())}catch(e){S('Verbindung weg — vermutlich Reboot nach Flash ✓')}}"
     "async function revert(){if(!confirm('⚠️ Bootet die FW im anderen OTA-Slot und übergibt ihr die Kontrolle — Heimdalls Sperre & Failsafes gelten dann nicht mehr. Einbahn aus dieser Oberfläche. Fortfahren?'))return;S('Slot-Switch…');try{S(await(await fetch('/dbg/switch')).text())}catch(e){S('Verbindung weg — vermutlich Reboot ✓')}}"
     "async function reboot(){if(!confirm('Box neu starten?'))return;S('Reboot…');try{S(await(await fetch('/dbg/reboot')).text())}catch(e){S('Verbindung weg — Box rebootet ✓')}}"
@@ -635,6 +644,25 @@ static void handleDbgSleep() {
   goDeepSleep(); // kehrt nicht zurück
 }
 
+// Manueller Notfall-Riegel (Box-Seite): kleiner Schritt auf/zu bzw. Entklemm-Zyklus.
+// NUR bei offener Box — eine gesperrte Box lässt sich hier NICHT manuell öffnen (Safety-
+// Invariante: die Sperre ist unantastbar). Rein physischer Nudge, ändert die Logik nicht.
+static bool jogGuardOpen() {
+  if (gBox.locked) { gWeb.send(409, "text/plain", "Abgelehnt — nur bei offener Box"); return false; }
+  return true;
+}
+static void handleDbgJog() {
+  if (!jogGuardOpen()) return;
+  bool open = gWeb.arg("dir") == "open";
+  Stepper::jog(open, STEPPER_JOG_STEPS);
+  gWeb.send(200, "text/plain", open ? "Kleiner Schritt AUF gefahren" : "Kleiner Schritt ZU gefahren");
+}
+static void handleDbgReopen() {
+  if (!jogGuardOpen()) return;
+  Stepper::reopen();
+  gWeb.send(200, "text/plain", "Entklemm-Zyklus gefahren (zurück + voll auf)");
+}
+
 // Lokale Failsafes: monotoner Zähler tickt (delta-basiert, persistiert) + Öffnungsgründe prüfen.
 // Läuft in setup() UND periodisch im Wach-Zustand — sonst fröre der Offline-Timeout am Netz
 // ein (die Box schläft an USB nie, setup() liefe dann nie neu). true → Box muss öffnen.
@@ -710,6 +738,8 @@ void setup() {
   gWeb.on("/dbg/log",  handleDbgLog);
   gWeb.on("/dbg/reboot", handleDbgReboot);
   gWeb.on("/dbg/sleep",  handleDbgSleep);
+  gWeb.on("/dbg/jog",    handleDbgJog);    // manueller Notfall-Riegel (nur bei offen)
+  gWeb.on("/dbg/reopen", handleDbgReopen); // Entklemm-Zyklus (nur bei offen)
   gWeb.on("/net/list", handleNetList);
   gWeb.on("/net/pref", handleNetPref);
   gWeb.on("/net/add",  handleNetAdd);
@@ -873,8 +903,7 @@ void loop() {
       // „open" oder nach Failsafe-Öffnen) würde unlock() den Riegel weiter gegen den mechanischen
       // Anschlag treiben (open-loop, kein Endlagensensor) → Stall/Stromspitze/Motorschaden.
       // reopen bleibt bewusst ein Re-Fahren (User meldet „Riegel klemmt").
-      if (gReopen) { LOGI("Opening: reopen requested (bolt reported stuck)"); gReopen = false; Stepper::reopen(); }
-      else if (gBox.locked) { Stepper::unlock(); }
+      if (gBox.locked) { Stepper::unlock(); }
       else LOGI("Opening: already open — skipping motor (no end-stop)");
       gBox.locked = false;
       NVS::saveState(gBox);
@@ -981,9 +1010,6 @@ void loop() {
             case Mqtt::Command::OPEN:
               LOGI("Command applied: open (from server)");
               gState = State::OPENING; break;
-            case Mqtt::Command::REOPEN: // Riegel-Retry: OPENING mit Wiggle statt normalem Hub
-              LOGI("Command applied: reopen (from server)");
-              gReopen = true; gState = State::OPENING; break;
             case Mqtt::Command::CLOSE:
             case Mqtt::Command::LOCK:
               LOGI("Command applied: lock (from server)");
