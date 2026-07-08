@@ -117,13 +117,9 @@ export default auth((req) => {
   }
 
   if (isLoggedIn && !pathname.startsWith("/api")) {
-    const ip =
-      req.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() ??
-      req.headers.get("x-real-ip") ??
-      "unknown";
     const ts = new Date().toISOString().replace("T", " ").slice(0, 19);
     const authUser = req.auth?.user as { id?: string; name?: string } | undefined;
-    console.log(`[ACCESS] ${ts} | ${authUser?.name ?? "?"} | ${pathname} | ${ip}`);
+    console.log(`[ACCESS] ${ts} | ${authUser?.name ?? "?"} | ${pathname} | ${clientIp(req)}`);
   }
 
   return NextResponse.next();

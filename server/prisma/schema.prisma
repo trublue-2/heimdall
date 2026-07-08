@@ -14,7 +14,6 @@ model User {
   passwordHash String
   role         String      @default("viewer") // "admin" | "viewer"
   createdAt    DateTime    @default(now())
-  rateLimits   RateLimit[]
   devices      Device[]    @relation("DeviceAccess")
 }
 
@@ -148,17 +147,6 @@ model DeviceEvent {
   battery   Int?
   fwVersion String?
   createdAt DateTime @default(now())
-}
 
-model RateLimit {
-  key     String   @id
-  count   Int      @default(0)
-  resetAt DateTime
-  userId  String?
-  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-}
-
-model AppMeta {
-  key   String @id
-  value String
+  @@index([deviceId, timestamp])
 }
