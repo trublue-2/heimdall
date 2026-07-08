@@ -90,13 +90,6 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
           <p className="text-xs text-[var(--foreground-faint)]">Schalter wirken sofort — kein Speichern nötig.</p>
           <SettingToggle
             deviceId={device.id}
-            field="mqttEnabled"
-            checked={device.mqttEnabled}
-            title="MQTT-Push (Live-Steuerung)"
-            desc="Box hält im Wachfenster (Button/USB) eine MQTT-Verbindung → Öffnen/Verschliessen wirken sofort (< 2 s). Ohne: heartbeat-only (stündlich)."
-          />
-          <SettingToggle
-            deviceId={device.id}
             field="otaDisabled"
             checked={device.otaDisabled}
             title="OTA einfrieren"
