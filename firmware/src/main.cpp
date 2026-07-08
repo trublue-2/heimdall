@@ -534,6 +534,9 @@ static void handleDebugPage() {
     "<button class=go onclick=ota()>⬇ Neue FW flashen</button>"
     "<button onclick=revert()>⟲ Anderen OTA-Slot booten</button>"
     "<div id=st>bereit</div>"
+    "<h3>Gerät</h3>"
+    "<button onclick=reboot()>↻ Reboot</button>"
+    "<button onclick=slp()>💤 Schlafen</button>"
     "<h3>Serial (live)</h3>"
     "<p style='color:#8a8a8a;font-size:.78rem;margin:.2rem 0'>Live-Remote am Mac (auch OTA-Fortschritt): "
     "<code style='background:#000;padding:.1rem .3rem;border-radius:.3rem'>nc -ul 9999</code> "
@@ -549,6 +552,10 @@ static void handleDebugPage() {
     "async function revert(){if(!confirm('⚠️ Bootet die FW im anderen OTA-Slot und übergibt ihr die Kontrolle — Heimdalls Sperre & Failsafes gelten dann nicht mehr. Der andere Slot enthält (falls belegt) die vorige FW, nach der Übernahme die Werks-Firmware. Einbahn aus dieser Oberfläche. Fortfahren?'))return;S('Slot-Switch…');"
     "try{S(await(await fetch('/dbg/switch')).text())}"
     "catch(e){S('Verbindung weg — vermutlich Reboot in den anderen Slot ✓')}}"
+    "async function reboot(){if(!confirm('Box neu starten?'))return;S('Reboot…');"
+    "try{S(await(await fetch('/dbg/reboot')).text())}catch(e){S('Verbindung weg — Box rebootet ✓')}}"
+    "async function slp(){if(!confirm('Box in den Deep-Sleep legen? Danach nur per Taster/USB wieder erreichbar.'))return;S('Schlafen…');"
+    "try{S(await(await fetch('/dbg/sleep')).text())}catch(e){S('Verbindung weg — Box schläft ✓')}}"
     "async function refreshInfo(){try{let d=await(await fetch('/dbg/info')).json();"
     "document.getElementById('info').innerHTML="
     "'<span class=k>FW</span> <b>'+d.fw+'</b> · <span class=k>MAC</span> '+d.mac+'<br>'+"
@@ -617,6 +624,22 @@ static void goDeepSleep() {
   esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_BUTTON, LOW);
   esp_sleep_enable_timer_wakeup(timerS * 1000000ULL);
   esp_deep_sleep_start();
+}
+
+// Debug-Seite: harter Neustart. Antwort erst rausschicken, dann rebooten (Client-JS
+// fängt den Verbindungsabbruch ab). Zustand liegt in NVS → nach dem Boot normaler Ablauf.
+static void handleDbgReboot() {
+  gWeb.send(200, "text/plain", "Reboot…");
+  delay(200);
+  ESP.restart();
+}
+
+// Debug-Seite: sofort in den Deep-Sleep (statt aufs Fenster-Timeout zu warten). Nutzt den
+// regulären goDeepSleep() → Wake per Taster/USB oder Heartbeat-/Deadline-Timer, wie sonst.
+static void handleDbgSleep() {
+  gWeb.send(200, "text/plain", "Deep-Sleep…");
+  delay(200);
+  goDeepSleep(); // kehrt nicht zurück
 }
 
 // Lokale Failsafes: monotoner Zähler tickt (delta-basiert, persistiert) + Öffnungsgründe prüfen.
@@ -691,6 +714,8 @@ void setup() {
   gWeb.on("/dbg/switch", handleDbgSwitch); // Fallback: Boot-Zeiger auf den anderen OTA-Slot
   gWeb.on("/dbg/info", handleDbgInfo);
   gWeb.on("/dbg/log",  handleDbgLog);
+  gWeb.on("/dbg/reboot", handleDbgReboot);
+  gWeb.on("/dbg/sleep",  handleDbgSleep);
   gWeb.on("/wifi",     handleWifiPage);  // WLAN-Verwaltung (normale Site)
   gWeb.on("/net/list", handleNetList);
   gWeb.on("/net/pref", handleNetPref);

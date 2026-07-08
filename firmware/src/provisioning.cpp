@@ -14,6 +14,7 @@ namespace {
 WebServer server(80);
 DNSServer dns;
 bool      gProvisioned = false;
+bool      gCancel      = false; // „Setup verlassen" → Reboot in den Normalbetrieb (Creds unverändert)
 
 String apName() {
   uint8_t mac[6];
@@ -96,8 +97,34 @@ void handleRoot() {
     html += "<label>Server-URL</label><input name=url value=\"" + url + "\">"
             "<label>Geräte-Token</label><input name=token required value=\"" + htmlAttr(cur.deviceToken) + "\">";
   }
-  html += "<button type=submit>Speichern &amp; verbinden</button></form></body></html>";
+  html += "<button type=submit>Speichern &amp; verbinden</button></form>";
+  // „Setup verlassen" nur, wenn gültige Credentials vorliegen — sonst gäbe es keinen
+  // Normalbetrieb, in den man zurückkönnte (die Box liefe direkt wieder in den Hotspot).
+  if (haveCreds) {
+    html += "<form action=/cancel method=get style='margin-top:1rem'>"
+            "<button type=submit style='background:#2a3340;color:#e6e6e6'>Setup verlassen (Normalbetrieb)</button></form>";
+  }
+  html += "</body></html>";
   server.send(200, "text/html", html);
+}
+
+// „Abbrechen": zurück in den Normalbetrieb, ohne Credentials anzufassen. Nur mit gültigen
+// Creds sinnvoll (Button erscheint sonst nicht; hier zusätzlich hart abgesichert). Reboot
+// erledigt die run()-Schleife (Creds unverändert → Box verbindet sich wieder normal).
+void handleCancel() {
+  WifiCredentials cur = {};
+  if (!NVS::loadCredentials(cur)) {
+    server.send(400, "text/html",
+                String(PAGE_HEAD) + "<h2>Nicht möglich</h2><p class=m>Keine Credentials gespeichert — "
+                "ohne WLAN/Token gibt es keinen Normalbetrieb zum Zurückkehren. "
+                "<a style=color:#4ade80 href=/>Zurück</a></p></body></html>");
+    return;
+  }
+  server.send(200, "text/html",
+              String(PAGE_HEAD) + "<h2>Setup verlassen</h2>"
+              "<p class=m>Die Box startet neu und verbindet sich mit <b>" + htmlAttr(cur.ssid) +
+              "</b> (Normalbetrieb). Credentials bleiben unverändert.</p></body></html>");
+  gCancel = true;
 }
 
 void handleProvision() {
@@ -176,6 +203,7 @@ void Provisioning::run() {
   dns.start(53, "*", ip);                 // Captive-Portal: alles auf die Box
   server.on("/", handleRoot);
   server.on("/provision", handleProvision);
+  server.on("/cancel", handleCancel);     // „Setup verlassen" → Reboot in den Normalbetrieb
   server.onNotFound(handleRoot);          // jede URL → Setup-Seite
   server.begin();
 
@@ -195,7 +223,7 @@ void Provisioning::run() {
   pinMode(PIN_LED, OUTPUT);
   uint32_t lastBlink = 0;
   bool ledOn = false;
-  while (!gProvisioned) {
+  while (!gProvisioned && !gCancel) {
     Watchdog::feed(); // Hotspot wartet legitim minutenlang auf den Nutzer → WDT nicht ausloesen
     dns.processNextRequest();
     server.handleClient();
