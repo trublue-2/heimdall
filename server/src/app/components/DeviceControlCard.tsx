@@ -24,8 +24,8 @@ export interface DeviceControlCardProps {
   charging: boolean | null;
   fwVersion: string | null;
   wifiRssi: number | null;
-  isOnline: boolean;
-  mqttLive?: boolean; // Box gerade MQTT-verbunden (Wachfenster) → Kommandos wirken sofort
+  mqttLive?: boolean; // Box gerade MQTT-verbunden (Wachfenster) → "Live"; sonst "letzter Sync"
+  linkToDetail?: boolean; // Kachel auf die Detailseite verlinken (Default nein — Dashboard = nur öffnen/schliessen)
 }
 
 /** Verbleibende Zeit bis until, kompakt (z.B. "23 Min", "5 h 12 Min", "3 T 4 h"). */
@@ -54,16 +54,17 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
   // Soll-Zustand "zu": aktive Zeit ODER Simple-Lock (ohne Zeit).
   const wantClosed = wantsClosed(props.lockUntil) || props.simpleLock;
   const pending = wantClosed && !props.locked ? "closing" : !wantClosed && props.locked ? "opening" : "none";
+  const inTransit = pending !== "none"; // Soll≠Ist: Riegel dreht noch / wartet auf Box-Sync
   const locked = props.locked;
   // Vorzeitig = noch Restzeit auf der Uhr (nur Zeit-Locks; Simple-Lock ist nie "vorzeitig").
   const isEarly = !!props.lockUntil && new Date(props.lockUntil) > new Date();
   // Low-Batt-Vorwarnung: ab ≤20% (Auto-Open-Failsafe erst bei 15%). Am USB irrelevant.
   const lowBatt = props.battery != null && props.battery <= 20 && !props.charging;
 
-  // Zustands-Farbe: gesperrt = ROT (warn), offen = GRÜN (ok).
-  const stateText = locked ? "text-[var(--color-warn)]" : "text-[var(--color-ok)]";
-  const stateBg = locked ? "bg-[var(--color-warn-bg)]" : "bg-[var(--color-ok-bg)]";
-  const stateBorder = locked ? "border-[var(--color-warn-border)]" : "border-[var(--color-ok-border)]";
+  // Zustands-Farbe: in-transit (wartet auf Box) = AMBER; sonst gesperrt = ROT, offen = GRÜN.
+  const stateText = inTransit ? "text-[var(--color-sperrzeit-text)]" : locked ? "text-[var(--color-warn)]" : "text-[var(--color-ok)]";
+  const stateBg = inTransit ? "bg-[var(--color-sperrzeit-bg)]" : locked ? "bg-[var(--color-warn-bg)]" : "bg-[var(--color-ok-bg)]";
+  const stateBorder = inTransit ? "border-[var(--color-sperrzeit-border)]" : locked ? "border-[var(--color-warn-border)]" : "border-[var(--color-ok-border)]";
 
   // Öffnen: Server prüft hart; der Client wählt nur vorab den passenden Weg
   // (Passwort-Eingabe / Vorzeitig-Warnung). extra = { password } | { confirmEarly }.
@@ -123,21 +124,38 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
     }
   }
 
+  // Kachel wahlweise als Detail-Link (Default nein — Dashboard verlinkt NICHT auf die Detailseite)
+  // oder als neutraler Container. Die inneren Buttons/preventDefault bleiben in beiden Fällen gleich.
+  const cardShell = (children: React.ReactNode) =>
+    props.linkToDetail ? (
+      <Link href={`/dashboard/devices/${props.id}`} className="block group">
+        {children}
+      </Link>
+    ) : (
+      <div className="block group">{children}</div>
+    );
+
   return (
     <>
-      <Link href={`/dashboard/devices/${props.id}`} className="block group">
+      {cardShell(
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden group-hover:border-[var(--foreground-faint)] transition-colors">
           {/* Kopfzeile: Name + Telemetrie */}
           <div className="flex items-center justify-between gap-3 px-4 pt-3.5">
             <p className="font-semibold truncate">{props.name}</p>
             <div className="flex items-center gap-3 text-xs text-[var(--foreground-faint)] shrink-0">
-              <span className="flex items-center gap-1.5">
-                <OnlineDot online={props.isOnline} />
-                {props.isOnline ? "online" : formatDuration(props.lastSyncAt)}
-              </span>
-              {props.mqttLive && (
+              {/* Ein Indikator statt widersprüchlichem online+live: MQTT-verbunden → „Live",
+                  sonst der letzte Sync-Zeitpunkt. */}
+              {props.mqttLive ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-ok-bg)] border border-[var(--color-ok-border)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-ok)]">
-                  <Zap className="h-2.5 w-2.5" /> live
+                  <OnlineDot online /> Live
+                </span>
+              ) : (
+                <span
+                  className="flex items-center gap-1.5"
+                  title={props.lastSyncAt ? `letzter Sync: ${formatDateTime(props.lastSyncAt)}` : undefined}
+                >
+                  <OnlineDot online={false} />
+                  {formatDuration(props.lastSyncAt)}
                 </span>
               )}
               {props.wifiRssi != null && <RssiBars rssi={props.wifiRssi} />}
@@ -151,32 +169,39 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
           {/* Großer Zustandsblock */}
           <div className={`mx-4 my-3 rounded-2xl border ${stateBg} ${stateBorder} px-5 py-6 text-center`}>
             <div className={`mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl ${stateText} bg-[var(--surface)]`}>
-              {locked ? <Lock className="h-7 w-7" /> : <Unlock className="h-7 w-7" />}
+              {inTransit ? <Loader2 className="h-7 w-7 animate-spin" /> : locked ? <Lock className="h-7 w-7" /> : <Unlock className="h-7 w-7" />}
             </div>
             <div className={`text-3xl font-extrabold tracking-tight ${stateText}`}>
-              {locked ? "GESCHLOSSEN" : "OFFEN"}
+              {pending === "closing" ? "WIRD GESCHLOSSEN" : pending === "opening" ? "WIRD GEÖFFNET" : locked ? "GESCHLOSSEN" : "OFFEN"}
             </div>
-            {locked && props.lockUntil && (
+
+            {/* Ziel-Zeit, sobald eine Sperre gewünscht ist (auch während sie erst greift). */}
+            {wantClosed && props.lockUntil && (
               <>
                 <div className={`mt-1.5 text-lg font-semibold ${stateText}`}>noch {timeLeft(props.lockUntil)}</div>
                 <div className="text-xs text-[var(--foreground-muted)]">bis {formatDateTime(props.lockUntil)}</div>
               </>
             )}
-            {locked && !props.lockUntil && props.simpleLock && (
+            {wantClosed && !props.lockUntil && props.simpleLock && (
               <div className="mt-1.5 text-sm text-[var(--foreground-muted)]">ohne Zeitlimit</div>
             )}
-            {locked && props.hasOpenPassword && (
+            {wantClosed && props.hasOpenPassword && (
               <div className="mt-1 inline-flex items-center gap-1 text-xs text-[var(--foreground-muted)]">
                 <Lock className="h-3 w-3" /> Passwort zum Öffnen
               </div>
             )}
 
-            {pending !== "none" && (
-              <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[var(--color-sperrzeit-bg)] border border-[var(--color-sperrzeit-border)] px-3 py-1 text-xs text-[var(--color-sperrzeit-text)]">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                wird {pending === "closing" ? "geschlossen" : "geöffnet"} · Box drücken
-              </div>
-            )}
+            {/* Klarer Unterschied: physisch bestätigt vs. wartet auf den Box-Sync. */}
+            <div className="mt-3 text-xs">
+              {inTransit ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--surface)] border border-[var(--color-sperrzeit-border)] px-3 py-1 text-[var(--color-sperrzeit-text)]">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  wartet auf Box-Sync · Box drücken zum Übernehmen
+                </span>
+              ) : (
+                <span className="text-[var(--foreground-muted)]">{locked ? "Riegel zu (bestätigt)" : "Riegel offen"}</span>
+              )}
+            </div>
           </div>
 
           {/* Low-Batt-Vorwarnung */}
@@ -227,7 +252,7 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
             )}
           </div>
         </div>
-      </Link>
+      )}
 
       {modalOpen && (
         <LockModal deviceId={props.id} deviceName={props.name} onClose={() => setModalOpen(false)} />

@@ -4,7 +4,7 @@ import { DeviceControlCard } from "@/app/components/DeviceControlCard";
 import { LiveRefresh } from "@/app/components/LiveRefresh";
 import { Lock } from "lucide-react";
 import { Card } from "@/app/components/Card";
-import { isOnline } from "@/lib/utils";
+import { deviceOnline } from "@/lib/mqttBridge";
 import { deviceLockView } from "@/lib/device-auth";
 import Link from "next/link";
 
@@ -60,7 +60,7 @@ export default async function DashboardPage() {
               charging={device.charging ?? null}
               fwVersion={device.fwVersion}
               wifiRssi={device.wifiRssi ?? null}
-              isOnline={isOnline(device.lastSyncAt)}
+              mqttLive={deviceOnline(device.id)}
             />
             );
           })}

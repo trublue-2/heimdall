@@ -16,7 +16,7 @@ import { LiveRefresh } from "@/app/components/LiveRefresh";
 import { deviceLockView } from "@/lib/device-auth";
 import { getTargetVersion } from "@/lib/firmware";
 import { deviceOnline } from "@/lib/mqttBridge";
-import { formatDateTime, isOnline } from "@/lib/utils";
+import { formatDateTime } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +47,6 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
     ? await prisma.trackerInstance.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } })
     : [];
 
-  const online = isOnline(device.lastSyncAt);
   const mqttLive = deviceOnline(device.id); // MQTT-Präsenz (Wachfenster) für die Live-Anzeige
   const lockView = deviceLockView(device.policy, new Date());
 
@@ -80,7 +79,6 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
         charging={device.charging ?? null}
         fwVersion={device.fwVersion}
         wifiRssi={device.wifiRssi ?? null}
-        isOnline={online}
         mqttLive={mqttLive}
       />
 

@@ -18,7 +18,6 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
   const [preferred, setPreferred] = useState<string | null>(null);
   const [primaryLastUsedAt, setPrimaryLastUsedAt] = useState<string | null>(null);
   const [reportedSsids, setReportedSsids] = useState<string[]>([]); // von der Box gemeldet (NVS)
-  const [reportedPrimary, setReportedPrimary] = useState<string | null>(null);
   const [ssid, setSsid] = useState("");
   const [pass, setPass] = useState("");
   const [adding, setAdding] = useState(false); // Felder erst nach Klick zeigen
@@ -33,7 +32,6 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
       setPreferred(d.preferredSsid);
       setPrimaryLastUsedAt(d.primaryLastUsedAt);
       setReportedSsids(d.knownSsids ?? []);
-      setReportedPrimary(d.primarySsid ?? null);
     }
   }
 
@@ -114,6 +112,10 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
     );
   }
 
+  // Abgleich: nur Netze zeigen, die die Box hat, der Server aber NICHT ohnehin oben listet
+  // (weder Primär noch ein Push-Netz) → keine Doppel-Einträge (z.B. „blackwater" zweimal).
+  const staleSsids = reportedSsids.filter((s) => s !== primarySsid && !nets.some((n) => n.ssid === s));
+
   return (
     <div className="space-y-3">
       {(primarySsid || nets.length > 0) && (
@@ -156,26 +158,23 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
         </ul>
       )}
 
-      {reportedSsids.length > 0 && (
+      {staleSsids.length > 0 && (
         <div className="space-y-1 pt-1">
-          <p className="text-xs font-semibold text-[var(--foreground-muted)]">Von der Box gemeldet (NVS)</p>
+          <p className="text-xs font-semibold text-[var(--foreground-muted)]">Nur auf der Box (nicht vom Server verwaltet)</p>
           <ul className="divide-y divide-[var(--border-subtle)]">
-            {reportedSsids.map((s) => (
+            {staleSsids.map((s) => (
               <li key={s} className="flex items-center justify-between gap-3 py-1.5">
                 <span className="flex items-center gap-2 min-w-0">
                   <Wifi className="h-4 w-4 text-[var(--foreground-faint)] shrink-0" />
                   <span className="truncate">{s}</span>
-                  {s === reportedPrimary && <Badge variant="lock">Primär</Badge>}
                 </span>
-                {s !== reportedPrimary && (
-                  <button
-                    onClick={() => forget(s)}
-                    className="flex items-center gap-1 text-xs text-[var(--color-warn)] hover:opacity-70 shrink-0"
-                    aria-label="Vergessen"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" /> vergessen
-                  </button>
-                )}
+                <button
+                  onClick={() => forget(s)}
+                  className="flex items-center gap-1 text-xs text-[var(--color-warn)] hover:opacity-70 shrink-0"
+                  aria-label="Vergessen"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> vergessen
+                </button>
               </li>
             ))}
           </ul>
