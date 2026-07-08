@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.2.12"
+#define FW_VERSION "0.2.13"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Ziel-Board: ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
@@ -31,6 +31,9 @@
 // (nur RESET), darum eigener GPIO. GPIO14: RTC-fähig (→ EXT0-Wake aus Deep-Sleep),
 // interner Pull-Up (HIGH idle, LOW bei Druck), KEIN Strapping-Pin. Taster: GPIO14 ↔ GND.
 #define PIN_BUTTON 14
+// Taster im Wach-Fenster: kurzer Tap = Sync; anhaltendes Halten ≥ BTN_SLEEP_HOLD_MS =
+// „erst syncen, dann sofort schlafen" (statt aufs 2-min-Fenster-Timeout zu warten).
+#define BTN_SLEEP_HOLD_MS 1500
 
 // ── Batterie ADC + Lade-Erkennung ──────────────────────────────────────────
 // Ziel-Board: Akkuspannung auf GPIO32, 1:2-Teiler (per ADC-Scan ermittelt: 2,06 V → 4,12 V).

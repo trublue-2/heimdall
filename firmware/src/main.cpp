@@ -45,11 +45,6 @@ static bool            gReopen         = false;
 RTC_DATA_ATTR static uint32_t gAuthFails = 0;
 static bool            gOtaPending     = false; // läuft eine OTA-Validierung? (S14)
 
-// Debug-Mode (server-aktiviert): pausiert NUR das Auto-OTA-Gate, damit eine Debug-/
-// Flash-Session nicht mitten im Test überschrieben wird. Hält die Box NICHT wach und
-// schaltet die /debug-Seite NICHT frei — die ist ohnehin erreichbar, solange die Box
-// wach ist (Wachfenster/USB), unabhängig von diesem Flag.
-static bool            gDebugMode      = false; // Server-Flag; steuert nur noch das Auto-OTA-Gate
 
 // ── Log-Ringpuffer für die Browser-Serial ───────────────────────────────────
 // Arduinos log_* landen via log_printf → ets_printf → putc1. Wir hängen uns per
@@ -416,7 +411,7 @@ static void handleWifiPage() {
 static void handleDbgOta() {
   if (gBox.locked) { gWeb.send(409, "text/plain", "Box ist ZU — OTA abgelehnt (Brick-Gefahr)"); return; }
   OtaInfo ota = {};
-  SyncResult res = ServerSync::run(gCreds, gBox, gPolicy, true, &ota, &gDebugMode);
+  SyncResult res = ServerSync::run(gCreds, gBox, gPolicy, true, &ota);
   if (res != SyncResult::OK)                { gWeb.send(502, "text/plain", "Sync fehlgeschlagen (code=" + String((int)res) + ")"); return; }
   if (!ota.version[0])                       { gWeb.send(200, "text/plain", "Kein Update angeboten (Server hat keine neue FW)"); return; }
   if (strcmp(ota.version, FW_VERSION) == 0)  { gWeb.send(200, "text/plain", "Bereits aktuell (" FW_VERSION ")"); return; }
@@ -709,7 +704,7 @@ void setup() {
   NVS::begin();
   Stepper::begin();
   gWeb.on("/", handleStatus); // Statusseite-Route einmalig registrieren
-  gWeb.on("/debug",    handleDebugPage); // erreichbar, sobald die Box wach ist — NICHT an debugMode gekoppelt
+  gWeb.on("/debug",    handleDebugPage); // erreichbar, sobald die Box wach ist (Wachfenster/USB)
   gWeb.on("/dbg/ota",  handleDbgOta);
   gWeb.on("/dbg/switch", handleDbgSwitch); // Fallback: Boot-Zeiger auf den anderen OTA-Slot
   gWeb.on("/dbg/info", handleDbgInfo);
@@ -864,7 +859,7 @@ void loop() {
       gBox.batteryPct = Failsafe::batteryPercent();   // Akku-% frisch (friert im Debug sonst ein)
       OtaInfo ota = {};
       // keepWifi=true: WiFi bleibt an für Statusseite + mögliches OTA (kein Re-Connect).
-      SyncResult res = ServerSync::run(gCreds, gBox, gPolicy, true, &ota, &gDebugMode);
+      SyncResult res = ServerSync::run(gCreds, gBox, gPolicy, true, &ota);
 
       if (res == SyncResult::OK) {
         gAuthFails = 0; // erfolgreicher Sync → 401-Zähler zurücksetzen
@@ -895,8 +890,8 @@ void loop() {
         // Tiefstand <40% blockiert (Flash bei echt leerem Akku könnte abbrechen).
         const int otaBatt = Failsafe::batteryPercent();
         if (ota.version[0] && strcmp(ota.version, FW_VERSION) != 0 &&
-            gState == State::IDLE_OPEN && !gDebugMode && // im Debug-Mode nie mitten im Test flashen
-            (otaBatt == BATT_UNKNOWN || otaBatt >= 40)) {
+            gState == State::IDLE_OPEN && // nur offen flashen (Brick-bei-ZU-Schutz)
+            (otaBatt == BATT_UNKNOWN || otaBatt >= 40)) { // Batterie-Gate: Server zeigt den Hold an
           log_w("OTA: Server bietet %s an (aktuell %s) → Update", ota.version, FW_VERSION);
           OTA::apply(ota.url, gCreds.deviceToken, ota.sig); // Erfolg → Reboot (kehrt nicht zurück)
           log_e("OTA fehlgeschlagen — weiter mit aktueller FW");
@@ -955,6 +950,15 @@ void loop() {
       if (digitalRead(PIN_BUTTON) == LOW) {
         if (btnLowSince == 0) btnLowSince = millis();
         if (!btnConsumed && millis() - btnLowSince > 40) { gBtnLatched = true; btnConsumed = true; }
+        // Anhaltendes Halten (≥ BTN_SLEEP_HOLD_MS) → sofort in den Deep-Sleep. Der kurze Tap
+        // oben hat den Sync schon gelatcht; hält man weiter, schläft die Box danach ein (statt
+        // aufs 2-min-Fenster-Timeout zu warten). btnLowSince überlebt den Zwischen-Sync (Pin
+        // bleibt LOW → kein Reset), die Schwelle zählt also ab dem ursprünglichen Druck.
+        if (millis() - btnLowSince >= BTN_SLEEP_HOLD_MS) {
+          log_i("Button ~%lums gehalten → Deep-Sleep", (unsigned long)(millis() - btnLowSince));
+          ledAck();
+          goDeepSleep(); // kehrt nicht zurück
+        }
       } else {
         btnLowSince = 0;
         btnConsumed = false;

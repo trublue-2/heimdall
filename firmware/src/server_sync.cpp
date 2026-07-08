@@ -196,7 +196,7 @@ static void syncNtp() {
 
 SyncResult ServerSync::run(const WifiCredentials& creds,
                            BoxState& state, BoxPolicy& policy, bool keepWifi,
-                           OtaInfo* ota, bool* debugMode) {
+                           OtaInfo* ota) {
   if (WiFi.status() != WL_CONNECTED &&
       !connectWifi(creds)) return SyncResult::NO_WIFI;
   syncNtp();
@@ -302,8 +302,6 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
     strlcpy(ota->sig,     resp["otaSig"]     | "", sizeof(ota->sig));
   }
 
-  // Debug-Mode-Direktive vom Server: pausiert lokal nur das Auto-OTA-Gate.
-  if (debugMode) *debugMode = resp["debugMode"] | false;
 
   // Zusatz-WLANs vom Server übernehmen (Passwort wird serverseitig danach genullt).
   JsonArray nets = resp["wifiNetworks"].as<JsonArray>();
