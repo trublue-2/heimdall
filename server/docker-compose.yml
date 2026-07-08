@@ -20,6 +20,16 @@ services:
       - "traefik.http.routers.heimdall.entrypoints=websecure"
       - "traefik.http.routers.heimdall.tls.certresolver=letsencrypt"
       - "traefik.http.services.heimdall.loadbalancer.server.port=3000"
+      # /api/mqtt/* ist das INTERNE go-auth-Backend (mosquitto → heimdall:3000, umgeht Traefik).
+      # Extern darf es niemand erreichen: höher-priorer Router + ipallowlist nur Loopback → 403.
+      # (Kompensiert das Entfernen der App-Rate-Limit für /api/mqtt in proxy.ts.)
+      - "traefik.http.routers.heimdall-mqtt-deny.rule=Host(`heimdall.trublue.ch`) && PathPrefix(`/api/mqtt`)"
+      - "traefik.http.routers.heimdall-mqtt-deny.entrypoints=websecure"
+      - "traefik.http.routers.heimdall-mqtt-deny.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.heimdall-mqtt-deny.priority=200"
+      - "traefik.http.routers.heimdall-mqtt-deny.service=heimdall"
+      - "traefik.http.routers.heimdall-mqtt-deny.middlewares=heimdall-mqtt-deny"
+      - "traefik.http.middlewares.heimdall-mqtt-deny.ipallowlist.sourcerange=127.0.0.1/32"
       # HTTP → HTTPS redirect
       - "traefik.http.routers.heimdall-http.rule=Host(`heimdall.trublue.ch`)"
       - "traefik.http.routers.heimdall-http.entrypoints=web"
