@@ -89,6 +89,9 @@ export async function POST(
   ]);
 
   notifyDeviceChange();
-  publishCommand(deviceId, "open"); // Sofort-Push, falls die Box im Wachfenster verbunden ist
+  // Physisch öffnen NUR, wenn die Box aktuell zu ist. Ist sie schon offen (z.B. nach einem
+  // Failsafe-Open — hier wird dann nur die Policy geleert), KEIN "open" senden: sonst fährt der
+  // Stepper (open-loop, kein Endlagensensor) weiter gegen den mechanischen Anschlag → Motorschaden.
+  if (device.locked) publishCommand(deviceId, "open"); // Sofort-Push, falls die Box im Wachfenster verbunden ist
   return NextResponse.json({ ok: true });
 }
