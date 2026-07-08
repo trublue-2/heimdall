@@ -97,6 +97,10 @@ static bool waitConnected(unsigned long timeoutMs) {
     digitalWrite(PIN_LED, ((millis() / 120) % 2) ? LED_ON : LED_OFF);
     delay(50);
   }
+  // WiFi verbunden → LED sofort dauerhaft AN. Sonst bliebe sie im letzten (zufälligen) Blink-
+  // Pegel hängen, während Sync-POST + MQTT laufen (~2-5 s), bis der erste LOCKED/IDLE_OPEN-Loop
+  // sie setzt → genau die beobachtete „blinken → schwarz → an"-Lücke.
+  digitalWrite(PIN_LED, LED_ON);
   return true;
 }
 

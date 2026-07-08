@@ -122,9 +122,22 @@ String collectSyncLogs(size_t maxBytes) {
   if (gSyncLogCursor < oldest) gSyncLogCursor = oldest; // überschriebene Bytes überspringen
   uint32_t avail = head - gSyncLogCursor;
   uint32_t cap = avail < maxBytes ? avail : (uint32_t)maxBytes;
+
+  // An der letzten '\n'-Grenze im Fenster kappen → nie eine Zeile mitten im String zerreißen
+  // (sonst landen z.B. „…8883 (he" und „imdall/box/…" als zwei DeviceLog-Zeilen). `end` = Zahl
+  // der Bytes bis inkl. des letzten '\n' im Fenster.
+  uint32_t end = 0;
+  for (uint32_t i = cap; i > 0; i--) {
+    if (gLog[(gSyncLogCursor + i - 1) % LOG_CAP] == '\n') { end = i; break; }
+  }
+  // Kein '\n' im Fenster: nur wenn das Fenster VOLL ist (Einzelzeile länger als Budget) auf die
+  // Byte-Kappe ausweichen (Fortschritt garantieren); sonst (nur eine noch unfertige Endzeile)
+  // nichts liefern — sie kommt komplett beim nächsten Aufruf.
+  if (end == 0 && cap == maxBytes) end = cap;
+
   String out;
-  out.reserve(cap + 1);
-  for (uint32_t i = 0; i < cap; i++) { out += gLog[gSyncLogCursor % LOG_CAP]; gSyncLogCursor++; }
+  out.reserve(end + 1);
+  for (uint32_t i = 0; i < end; i++) { out += gLog[gSyncLogCursor % LOG_CAP]; gSyncLogCursor++; }
   return out;
 }
 
@@ -132,12 +145,16 @@ String collectSyncLogs(size_t maxBytes) {
 // auch nicht während SYNCING/Boot/Actuation, wo der Loop nicht pollt.
 static volatile bool   gBtnLatched     = false;
 // LED SOFORT an (instant Feedback, auch während eines blockierenden Syncs) — direkter
-// Registerzugriff ist IRAM-sicher (digitalWrite wäre es nicht). PIN_LED<32, active-low
-// (LED_ON=LOW): out_w1tc zieht den Pin auf LOW = LED an. Die volle 3×-Blink-Quittung
-// (ledAck) + Restore folgt im Loop.
+// Registerzugriff ist IRAM-sicher (digitalWrite wäre es nicht). PIN_LED<32. Pegel folgt der
+// Board-Config (LED_ON): active-HIGH → out_w1ts (Pin HIGH), active-LOW → out_w1tc (Pin LOW).
+// Die volle 3×-Blink-Quittung (ledAck) + Restore folgt im Loop.
 static void IRAM_ATTR onButtonIsr() {
   gBtnLatched = true;
-  GPIO.out_w1tc = (1UL << PIN_LED);
+#if LED_ON == HIGH
+  GPIO.out_w1ts = (1UL << PIN_LED); // active-HIGH: Pin auf HIGH = LED an
+#else
+  GPIO.out_w1tc = (1UL << PIN_LED); // active-LOW: Pin auf LOW = LED an
+#endif
 }
 
 // ── Diagnose (über WLAN sichtbar, kein Serial nötig) ────────────────────────
