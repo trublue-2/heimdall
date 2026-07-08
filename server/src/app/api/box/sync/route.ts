@@ -16,6 +16,11 @@ const LEGITIMATE_OPEN_REASONS = [
   "keyholder",      // explicit keyholder command
 ];
 
+// Lokale Failsafes: die Box hat sich SELBST geöffnet (Sicherheit). Werden als FAILSAFE_OPEN
+// protokolliert und beenden die Heimdall-eigene Sperre (sonst will der Server weiter „zu"
+// während die Box per Failsafe offen ist → Oszillation/Widerspruch).
+const FAILSAFE_OPEN_REASONS = ["low_battery", "offline_timeout", "hard_deadline"];
+
 const syncBodySchema = z.object({
   state: z.object({
     locked: z.boolean(),
@@ -103,10 +108,13 @@ export async function POST(req: NextRequest) {
       // (rtc_timer) kein „bekannter" Öffnungsgrund ist. KEIN Tamper.
       eventType = "UNLOCKED";
     } else {
-      // Box hat selbst geöffnet (Button/Failsafe/Tamper). Exact-Match: Unbekanntes
-      // wakeReason → UNAUTHORIZED_OPEN (Safety: im Zweifel Tamper).
+      // Box hat selbst geöffnet (Button/Failsafe/Tamper). Lokale Failsafes klar als solche
+      // protokollieren (FAILSAFE_OPEN statt schlicht „Geöffnet"); bekannte Öffnungsgründe →
+      // UNLOCKED; unbekanntes wakeReason → UNAUTHORIZED_OPEN (Safety: im Zweifel Tamper).
       const reason = state.wakeReason ?? "";
-      eventType = LEGITIMATE_OPEN_REASONS.includes(reason) ? "UNLOCKED" : "UNAUTHORIZED_OPEN";
+      eventType = FAILSAFE_OPEN_REASONS.includes(reason)
+        ? "FAILSAFE_OPEN"
+        : LEGITIMATE_OPEN_REASONS.includes(reason) ? "UNLOCKED" : "UNAUTHORIZED_OPEN";
     }
   }
   // Marker ist einmalig — bei jedem Lock-Wechsel verbrauchen/verwerfen.
@@ -252,7 +260,7 @@ export async function POST(req: NextRequest) {
   // entscheidet der Tracker/Keyholder).
   if (
     prevLocked && !state.locked &&
-    (state.wakeReason === "low_battery" || state.wakeReason === "offline_timeout") &&
+    FAILSAFE_OPEN_REASONS.includes(state.wakeReason ?? "") &&
     policy && (policy.lockUntil || policy.simpleLock)
   ) {
     policy = await prisma.lockPolicy.update({
