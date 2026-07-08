@@ -6,7 +6,7 @@ import { Modal } from "./Modal";
 import { Button } from "./Button";
 import { Input } from "./Input";
 import { FormError } from "./FormError";
-import { toDatetimeLocalValue } from "@/lib/utils";
+import { toDatetimeLocalValue, formatDateTime } from "@/lib/utils";
 
 /** datetime-local-Wert aus Offset in Stunden ab jetzt (lokale Zeit). */
 function inHours(h: number): string {
@@ -50,9 +50,25 @@ export function LockModal({
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false); // Zwischenschritt bei timed-Sperren
 
   const minMinutes = Number(minH) * 60 + Number(minM);
   const maxMinutes = Number(maxH) * 60 + Number(maxM);
+
+  // Menschlich lesbare Zusammenfassung fürs Bestätigen (Endzeit/Dauer sichtbar → keine
+  // versehentlichen 24-h-Sperren mehr).
+  function summary(): string {
+    if (mode === "fixed") {
+      const end = new Date(value);
+      const mins = Math.max(0, Math.round((end.getTime() - Date.now()) / 60000));
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      const dur = h > 0 ? `${h} h${m > 0 ? ` ${m} min` : ""}` : `${m} min`;
+      return `Box bis ${formatDateTime(end)} verschliessen — Dauer ~${dur} ab jetzt.`;
+    }
+    const fmt = (hh: string, mm: string) => `${Number(hh)} h${Number(mm) > 0 ? ` ${Number(mm)} min` : ""}`;
+    return `Box zufällig zwischen ${fmt(minH, minM)} und ${fmt(maxH, maxM)} verschliessen (Server würfelt die Dauer).`;
+  }
 
   function body() {
     const pw = password.trim() || undefined;
@@ -61,12 +77,19 @@ export function LockModal({
     return { mode: "fixed", until: new Date(value).toISOString(), password: pw };
   }
 
-  async function submit() {
+  // Validieren, dann bei timed-Sperren erst bestätigen lassen (ohne Zeit = harmlos → direkt).
+  function handleSubmit() {
     if (mode === "fixed" && !value) return;
     if (mode === "random" && (minMinutes < 1 || maxMinutes < minMinutes)) {
       setError("Min/Max ungültig (Min ≥ 1 Min, Max ≥ Min).");
       return;
     }
+    setError(null);
+    if (mode === "simple") { doLock(); return; }
+    setConfirming(true);
+  }
+
+  async function doLock() {
     setSaving(true);
     setError(null);
     try {
@@ -82,6 +105,30 @@ export function LockModal({
       setError(e instanceof Error ? e.message : String(e));
       setSaving(false);
     }
+  }
+
+  // Bestätigungs-Zwischenschritt bei timed-Sperren: Endzeit/Dauer nochmal zeigen.
+  if (confirming) {
+    return (
+      <Modal title={`${deviceName} verschliessen`} onClose={onClose}>
+        <div className="rounded-xl border border-[var(--color-warn)] bg-[var(--surface-raised)] p-3 text-sm space-y-1">
+          <p className="font-medium text-[var(--color-warn)]">Bitte bestätigen</p>
+          <p>{summary()}</p>
+          {password.trim() && (
+            <p className="text-xs text-[var(--foreground-faint)]">Öffnen nur mit dem gesetzten Passwort.</p>
+          )}
+        </div>
+        <FormError message={error} />
+        <div className="flex gap-2 justify-end">
+          <Button variant="secondary" onClick={() => setConfirming(false)} disabled={saving}>
+            Zurück
+          </Button>
+          <Button onClick={doLock} loading={saving}>
+            Ja, verschliessen
+          </Button>
+        </div>
+      </Modal>
+    );
   }
 
   return (
@@ -175,8 +222,8 @@ export function LockModal({
         <Button variant="secondary" onClick={onClose} disabled={saving}>
           Abbrechen
         </Button>
-        <Button onClick={submit} loading={saving}>
-          Verschliessen
+        <Button onClick={handleSubmit} loading={saving}>
+          {mode === "simple" ? "Verschliessen" : "Weiter"}
         </Button>
       </div>
     </Modal>
