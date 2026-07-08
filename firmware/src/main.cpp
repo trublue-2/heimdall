@@ -957,9 +957,11 @@ void loop() {
         btnConsumed = false;
       }
 
-      // Per ISR gelatchter Druck — auch dann gesetzt, wenn er während eines
-      // anderen Zustands (SYNCING/Boot) kam. Flag konsumieren und syncen.
-      if (gBtnLatched) {
+      // Per ISR/Polling gelatchter Druck → als Sync behandeln, aber ERST wenn der Taster
+      // wieder losgelassen ist. Sonst nähme dieser Tap-Sync (blockiert ~3 s) das Halten→
+      // Deep-Sleep oben vorweg — man müsste durch den Sync hindurch halten. Ein Druck, der
+      // während SYNCING/Boot kam, ist beim Prüfen längst HIGH → wird normal als Sync behandelt.
+      if (gBtnLatched && digitalRead(PIN_BUTTON) != LOW) {
         gBtnLatched = false;
         ledAck();
         gLastActivityMs = millis();
