@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { extractBearerToken, boxLocked } from "@/lib/device-auth";
+import { extractBearerToken, boxLocked, effectiveLockUntil } from "@/lib/device-auth";
 import { publishCommand, deviceOnline } from "@/lib/mqttBridge";
 import { notifyDeviceChange } from "@/lib/events";
 import { syncTrackerIntent } from "@/lib/trackerClient";
@@ -45,15 +45,33 @@ export async function POST(req: NextRequest) {
     // (1) Config frisch ziehen → aktualisierte Policy zurück (z.B. Rückzug: trackerLockUntil → null).
     //     Bei Fehler die alte Policy behalten (konservativ: lieber NICHT öffnen als fälschlich).
     const policy = await syncTrackerIntent(device, instance, device.policy).catch(() => device.policy);
-    if (!body.command || !deviceOnline(device.id)) continue;
-    // (2) Kommando sofort an die LIVE Box. "lock" ist immer sicher. "open" NUR, wenn die frisch
-    //     gesyncte Policy KEINE Sperre mehr verlangt (weder Heimdall-eigen noch Tracker — boxLocked ist
-    //     die autoritative Prüfung) UND die Box physisch zu ist (Stepper-Schutz: open-loop, kein
-    //     Endlagensensor → nicht gegen den Anschlag fahren; siehe devices/[id]/open).
-    if (body.command === "lock") {
-      publishCommand(device.id, "lock");
-    } else if (device.locked && !boxLocked(policy, now)) {
-      publishCommand(device.id, "open");
+
+    if (body.command && deviceOnline(device.id)) {
+      // (2) Kommando sofort an die LIVE Box. "lock" ist immer sicher. "open" NUR, wenn die frisch
+      //     gesyncte Policy KEINE Sperre mehr verlangt (weder Heimdall-eigen noch Tracker — boxLocked
+      //     ist die autoritative Prüfung) UND die Box physisch zu ist (Stepper-Schutz: open-loop, kein
+      //     Endlagensensor → nicht gegen den Anschlag fahren; siehe devices/[id]/open).
+      if (body.command === "lock") {
+        publishCommand(device.id, "lock");
+      } else if (device.locked && !boxLocked(policy, now)) {
+        publishCommand(device.id, "open");
+      }
+    } else if (
+      !body.command && device.locked && policy &&
+      // KEINE Sperr-Absicht mehr aktiv — bewusst NICHT boxLocked() (das gibt während einer
+      // Reinigungspause false zurück, obwohl die Sperre lebt → würde die befristete Sperre fälschlich
+      // in einen unbefristeten simpleLock verwandeln und im Open-Route ein passwortloses Öffnen erlauben;
+      // vgl. den Guard in box/sync/route.ts). Präzise: kein own/tracker-simpleLock, keine effektive
+      // Timed-Sperre, keine aktive Reinigungspause.
+      !policy.simpleLock && !policy.trackerSimpleLock &&
+      effectiveLockUntil(policy, now) === null &&
+      !(policy.cleaningUntil && policy.cleaningUntil > now)
+    ) {
+      // (3) Reine Config-Änderung ohne Kommando (z.B. Sperrzeit-RÜCKZUG): keine Sperre mehr aktiv, die
+      //     Box aber physisch noch zu → in einen eigenen Simple-Lock überführen. Dann zeigt die Anzeige
+      //     "GESCHLOSSEN, ohne Zeitlimit (jederzeit öffenbar)" statt fälschlich "WIRD GEÖFFNET" (die Box
+      //     federt nie autonom auf; der Sub öffnet auf Knopfdruck). Gilt für live UND schlafende Box.
+      await prisma.lockPolicy.update({ where: { deviceId: device.id }, data: { simpleLock: true } });
     }
   }
   if (devices.length > 0) notifyDeviceChange();
