@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.2.25"
+#define FW_VERSION "0.2.26"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Ziel-Board: ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
@@ -45,12 +45,12 @@
 // Skalierung: V_batt = V_adc × BATT_DIVIDER. Am Multimeter kalibriert (2026-07-06):
 // 4,10 V real ÷ 1,990 V (GPIO32-Node) = 2,06. (Original-FW nutzte ~2,2625 + ADC-Kurve.)
 #define BATT_DIVIDER      2.06f
-// USB-/Lade-Erkennung: GPIO26, active-HIGH (HIGH = USB dran/lädt; per Pin-Scan ermittelt).
-// -1 = kein Sense-Pin (z.B. LOLIN → charging wird nie gemeldet).
+// Lade-Erkennung: GPIO26, active-HIGH (HIGH = Ladung LÄUFT). Fällt am Ladeschluss (STDBY)
+// weg — „am USB" ist daher charging ODER chargeFull (siehe readChargeState). -1 = kein Pin.
 #define PIN_CHARGE_DETECT 26
-// Lade-Status „voll/fertig" (TP4056 STDBY): GPIO13, open-drain → INPUT_PULLUP,
-// LOW = Ladung fertig/Akku voll (aus der Werks-Firmware). Nur zusammen mit charging
-// (GPIO26) aussagekräftig. Reine Anzeige, KEIN Safety-Pfad. -1 = kein Pin (z.B. LOLIN).
+// Ladeschluss „voll/fertig" (TP4056 STDBY, grüne LED): GPIO13, open-drain → INPUT_PULLUP,
+// LOW = fertig & am Kabel. UNABHÄNGIG von GPIO26 gelesen (bei voll ist charging bereits weg).
+// Reine Anzeige + „am USB"-Signal, KEIN Safety-Pfad. -1 = kein Pin (z.B. LOLIN).
 #define PIN_CHARGE_FULL   13
 #define BATT_LOW_PERCENT  20  // % Warnung (Dashboard-Badge, Server-seitig ausgewertet)
 #define BATT_CRITICAL_PCT  15 // % → Auto-Open Failsafe (Notöffnung mit Reserve fürs Drehmoment)

@@ -512,8 +512,10 @@ static void readChargeState() {
   gBox.charging = false;
 #endif
 #if PIN_CHARGE_FULL >= 0
-  pinMode(PIN_CHARGE_FULL, INPUT_PULLUP);     // STDBY open-drain: LOW = voll/fertig
-  gBox.chargeFull = gBox.charging && (digitalRead(PIN_CHARGE_FULL) == LOW);
+  pinMode(PIN_CHARGE_FULL, INPUT_PULLUP);     // STDBY open-drain: LOW = voll/fertig (grüne LED)
+  // UNABHÄNGIG von charging lesen: am Ladeschluss meldet GPIO26 kein "lädt" mehr, STDBY aber
+  // "fertig & noch am Kabel". Nur bei gezogenem USB ist STDBY hochohmig → Pull-up → HIGH → false.
+  gBox.chargeFull = (digitalRead(PIN_CHARGE_FULL) == LOW);
 #else
   gBox.chargeFull = false;
 #endif
@@ -972,10 +974,14 @@ void loop() {
         if (checkFailsafes()) { gState = State::OPENING; break; }
       }
 
-      readChargeState(); // aktualisiert gBox.charging (GPIO26)
+      readChargeState(); // aktualisiert gBox.charging (GPIO26) + gBox.chargeFull (GPIO13/STDBY)
+      // „Am USB" = Ladung läuft (GPIO26) ODER Ladeschluss/STDBY (GPIO13). Deckt beide TP4056-
+      // Signale ab, damit die Box am Kabel DURCHGEHEND wach/live bleibt — auch wenn „charging"
+      // bei vollem Akku wegfällt. Nur bei gezogenem USB sind beide false.
+      const bool onUsb = gBox.charging || gBox.chargeFull;
       // Aktives Fenster = Button/Power-on-Wake ODER am USB. Ein reiner Heartbeat-Wake
       // (rtc_timer) auf Akku öffnet KEIN Fenster → nur Sync (schon gelaufen), dann Sleep.
-      bool activeWindow = gBox.charging || gWindowWake;
+      bool activeWindow = onUsb || gWindowWake;
 
       if (activeWindow) {
         // MQTT im Fenster verbinden (throttled) + bedienen. mq.enabled=false → kein MQTT
@@ -1032,8 +1038,8 @@ void loop() {
 
       // Sleep-/Resync-Logik nach Kontext.
       static unsigned long gLastAwakeSync = 0;
-      if (gBox.charging) {
-        // Am USB: wach + MQTT verbunden bleiben, periodisch resyncen (Policy/OTA/IP/Akku frisch).
+      if (onUsb) {
+        // Am USB (Ladung ODER Ladeschluss): wach + MQTT verbunden bleiben, periodisch resyncen.
         if (gLastAwakeSync == 0) gLastAwakeSync = millis();
         if (millis() - gLastAwakeSync > DEBUG_RESYNC_MS) {
           gLastAwakeSync = millis();
