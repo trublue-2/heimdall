@@ -41,7 +41,7 @@ export function LockModal({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("fixed");
+  const [mode, setMode] = useState<Mode>("simple");
   const [value, setValue] = useState(inHours(24));
   const [minH, setMinH] = useState("1");
   const [minM, setMinM] = useState("0");
