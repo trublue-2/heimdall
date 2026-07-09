@@ -84,7 +84,7 @@ model TrackerInstance {
   id        String   @id @default(cuid())
   name      String   // frei wählbarer Anzeigename (z.B. "trublue" / Paar-Name)
   baseUrl   String   // z.B. https://chastitytracker.ch
-  apiKey    String   // Shared-Secret dieser Instanz
+  apiKey    String   @unique // Shared-Secret dieser Instanz (unique → Reverse-Auth des Tracker-Instant-Push)
   createdAt DateTime @default(now())
   devices   Device[]
 }

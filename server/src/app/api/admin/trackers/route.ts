@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/authGuards";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 // Tracker-Instanzen auflisten (ohne apiKey — Secret nie an den Client).
 export async function GET() {
@@ -28,9 +29,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "baseUrl muss mit http(s):// beginnen" }, { status: 400 });
   }
 
-  const inst = await prisma.trackerInstance.create({
-    // Trailing-Slash beim Schreiben entfernen → der Client baut URLs ohne Helper.
-    data: { name: name.trim(), baseUrl: baseUrl.trim().replace(/\/$/, ""), apiKey: apiKey.trim() },
-  });
-  return NextResponse.json({ id: inst.id, name: inst.name, baseUrl: inst.baseUrl, deviceCount: 0 });
+  try {
+    const inst = await prisma.trackerInstance.create({
+      // Trailing-Slash beim Schreiben entfernen → der Client baut URLs ohne Helper.
+      data: { name: name.trim(), baseUrl: baseUrl.trim().replace(/\/$/, ""), apiKey: apiKey.trim() },
+    });
+    return NextResponse.json({ id: inst.id, name: inst.name, baseUrl: inst.baseUrl, deviceCount: 0 });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return NextResponse.json({ error: "apiKey bereits vergeben" }, { status: 409 });
+    }
+    throw e;
+  }
 }

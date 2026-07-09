@@ -39,6 +39,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
       return NextResponse.json({ error: "Instanz nicht gefunden" }, { status: 404 });
     }
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return NextResponse.json({ error: "apiKey bereits vergeben" }, { status: 409 });
+    }
     throw e;
   }
 }

@@ -80,6 +80,7 @@ export default auth((req) => {
     pathname === "/login" ||
     pathname === "/api/version" ||
     pathname.startsWith("/api/box/") ||
+    pathname.startsWith("/api/tracker/") || // Instant-Push vom Tracker, eigene Bearer-Prüfung (TrackerInstance.apiKey)
     pathname.startsWith("/api/mqtt/"); // go-auth-Backend, eigene Credential-Prüfung
 
   const isAdminRoute = pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
