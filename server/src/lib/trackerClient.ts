@@ -22,8 +22,11 @@ async function withTimeout(url: string, init: RequestInit): Promise<Response> {
   }
 }
 
+/** Die Absicht des Trackers, mehr nicht. Kein Reinigungs-Begriff: ob eine Öffnung erlaubt ist,
+ *  entscheidet der Tracker und schickt daraufhin ein `open`. Heimdall darf das nicht nachrechnen —
+ *  zwei Regelwerke über dieselbe Frage laufen auseinander. */
 export type TrackerConfig = {
-  sperrzeit: { endetAt: string | null; indefinite: boolean; reinigungErlaubt: boolean } | null;
+  sperrzeit: { endetAt: string | null; indefinite: boolean } | null;
 };
 
 /** Absicht ziehen + in die Policy falten: aktive Keyholder-Sperrzeit → trackerLockUntil /
