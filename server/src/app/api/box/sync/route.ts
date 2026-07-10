@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { authenticateDevice, extractBearerToken, effectiveLockUntil, boxLocked, deviceLockView } from "@/lib/device-auth";
+import { authenticateDevice, extractBearerToken, boxLocked, deviceLockView } from "@/lib/device-auth";
 import { applyTrackerCommand, isTrackerCommand } from "@/lib/boxCommand";
 import { prisma } from "@/lib/prisma";
 import { notifyDeviceChange } from "@/lib/events";
@@ -259,7 +259,11 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const lockUntil = effectiveLockUntil(policy, now);
+  // Dieselbe Soll-Sicht wie Karte und Tracker-Push: `lockUntil` nur, wenn die Box auch zu sein soll.
+  // Sonst schickten wir `locked:false` mit einer Deadline in der Zukunft — und die Firmware leitet
+  // `serverLocked` bei fehlendem `locked`-Feld aus genau dieser Deadline ab (Altserver-Fallback,
+  // server_sync.cpp). Ein widerspruchsfreies Paar lässt diesen Pfad gar nicht erst greifen.
+  const { lockUntil } = deviceLockView(policy, now);
 
   if (eventType) {
     console.log(`${ts()} [box/sync] Device "${device.name}" → ${eventType} (reason: ${state.wakeReason ?? "—"})`);

@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { DeviceManager } from "@/app/components/DeviceManager";
-import { effectiveLockUntil } from "@/lib/device-auth";
+import { boxLocked } from "@/lib/device-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +28,9 @@ export default async function GeraetePage() {
           id: d.id,
           name: d.name,
           assignedUserIds: d.users.map((u) => u.id),
-          // Verschluss = Server/Token + Zuweisung eingefroren (siehe isDeviceLocked).
-          locked: d.locked || effectiveLockUntil(d.policy, now) !== null,
+          // Verschluss = Server/Token + Zuweisung eingefroren. Muss isDeviceLocked() spiegeln —
+          // `effectiveLockUntil` allein übersah den Simple-Lock (zu, aber ohne Uhr).
+          locked: d.locked || boxLocked(d.policy, now),
         }))}
       />
     </div>

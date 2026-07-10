@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateDevice, extractBearerToken, effectiveLockUntil, boxLocked } from "@/lib/device-auth";
+import { authenticateDevice, extractBearerToken, boxLocked, deviceLockView } from "@/lib/device-auth";
 import { prisma } from "@/lib/prisma";
 
 function ts() { return new Date().toISOString(); }
@@ -26,7 +26,9 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const lockUntil = effectiveLockUntil(device.policy, now);
+  // Dieselbe Soll-Sicht wie box/sync: eine Deadline nur, wenn die Box auch zu sein soll — sonst
+  // widerspräche sie dem `locked: false` daneben (siehe deviceLockView).
+  const { lockUntil } = deviceLockView(device.policy, now);
   console.log(`${ts()} [box/register] Device "${device.name}" registered`);
 
   return NextResponse.json({

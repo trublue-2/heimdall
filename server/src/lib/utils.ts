@@ -18,26 +18,11 @@ export function formatDateTime(date: Date | string | null | undefined): string {
   });
 }
 
-/** Soll-Zustand: ist gemäss Policy aktuell "geschlossen" gewünscht? */
+/** Läuft die Uhr des Soll-Zustands noch? NUR zusammen mit `simpleLock` aussagekräftig — eine Box
+ *  ohne Uhr kann trotzdem zu sein sollen. Beide Felder kommen widerspruchsfrei aus `deviceLockView()`;
+ *  das Soll selbst entscheidet `boxLocked()`, nicht diese Funktion. */
 export function wantsClosed(lockUntil: Date | string | null, now: Date = new Date()): boolean {
   return !!lockUntil && new Date(lockUntil) > now;
-}
-
-/**
- * Soll/Ist-Abgleich: Soll = lockUntil (Keyholder-Wunsch), Ist = locked (gemeldet).
- * "closing": gewünscht zu, aber noch offen. "opening": gewünscht offen, aber noch zu.
- * Bis die Box synct, hängt die Änderung "ausstehend" fest.
- */
-export type PendingState = "none" | "closing" | "opening";
-export function pendingState(
-  lockUntil: Date | string | null,
-  locked: boolean,
-  now: Date = new Date()
-): PendingState {
-  const closed = wantsClosed(lockUntil, now);
-  if (closed && !locked) return "closing";
-  if (!closed && locked) return "opening";
-  return "none";
 }
 
 /** Box gilt als online, wenn der letzte Sync < 15 min zurückliegt. */

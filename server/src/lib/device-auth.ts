@@ -140,17 +140,28 @@ export function effectiveLockUntil(
   return until;
 }
 
-/** Anzeige-Sicht für die Geräte-Karte: die EFFEKTIVE Sperre (eigene + aus dem Tracker gezogene
- *  Sperrzeit, die spätere gewinnt) statt nur der eigenen lockUntil — damit „geschlossen bis"
- *  die real gültige Zeit zeigt, auch wenn der Tracker sie verändert hat. keyholderLocked = eine
- *  Tracker-Sperrzeit hält die Box, die der Sub lokal nicht öffnen kann (nur Keyholderin/Ablauf). */
+/** Anzeige-Sicht (Geräte-Karte, Status-Push an den Tracker). Das SOLL kommt aus `boxLocked()` —
+ *  der einen Autorität, der auch die Box gehorcht. Die Rohfelder von Hand nachzuzählen (`lockUntil ||
+ *  simpleLock`) hiesse, dieselbe Frage ein zweites Mal zu beantworten: die Karte zeigte während einer
+ *  vom Tracker gewährten Öffnung („holdOpen") weiter „WIRD GESCHLOSSEN, wartet auf Box-Sync", obwohl
+ *  die Box offen bleiben soll und der Box-Sync nichts zu tun hat.
+ *
+ *  `lockUntil` ist die EFFEKTIVE Sperre (eigene + aus dem Tracker gezogene, die spätere gewinnt) —
+ *  aber nur, wenn die Box überhaupt zu sein soll. `simpleLock` = zu, ohne Uhr. `keyholderLocked` =
+ *  eine Tracker-Sperrzeit LÄUFT (auch während einer Reinigungspause); sie sagt, wer wieder schliesst,
+ *  nicht ob gerade zu ist. */
 export function deviceLockView(
   policy: LockPolicy | null,
   now: Date
 ): { lockUntil: Date | null; simpleLock: boolean; keyholderLocked: boolean } {
+  const wantClosed = boxLocked(policy, now);
+  const until = wantClosed ? effectiveLockUntil(policy, now) : null;
+  // INVARIANTE: `wantsClosed(lockUntil) || simpleLock` ist wieder exakt `boxLocked()`. Genau darauf
+  // baut DeviceControlCard. Wer die Felder hier lockert (etwa `lockUntil` auch bei offener Box
+  // mitgeben, „nur zur Anzeige"), bricht die Karte still — das war dieser Bug.
   return {
-    lockUntil: effectiveLockUntil(policy, now),
-    simpleLock: !!policy?.simpleLock || !!policy?.trackerSimpleLock,
+    lockUntil: until,
+    simpleLock: wantClosed && until === null,
     keyholderLocked: trackerIntentActive(policy, now),
   };
 }

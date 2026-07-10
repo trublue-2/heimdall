@@ -42,6 +42,12 @@ export async function POST(req: NextRequest) {
     include: { policy: true },
   });
 
+  if (devices.length === 0) {
+    // Der Aufruf war erfolgreich und hat trotzdem nichts getan: kein Gerät ist auf diesen
+    // Tracker-User gemappt (oder trackerSync ist aus). Sonst bliebe das folgenlos still.
+    console.warn(`[tracker/notify] keine gemappte Box für den angefragten Tracker-User (${instance.baseUrl})`);
+  }
+
   const now = new Date();
   for (const device of devices) {
     // (1) Config frisch ziehen → aktualisierte Policy zurück (z.B. Rückzug: trackerLockUntil → null).
@@ -64,9 +70,15 @@ export async function POST(req: NextRequest) {
       // open-loop, kein Endlagensensor → nicht gegen den Anschlag fahren).
       if (body.command === "lock") {
         publishCommand(device.id, "lock");
+        console.log(`[tracker/notify] "${device.name}" → lock (MQTT)`);
       } else if (device.locked && !boxLocked(policy, now)) {
         publishCommand(device.id, "open");
+        console.log(`[tracker/notify] "${device.name}" → open (MQTT)`);
       }
+    } else if (body.command) {
+      // Kommando da, Box aber nicht im Wachfenster (Deep-Sleep, kein MQTT). Sie zieht es beim
+      // nächsten Sync — für den Sub sieht das aus wie „passiert erst auf Knopfdruck". Sichtbar machen.
+      console.log(`[tracker/notify] "${device.name}" schläft → ${body.command} wartet auf den Box-Sync`);
     } else if (
       !body.command && device.locked && policy &&
       // KEINE Sperr-Absicht mehr aktiv. `boxLocked()` allein genügt nicht: es gibt bei gesetztem
