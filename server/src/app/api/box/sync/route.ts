@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { authenticateDevice, extractBearerToken, effectiveLockUntil, boxLocked, deviceLockView } from "@/lib/device-auth";
+import { applyTrackerCommand, isTrackerCommand } from "@/lib/boxCommand";
 import { prisma } from "@/lib/prisma";
 import { notifyDeviceChange } from "@/lib/events";
 import { getTargetVersion, getFirmwareSig } from "@/lib/firmware";
@@ -98,9 +99,9 @@ export async function POST(req: NextRequest) {
     if (device.pendingOpenReason === "early") {
       eventType = "EARLY_OPEN";
     } else if (device.pendingOpenReason === "tracker") {
-      eventType = "UNLOCKED"; // vom Sub im Tracker ausgelöstes Öffnen (eigene "ohne Zeit"-Sperre)
-    } else if (device.pendingOpenReason === "cleaning") {
-      eventType = "CLEAN_OPEN"; // Reinigungspause aus dem Tracker (Sperrzeit bleibt, Re-Lock-Frist läuft)
+      // Vom Tracker ausgelöstes Öffnen. WARUM geöffnet wurde (Reinigung, Ablauf, …) weiss nur der
+      // Tracker — dort steht der Eintrag. Heimdall protokolliert die Tatsache, nicht den Grund.
+      eventType = "UNLOCKED";
     } else if (device.pendingOpenReason === "silent") {
       eventType = null; // Passwort-Öffnung / Simple-Lock / abgelaufen → kein Eintrag
     } else if (timedLockExpired) {
@@ -237,22 +238,9 @@ export async function POST(req: NextRequest) {
       fwVersion: state.fwVersion ?? device.fwVersion,
       lastSyncAt: now,
     });
-    // "lock" → Simple-Lock (zu, ohne Zeit). "open" → eigene Sperre lösen (Simple-Lock + lockUntil);
-    // eine Tracker-Sperrzeit (trackerLockUntil) bleibt unangetastet → bindet weiter (nicht Sub-Hoheit).
-    // "clean_open" → Reinigungspause: temporär offen bis relockBy, Sperrzeit bleibt.
-    if (cmd?.pendingCommand === "lock") {
-      // Re-Lock während einer Reinigungspause → nur die Pause beenden (Sperrzeit lebt weiter),
-      // KEIN simpleLock (sonst bliebe die Box nach Sperrzeit-Ablauf fälschlich „ohne Zeit" zu).
-      policy = policy?.cleaningUntil
-        ? await prisma.lockPolicy.update({ where: { deviceId: device.id }, data: { cleaningUntil: null } })
-        : await prisma.lockPolicy.update({ where: { deviceId: device.id }, data: { simpleLock: true } });
-    } else if (cmd?.pendingCommand === "open") {
-      policy = await prisma.lockPolicy.update({ where: { deviceId: device.id }, data: { simpleLock: false, lockUntil: null } });
-      await prisma.device.update({ where: { id: device.id }, data: { pendingOpenReason: "tracker" } });
-    } else if (cmd?.pendingCommand === "clean_open") {
-      const relockBy = cmd.relockBy ? new Date(cmd.relockBy) : null;
-      policy = await prisma.lockPolicy.update({ where: { deviceId: device.id }, data: { cleaningUntil: relockBy } });
-      await prisma.device.update({ where: { id: device.id }, data: { pendingOpenReason: "cleaning" } });
+    // Semantik in applyTrackerCommand — dieselbe Quelle wie der MQTT-Instant-Push (tracker/notify).
+    if (isTrackerCommand(cmd?.pendingCommand)) {
+      policy = await applyTrackerCommand(device.id, cmd.pendingCommand, policy, now);
     }
   }
 

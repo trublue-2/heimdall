@@ -66,7 +66,10 @@ export async function POST(
 
   const openPasswordHash = password ? await bcrypt.hash(password, 10) : null;
 
-  const data = { lockUntil, simpleLock, openPasswordHash };
+  // holdOpen zurücknehmen: ein frischer Lock ist ein Schliess-Wille und beendet eine vom Tracker
+  // gewährte Öffnung. (boxLocked() liesse die eigene Sperre ohnehin gewinnen — hier wird der
+  // Zustand ehrlich, statt zwei widersprüchliche Flags stehen zu lassen.)
+  const data = { lockUntil, simpleLock, openPasswordHash, holdOpen: false };
   await prisma.$transaction([
     prisma.lockPolicy.upsert({
       where: { deviceId },

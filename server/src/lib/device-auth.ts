@@ -73,21 +73,35 @@ export function extractBearerToken(authHeader: string | null): string | null {
 }
 
 /**
+ * Hält der aus dem Tracker gezogene Dauerauftrag gerade? Der Tracker liefert seine Sperrzeit über
+ * den Config-Pull (siehe syncTrackerIntent); sie bindet die Box, bis sie abläuft oder der Keyholder
+ * sie zurückzieht. Getrennt von der Heimdall-eigenen Sperre (simpleLock/lockUntil), die der Sub
+ * selbst lösen darf.
+ */
+export function trackerIntentActive(policy: LockPolicy | null, now: Date): boolean {
+  return !!policy?.trackerSimpleLock || !!(policy?.trackerLockUntil && policy.trackerLockUntil > now);
+}
+
+/**
  * Soll die Box (physisch) geschlossen sein? Autoritatives Signal für das Box-Protokoll:
  * Simple-Lock (ohne Zeit) ODER ein aktives, gekapptes lockUntil.
+ *
+ * `holdOpen` setzt NUR den aus dem Tracker gezogenen Dauerauftrag aus, nie die Heimdall-eigene
+ * Sperre. Das ist load-bearing: `applyTrackerCommand("open")` räumt die eigene Sperre weg, bevor es
+ * das Flag setzt — steht sie danach wieder, ist sie ein NEUER Schliess-Wille (Keyholderin über
+ * `devices/[id]/lock` oder `.../policy`) und muss gewinnen. Sonst bliebe die Box offen, bis der Sub
+ * einen Verschluss dokumentiert, und die Keyholderin hätte kein Mittel dagegen. `holdOpen` läuft
+ * bewusst NICHT ab: ein Zeitstempel führe den Riegel unbeaufsichtigt zu (open-loop Stepper, kein
+ * Endlagen-/Deckelkontakt). Lokale Failsafes bleiben in jedem Fall unberührt.
  */
 export function boxLocked(
   policy: LockPolicy | null,
   now: Date
 ): boolean {
-  // Reinigungspause: bis cleaningUntil darf die Box trotz Sperrzeit offen sein. Öffnet nur
-  // FRÜHER (sichere Richtung), danach greift die Sperre wieder. Lokale Failsafes unberührt.
-  if (policy?.cleaningUntil && policy.cleaningUntil > now) return false;
-  return (
-    !!policy?.simpleLock ||
-    !!policy?.trackerSimpleLock ||
-    effectiveLockUntil(policy, now) !== null
-  );
+  const ownLockUntilActive = !!(policy?.lockUntil && policy.lockUntil > now);
+  if (policy?.simpleLock || ownLockUntilActive) return true;
+  if (policy?.holdOpen) return false;
+  return trackerIntentActive(policy, now);
 }
 
 /**
@@ -137,6 +151,6 @@ export function deviceLockView(
   return {
     lockUntil: effectiveLockUntil(policy, now),
     simpleLock: !!policy?.simpleLock || !!policy?.trackerSimpleLock,
-    keyholderLocked: !!policy?.trackerSimpleLock || !!(policy?.trackerLockUntil && policy.trackerLockUntil > now),
+    keyholderLocked: trackerIntentActive(policy, now),
   };
 }

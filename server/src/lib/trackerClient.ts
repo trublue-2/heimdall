@@ -107,7 +107,7 @@ export async function pushBoxEvent(
   }
 }
 
-export type BoxCommand = { pendingCommand: string | null; relockBy: string | null };
+export type BoxCommand = { pendingCommand: string | null };
 
 /** Live-Status pushen: der aktuelle Box-Zustand (Soll-Sperre + Telemetrie) an eine Instanz,
  *  damit der Tracker die Box anzeigen kann. Quittiert ein erledigtes Kommando (lastAppliedCommand)
