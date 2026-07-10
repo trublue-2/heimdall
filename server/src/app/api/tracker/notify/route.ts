@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { extractBearerToken, boxLocked } from "@/lib/device-auth";
+import { extractBearerToken, boxLocked, shouldHoldClosedOnTrackerEnd } from "@/lib/device-auth";
 import { applyTrackerCommand } from "@/lib/boxCommand";
 import { publishCommand, deviceOnline } from "@/lib/mqttBridge";
 import { notifyDeviceChange } from "@/lib/events";
@@ -79,19 +79,12 @@ export async function POST(req: NextRequest) {
       // Kommando da, Box aber nicht im Wachfenster (Deep-Sleep, kein MQTT). Sie zieht es beim
       // nächsten Sync — für den Sub sieht das aus wie „passiert erst auf Knopfdruck". Sichtbar machen.
       console.log(`[tracker/notify] "${device.name}" schläft → ${body.command} wartet auf den Box-Sync`);
-    } else if (
-      !body.command && device.locked && policy &&
-      // KEINE Sperr-Absicht mehr aktiv. `boxLocked()` allein genügt nicht: es gibt bei gesetztem
-      // holdOpen false zurück, obwohl die Sperre lebt → würde die befristete Sperre fälschlich in
-      // einen unbefristeten simpleLock verwandeln und im Open-Route ein passwortloses Öffnen
-      // erlauben. Deshalb die autoritative Prüfung KOMPONIEREN statt ihre Disjunktion von Hand
-      // nachzuzählen — sonst driftet dieser Zweig, sobald boxLocked() eine neue Sperrquelle bekommt.
-      !boxLocked(policy, now) && !policy.holdOpen
-    ) {
-      // (3) Reine Config-Änderung ohne Kommando (z.B. Sperrzeit-RÜCKZUG): keine Sperre mehr aktiv, die
-      //     Box aber physisch noch zu → in einen eigenen Simple-Lock überführen. Dann zeigt die Anzeige
-      //     "GESCHLOSSEN, ohne Zeitlimit (jederzeit öffenbar)" statt fälschlich "WIRD GEÖFFNET" (die Box
-      //     federt nie autonom auf; der Sub öffnet auf Knopfdruck). Gilt für live UND schlafende Box.
+    } else if (shouldHoldClosedOnTrackerEnd(device.policy, policy, device.locked, now)) {
+      // (3) Sperrzeit-RÜCKZUG ohne Kommando: die Tracker-Sperre ist weg, die Box aber physisch noch
+      //     zu → in einen eigenen Simple-Lock überführen. Dann zeigt die Anzeige "GESCHLOSSEN, ohne
+      //     Zeitlimit" statt fälschlich "WIRD GEÖFFNET", und die Box öffnet nicht von selbst (der Sub
+      //     öffnet über einen Eintrag). Dieselbe Regel wie im autoritativen box/sync-Pfad; hier nur
+      //     der Instant-Weg für die live Box. Gilt für live UND schlafende Box.
       await prisma.lockPolicy.update({ where: { deviceId: device.id }, data: { simpleLock: true } });
     }
   }

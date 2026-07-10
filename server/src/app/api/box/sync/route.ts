@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { authenticateDevice, extractBearerToken, boxLocked, deviceLockView } from "@/lib/device-auth";
+import { authenticateDevice, extractBearerToken, boxLocked, deviceLockView, shouldHoldClosedOnTrackerEnd } from "@/lib/device-auth";
 import { applyTrackerCommand, isTrackerCommand } from "@/lib/boxCommand";
 import { prisma } from "@/lib/prisma";
 import { notifyDeviceChange } from "@/lib/events";
@@ -212,12 +212,28 @@ export async function POST(req: NextRequest) {
 
   // Keyholder-Sperrzeit ziehen (Absicht → trackerLockUntil, greift via Hybrid-Regel in
   // effectiveLockUntil) parallel zu den OTA-Reads — kein serieller Remote-Call vor der Antwort.
+  const policyBeforeTracker = policy;
   const [policyAfterTracker, targetVersion, otaSig] = await Promise.all([
     syncTrackerIntent(device, trackerInstance, policy),
     getTargetVersion(),
     getFirmwareSig(),
   ]);
   policy = policyAfterTracker;
+
+  // Rückzug der Tracker-Sperre: der autoritative Pfad hält die Box zu (eigener simpleLock), statt sie
+  // von selbst öffnen zu lassen. VOR pushBoxStatus, damit der Tracker sofort den korrigierten Zustand
+  // sieht. Dieselbe Regel wie der Instant-Push in tracker/notify (shouldHoldClosedOnTrackerEnd).
+  //
+  // `state.locked` (die FRISCHE Meldung dieses Syncs), NICHT `device.locked` (letzter DB-Stand): hat
+  // die Box gerade selbst geöffnet, während die KH zurückzog, meldet sie hier `false` — dann NICHT
+  // zufahren (offene Box, open-loop Stepper). Der veraltete `device.locked` würde sie fälschlich
+  // gegen den Anschlag treiben.
+  if (policy && shouldHoldClosedOnTrackerEnd(policyBeforeTracker, policy, state.locked, now)) {
+    policy = await prisma.lockPolicy.update({
+      where: { deviceId: device.id },
+      data: { simpleLock: true },
+    });
+  }
 
   // Live-Box-Status an den Tracker pushen (für die Box-Anzeige dort) und ein vom Sub im
   // Tracker ausgelöstes Kommando ziehen (consume-on-read) + anwenden — VOR der lockUntil-

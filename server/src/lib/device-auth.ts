@@ -105,6 +105,35 @@ export function boxLocked(
 }
 
 /**
+ * Die aus dem Tracker gezogene Sperre war VORZEITIG noch aktiv und ist jetzt weg — die Keyholderin
+ * hat sie zurückgezogen (nicht: natürlich abgelaufen). Die Box ist aber physisch noch zu. Dann in
+ * einen Heimdall-eigenen simpleLock überführen, damit sie NICHT von selbst öffnet; der Sub öffnet über
+ * einen Eintrag (OEFFNEN → `applyTrackerCommand("open")`).
+ *
+ * Ohne diese Umwandlung im AUTORITATIVEN Sync-Pfad hinge das Zubleiben allein am Instant-Push
+ * (tracker/notify) — verpasst die Box den, meldet `box/sync` `locked:false` und die Box öffnet selbst.
+ *
+ * Erkennung über `trackerIntentActive` (nicht die Rohfelder): ein natürlich abgelaufener Timer war
+ * schon VOR dem Config-Pull inaktiv → zählt NICHT als Rückzug. Den öffnet die Firmware am Deadline
+ * (unverändert; „auch bei Ablauf zubleiben" ist ein Firmware-Failsafe-Thema). `!boxLocked(after)`
+ * lässt eine noch aktive Eigen-Sperre in Ruhe, `!after.holdOpen` eine laufende Reinigungspause.
+ */
+export function shouldHoldClosedOnTrackerEnd(
+  before: LockPolicy | null,
+  after: LockPolicy | null,
+  deviceLocked: boolean,
+  now: Date,
+): boolean {
+  return (
+    trackerIntentActive(before, now) &&
+    !trackerIntentActive(after, now) &&
+    deviceLocked &&
+    !boxLocked(after, now) &&
+    !after?.holdOpen
+  );
+}
+
+/**
  * Ist das Gerät in einer aktiven Session? Während Verschluss dürfen Server/Token
  * und User-Zuweisung nicht geändert werden (kein Mid-Session-Takeover).
  * Session = ab Sperr-Zeitpunkt (Simple-Lock oder effektives lockUntil), nicht erst
