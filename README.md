@@ -156,6 +156,128 @@ Heimdall ist ein funktionierender Prototyp, kein fertiges Produkt.
 
 ---
 
+## Firmware im Detail
+
+Die ESP32-Firmware (`firmware/`, PlatformIO/Arduino, Board `lolin_d32`) steuert Riegel, Sensorik und die Server-Anbindung. Sie ist auf **minimalen Akkuverbrauch** und **lokale Sicherheit** ausgelegt: die Box entscheidet autonom, der Server gibt nur das Soll vor.
+
+### Betriebsmodell — Session-Fenster
+
+Die Box ist die meiste Zeit im **Deep-Sleep** (~10 µA). Sie erwacht auf zwei Wegen:
+
+- **Heartbeat-Wake** (RTC-Timer, stündlich): kurz aufwachen, **einmal synchronisieren**, sofort weiterschlafen. Kein Live-Fenster.
+- **Aktiv-Wake** (Taster oder USB): öffnet ein ~2-min-**Wachfenster** mit **Live-MQTT** (Kommandos < 2 s), re-synct alle 30 s, schläft nach 2 min Inaktivität wieder ein.
+
+### State-Machine
+
+`PROVISIONING` (keine Credentials → Setup-Hotspot) → `SYNCING` (WLAN + HTTPS-Sync) → `LOCKED` / `IDLE_OPEN` (warten auf Deadline/Wake/Kommando) → `OPENING` (Riegel fahren). Der Riegel ist **open-loop** (28BYJ-48-Stepper, kein Endlagensensor) → Position wird geschätzt, ein „Riegel klemmt"-Retry (`reopen`) fährt kontrolliert nach.
+
+### Boot-/Wake-Ablauf
+
+1. Reset-Grund + Boot-Zähler erfassen (`diag`-NVS), OTA-Validierung prüfen (`ota`-NVS)
+2. NVS laden (Credentials, State, Policy, MQTT)
+3. Wake-Grund bestimmen → **Wake-Journal-Eintrag** (RTC-RAM), Ein-Zeilen-Banner ins Log
+4. Failsafes prüfen (Low-Batt / Offline / Deadline) → ggf. sofort öffnen
+5. `SYNCING`: WLAN, NTP (wenn nötig), HTTPS-Sync (State rauf, Soll runter), OTA-Check
+6. Riegel nach Soll fahren, dann Wachfenster **oder** Deep-Sleep
+
+### Persistenz
+
+Zwei getrennte Ebenen — **NVS** (Flash, überlebt Stromausfall) und **RTC-RAM** (überlebt nur Deep-Sleep, bei echtem Power-on genullt).
+
+#### NVS (Flash) — 7 Namespaces
+
+**`wifi`** — Provisioning-Credentials (bei Full-Reset gelöscht):
+
+| Key | Typ | Inhalt |
+|---|---|---|
+| `ssid` | String | Primär-WLAN-SSID |
+| `pass` | String | Primär-WLAN-Passwort |
+| `url` | String | Server-Basis-URL (`https://heimdall.trublue.ch`) |
+| `token` | String | Device-Token (Bearer-Auth für `/api/box/*`) |
+
+**`state`** — Box-Zustand (jeder Sync/Sleep aktualisiert ihn):
+
+| Key | Typ | Inhalt |
+|---|---|---|
+| `locked` | bool | Riegel zu? |
+| `lsince` | int64 | „gesperrt seit" (Unix-Epoch, 0 = nie) |
+| `lsync` | int64 | letzter **erfolgreicher** Sync (Unix-Epoch) |
+| `reason` | String | letzter Wake-Grund |
+| `prevBatt` | int | zuletzt gemessener Akku-% (−1 = nie) |
+| `offsec` | uint32 | **monotoner Offline-Zähler** (Sek. seit letztem Sync) — clock-**un**abhängiger Offline-Failsafe |
+| `ltick` | int64 | `time()` beim letzten Wake (Delta-Basis für `offsec`) |
+| `lowbatt` | bool | Low-Batt-Hysterese-Latch (ab ≤15 %, gelöscht erst ≥25 %) |
+
+**`policy`** — letzte Server-Vorgabe:
+
+| Key | Typ | Inhalt |
+|---|---|---|
+| `lockUntil` | int64 | Sperr-Deadline (Unix-Epoch, 0 = keine) |
+| `offlineH` | int | Offline-Open-Stunden (Standard 24) |
+| `srvLocked` | bool | Server-Soll „zu" (Simple-Lock **oder** aktive Zeit) — entkoppelt „zu" von einer Deadline |
+
+**`mqtt`** — Broker-Konfig (pro Box über den gehärteten HTTPS-Sync provisioniert):
+
+| Key | Typ | Inhalt |
+|---|---|---|
+| `en` | bool | MQTT aktiv? |
+| `host` | String | Broker-Host (mqtts) |
+| `did` | String | `deviceId` (cuid) = MQTT-clientId/username + Topic-Segment |
+
+**`nets`** — Zusatz-WLANs + Präferenz (max. 3 Extra-Netze):
+
+| Key | Typ | Inhalt |
+|---|---|---|
+| `count` | int | Anzahl Extra-Netze |
+| `s0`–`s2` | String | Extra-SSID |
+| `p0`–`p2` | String | Extra-Passwort |
+| `pref` | String | bevorzugte SSID (leer/fehlt = keine Präferenz) |
+
+**`diag`** — Boot-Diagnose (nie gelöscht):
+
+| Key | Typ | Inhalt |
+|---|---|---|
+| `boots` | uint32 | monotoner Boot-Zähler |
+| `unexp` | uint32 | unerwartete Power-ons/Brownouts (Feld-Diagnose) |
+| `statbase` | uint32 | Baseline-Marker — nullt `unexp` einmalig bei Firmware-Marker-Bump |
+
+**`ota`** — OTA-Validierung / Auto-Rollback:
+
+| Key | Typ | Inhalt |
+|---|---|---|
+| `pending` | bool | frisch geflashte FW wartet auf Bestätigung |
+| `boots` | uint32 | Boot-Versuche seit Flash — **> 3 ohne erfolgreichen Sync → Rollback** auf die alte Partition |
+
+> Jeder read-only gelesene Namespace trägt zusätzlich einen neutralen `_ns`-Marker (`uint8`), der ihn vorab anlegt und so harmlosen `nvs_open: NOT_FOUND`-Log-Spam vermeidet.
+>
+> **Hinweis:** NVS ist **unverschlüsselt** — WLAN-Passwörter und Device-Token liegen im Klartext im Flash. Physischer Zugriff auf den Chip = lesbare Credentials (bewusster Trade-off; der Token ist pro Box und serverseitig widerrufbar).
+
+#### RTC-RAM (überlebt Deep-Sleep, kein Flash, kein Zusatzstrom)
+
+| Struktur | Inhalt |
+|---|---|
+| **Wake-Journal** (`wake_journal.cpp`) | Ring aus 64 Wake-Einträgen (Grund/Zeit/Akku%) — beim nächsten erfolgreichen Sync hochgeladen, dann geleert. Erfasst auch Wakes, deren Sync scheiterte |
+| **WiFi-Fast-Reconnect-Hint** | letztes SSID/Passwort/BSSID/Kanal → Scan überspringen (~0.5–1.5 s/Wake gespart) |
+| **`gAuthFails`** | 401-Zähler in Folge → Selbstheilung in den Setup-Hotspot |
+
+### Failsafes (lokal, autoritativ, nicht vom Server abschaltbar)
+
+- **Low-Battery-Auto-Open** bei ≤ 15 % (Hysterese bis ≥ 25 %) — Öffnen mit Drehmoment-Reserve
+- **Offline-Auto-Open** nach 24 h ohne Sync — über den **monotonen `offsec`-Zähler**, funktioniert auch bei ungültiger Uhr
+- **Hard-Deadline** — RTC-Deadline erreicht → öffnen
+
+Reihenfolge: **Safety > Security > Function**. Ein Failsafe-Öffnen gewinnt und wird als `FAILSAFE_OPEN` an den Server gemeldet.
+
+### OTA-Updates
+
+Signierte OTA (Ed25519 über sha256 der `.bin`), Public Key eingebrannt. Auto-OTA nur bei **offener** Box + **Akku ≥ 40 %**. Nach dem Flash: `pending`-Validierung — bestätigt erst ein erfolgreicher Sync die neue FW, sonst **automatischer Rollback**.
+
+### Logging
+
+Ein RAM-Ring-Puffer (6 KB, flüchtig) speist einheitlich: UART · `/dbg/log`-Webseite · UDP-Broadcast (LAN) · Server-Log (`logToServer`) · MQTT-Live-Log. Strukturierter, deep-sleep-fester Audit-Pfad daneben: das **Wake-Journal** (siehe oben).
+
+---
+
 ## Für Entwickler
 
 ```
