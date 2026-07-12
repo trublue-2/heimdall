@@ -46,6 +46,7 @@ export const EVENT_CONFIG: Record<string, { label: string; variant: "lock" | "un
   EARLY_OPEN:        { label: "Vorzeitig geöffnet", variant: "warn" },
   REOPEN:            { label: "Riegel-Retry", variant: "neutral" },
   LOW_BATTERY:       { label: "Akku niedrig", variant: "warn" },
+  WAKE:              { label: "Aufwachen", variant: "neutral" },
 };
 
 export function formatDuration(from: Date | string | null | undefined): string {

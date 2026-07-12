@@ -39,9 +39,17 @@ const syncBodySchema = z.object({
   }),
   knownSsids: z.array(z.string().max(64)).max(16).optional(), // WLANs, die die Box kennt
   logs: z.string().max(8000).optional(), // serielles Log (newline-getrennt), nur bei logToServer
+  // Aufwach-Journal (deep-sleep-fester RTC-Ring der Box): je Wake { r=Grund, t=unix-Zeit, b=Akku% }.
+  wakes: z.array(z.object({
+    r: z.string().max(32),
+    t: z.number().int(),
+    b: z.number().int().min(0).max(100).optional(),
+  })).max(80).optional(),
+  wakesDropped: z.number().int().optional(), // bei Journal-Overflow verworfene älteste Wakes
 });
 
 const LOG_RETENTION = 2000; // je Gerät gespeicherte Log-Zeilen (ältere werden geprunt)
+const WAKE_RETENTION = 500; // je Gerät gespeicherte WAKE-Events (ältere werden geprunt)
 
 export async function POST(req: NextRequest) {
   const rawToken = extractBearerToken(req.headers.get("authorization"));
@@ -339,6 +347,53 @@ export async function POST(req: NextRequest) {
         }
       }
     }
+  }
+
+  // Aufwach-Journal (RTC-RAM der Box, deep-sleep-fest): je Wake ein WAKE-Event im Verlauf — fängt
+  // auch Wakes ab, deren eigener Sync scheiterte. Dedup gegen eine verlorene 200-Antwort (Box
+  // hätte dann nicht geleert → re-upload) über (deviceId, type:WAKE, timestamp).
+  if (body.wakes?.length) {
+    const NTP_PLAUSIBLE = 1_700_000_000; // <2023 = RTC vor erstem NTP → auf Empfangszeit klemmen
+    const wakes = body.wakes.map((w) => ({
+      at: w.t >= NTP_PLAUSIBLE ? new Date(w.t * 1000) : now,
+      reason: w.r,
+      battery: w.b ?? null,
+    }));
+    const times = wakes.map((w) => w.at.getTime());
+    const existing = await prisma.deviceEvent.findMany({
+      where: {
+        deviceId: device.id,
+        type: "WAKE",
+        timestamp: { gte: new Date(Math.min(...times)), lte: new Date(Math.max(...times)) },
+      },
+      select: { timestamp: true },
+    });
+    const seen = new Set(existing.map((e) => e.timestamp.getTime()));
+    const fresh = wakes.filter((w) => !seen.has(w.at.getTime()));
+    if (fresh.length) {
+      await prisma.deviceEvent.createMany({
+        data: fresh.map((w) => ({
+          deviceId: device.id, type: "WAKE", timestamp: w.at, reason: w.reason, battery: w.battery,
+        })),
+      });
+      // Retention wie beim Log: ~1-in-10 prunen auf die letzten WAKE_RETENTION Events.
+      if (Math.random() < 0.1) {
+        const cutoff = await prisma.deviceEvent.findFirst({
+          where: { deviceId: device.id, type: "WAKE" },
+          orderBy: { timestamp: "desc" },
+          select: { timestamp: true },
+          skip: WAKE_RETENTION,
+        });
+        if (cutoff) {
+          await prisma.deviceEvent.deleteMany({
+            where: { deviceId: device.id, type: "WAKE", timestamp: { lt: cutoff.timestamp } },
+          });
+        }
+      }
+    }
+  }
+  if (body.wakesDropped) {
+    console.log(`${ts()} [box/sync] Device "${device.name}" → ${body.wakesDropped} Wakes verloren (Journal-Overflow)`);
   }
 
   return NextResponse.json({

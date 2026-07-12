@@ -143,7 +143,7 @@ model DeviceEvent {
   id        String   @id @default(cuid())
   device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   deviceId  String
-  type      String // LOCKED | UNLOCKED | SYNC | FAILSAFE_OPEN | UNAUTHORIZED_OPEN
+  type      String // LOCKED | UNLOCKED | EARLY_OPEN | FAILSAFE_OPEN | UNAUTHORIZED_OPEN | REOPEN | LOW_BATTERY | WAKE (Quelle: EVENT_CONFIG in src/lib/utils.ts)
   timestamp DateTime
   reason    String?
   battery   Int?

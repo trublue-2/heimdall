@@ -12,16 +12,34 @@ const PER_PAGE = 5;
 /** Event-Verlauf, 5 pro Seite mit Paginierung (← neuer / älter →). */
 export function EventLog({ events }: { events: Ev[] }) {
   const [page, setPage] = useState(0);
+  const [hideWakes, setHideWakes] = useState(false);
 
   if (events.length === 0) {
     return <Card className="text-center py-8 text-sm text-[var(--foreground-muted)]">Noch keine Events.</Card>;
   }
 
-  const pages = Math.ceil(events.length / PER_PAGE);
-  const slice = events.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE);
+  // Routine-Wakes (stündlicher Heartbeat) können die Übergänge zuschütten → optional ausblenden.
+  const hasWakes = events.some((e) => e.type === "WAKE");
+  const shown = hideWakes ? events.filter((e) => e.type !== "WAKE") : events;
+  const pages = Math.ceil(shown.length / PER_PAGE);
+  const slice = shown.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE);
 
   return (
     <div className="space-y-2">
+      {hasWakes && (
+        <label className="flex items-center gap-2 text-xs text-[var(--foreground-muted)] cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={hideWakes}
+            onChange={(e) => { setHideWakes(e.target.checked); setPage(0); }}
+          />
+          Routine-Wakes ausblenden
+        </label>
+      )}
+      {shown.length === 0 ? (
+        <Card className="text-center py-8 text-sm text-[var(--foreground-muted)]">Nur Aufwach-Events — Filter deaktivieren zum Anzeigen.</Card>
+      ) : (
+      <>
       <Card className="divide-y divide-[var(--border-subtle)] p-0 overflow-hidden">
         {slice.map((ev) => {
           const cfg = EVENT_CONFIG[ev.type] ?? { label: ev.type, variant: "neutral" as const };
@@ -56,6 +74,8 @@ export function EventLog({ events }: { events: Ev[] }) {
             Älter →
           </button>
         </div>
+      )}
+      </>
       )}
     </div>
   );

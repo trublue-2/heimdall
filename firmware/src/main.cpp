@@ -19,6 +19,7 @@
 #include "ota.h"
 #include "logbuf.h"
 #include "mqtt_client.h"
+#include "wake_journal.h"
 #include "log.h"
 
 // ── State-Machine ───────────────────────────────────────────────────────────
@@ -769,6 +770,9 @@ void setup() {
   // kumulative Zähler, batt=letzter LIVE-Wert aus NVS, ack=hat's quittiert.
   LOGI("=== Heimdall %s | wake=%s reset=%s boot#%u unexpected=%u battery=%d%% button-ack=%s ===",
         FW_VERSION, reason, gResetReason, gBootCount, gUnexpected, gBox.batteryPct, extWake ? "yes" : "no");
+  // Deep-sleep-festes Aufwach-Journal (RTC-RAM): hält diesen Wake fest; wird beim nächsten
+  // erfolgreichen Sync hochgeladen und dort geleert. Fängt so auch Wakes ab, deren Sync scheitert.
+  recordWake(reason, gBox.batteryPct);
 
   // Taster-Intent: Hotspot über die eine Provisioning-Route betreten. Vollreset löscht
   // vorher die Credentials (→ leeres Portal); WLAN-Wechsel behält sie (→ vorausgefüllt).
@@ -835,8 +839,9 @@ void loop() {
       SyncResult res = ServerSync::run(gCreds, gBox, gPolicy, true, &ota);
 
       if (res == SyncResult::OK) {
-        gAuthFails = 0; // erfolgreicher Sync → 401-Zähler zurücksetzen
-        otaCommit();    // neue FW (falls OTA gerade lief) bestätigen
+        gAuthFails = 0;    // erfolgreicher Sync → 401-Zähler zurücksetzen
+        wakeJournalClear(); // Wakes bestätigt hochgeladen → Journal leeren (erst NACH OK)
+        otaCommit();       // neue FW (falls OTA gerade lief) bestätigen
         // "Soll zu" = serverLocked UND kein Failsafe will offen. Über shouldOpen() (Low-Batt ∨
         // Offline ∨ PolicyExpired) — sonst würde ein Failsafe-Öffnen (z.B. Low-Batt) sofort
         // wieder zugefahren → Oszillation (Motorzyklen, Dauer-wach, Akku-Drain). Ein Failsafe

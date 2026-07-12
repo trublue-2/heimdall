@@ -2,6 +2,7 @@
 #include "config.h"
 #include "certs.h"
 #include "logbuf.h"
+#include "wake_journal.h"
 #include "watchdog.h"
 #include "log.h"
 #include <WiFi.h>
@@ -270,6 +271,10 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
     String logs = collectSyncLogs(4096);
     if (logs.length()) req["logs"] = logs;
   }
+
+  // Aufwach-Journal immer mitschicken (ungated) — der Server legt je Wake ein Event an; geleert
+  // wird es erst nach bestätigtem Sync (main.cpp, SyncResult::OK).
+  wakeJournalToJson(req);
 
   String body;
   serializeJson(req, body);

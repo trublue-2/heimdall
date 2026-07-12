@@ -39,7 +39,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
   const events = await prisma.deviceEvent.findMany({
     where: { deviceId: id },
     orderBy: { timestamp: "desc" },
-    take: 50,
+    take: 200, // höher, damit stündliche WAKE-Events die Zustandsübergänge nicht verdrängen
   });
 
   // Tracker-Instanzen nur für Admins (für das Mapping-Dropdown).
