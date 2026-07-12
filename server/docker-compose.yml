@@ -46,6 +46,8 @@ services:
   mosquitto:
     image: iegomez/mosquitto-go-auth:latest
     container_name: heimdall-mqtt
+    environment:
+      - TZ=Europe/Zurich   # lokale Zeit in den Broker-Logs (siehe log_timestamp_format)
     init: true
     restart: unless-stopped
     depends_on:
