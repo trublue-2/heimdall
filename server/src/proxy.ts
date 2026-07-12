@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
+import { logTs } from "@/lib/logTime";
 
 // In-memory rate limiter (per Bucket). Login eng, Box-API großzügig: eine legitime
 // Box synct ~alle 5 min (< 1/min), ein Flut-Angreifer pro IP wird gekappt — schützt
@@ -115,9 +116,8 @@ export default auth((req) => {
   }
 
   if (isLoggedIn && !pathname.startsWith("/api")) {
-    const ts = new Date().toISOString().replace("T", " ").slice(0, 19);
     const authUser = req.auth?.user as { id?: string; name?: string } | undefined;
-    console.log(`[ACCESS] ${ts} | ${authUser?.name ?? "?"} | ${pathname} | ${clientIp(req)}`);
+    console.log(`[ACCESS] ${logTs()} | ${authUser?.name ?? "?"} | ${pathname} | ${clientIp(req)}`);
   }
 
   return NextResponse.next();

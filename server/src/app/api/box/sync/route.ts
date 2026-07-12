@@ -6,8 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { notifyDeviceChange } from "@/lib/events";
 import { getTargetVersion, getFirmwareSig } from "@/lib/firmware";
 import { syncTrackerIntent, pushBoxEvent, pushBoxStatus } from "@/lib/trackerClient";
-
-function ts() { return new Date().toISOString(); }
+import { logTs as ts } from "@/lib/logTime";
 
 const LEGITIMATE_OPEN_REASONS = [
   "button",         // keyholder pressed button on box
@@ -74,6 +73,12 @@ export async function POST(req: NextRequest) {
   const { state } = body;
   const now = new Date();
   const prevLocked = device.locked;
+
+  // Jede Box-Anfrage ins App-Log → in `docker logs heimdall` live sichtbar, welche Box wann
+  // mit welchem Zustand synct (Betriebs-/Verbindungs-Diagnose). Box-IP aus X-Forwarded-For.
+  const boxIp = req.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim()
+    ?? req.headers.get("x-real-ip") ?? "?";
+  console.log(`${ts()} [box/sync] ${device.name} | ${boxIp} | locked=${state.locked} batt=${state.battery ?? "—"}% fw=${state.fwVersion ?? "—"} wake=${state.wakeReason ?? "—"} ssid=${state.wifiSsid ?? "—"}`);
 
   // lockedSince server-autoritativ: beim Übergang offen→zu auf Server-"jetzt" setzen,
   // danach stabil halten (reine „gesperrt seit"-Telemetrie). Der Box-gemeldete `since`

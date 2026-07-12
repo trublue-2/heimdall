@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateDevice, extractBearerToken, boxLocked, deviceLockView } from "@/lib/device-auth";
 import { prisma } from "@/lib/prisma";
-
-function ts() { return new Date().toISOString(); }
+import { logTs as ts } from "@/lib/logTime";
 
 export async function POST(req: NextRequest) {
   const rawToken = extractBearerToken(req.headers.get("authorization"));

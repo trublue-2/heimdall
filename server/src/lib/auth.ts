@@ -3,7 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
-function ts() { return new Date().toISOString(); }
+import { logTs as ts } from "@/lib/logTime";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
