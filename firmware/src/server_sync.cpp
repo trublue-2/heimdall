@@ -135,11 +135,13 @@ static bool connectWifi(const WifiCredentials& creds) {
   // ANDERES Netz bevorzugt ist — sonst würde die Präferenz nie greifen (der Hint zeigt aufs
   // zuletzt Verbundene). Ist das Bevorzugte == Hint, gilt der Schnellpfad normal.
   if (rtcWifiHint && rtcSsid[0] && (!pref[0] || strcmp(pref, rtcSsid) == 0)) {
+    LOGI("WiFi: connecting (fast path) to '%s' (ch %d)", rtcSsid, rtcChannel);
     if (tryConnect(rtcSsid, rtcPass, WIFI_CONNECT_TIMEOUT_MS / 2, rtcChannel, rtcBssid)) {
       gWifiErrMsg[0] = '\0'; // Erfolg → letzten Fehler löschen
-      LOGI("WiFi: connected (fast path) to '%s' @ %s", rtcSsid, WiFi.localIP().toString().c_str());
+      LOGI("WiFi: connected (fast path) to '%s' @ %s (%d dBm)", rtcSsid, WiFi.localIP().toString().c_str(), WiFi.RSSI());
       return true;
     }
+    LOGW("WiFi: fast path to '%s' failed → full scan", rtcSsid);
     rtcWifiHint = false;
     WiFi.disconnect();
   }
@@ -202,8 +204,14 @@ static void syncNtp() {
 SyncResult ServerSync::run(const WifiCredentials& creds,
                            BoxState& state, BoxPolicy& policy, bool keepWifi,
                            OtaInfo* ota) {
-  if (WiFi.status() != WL_CONNECTED &&
-      !connectWifi(creds)) return SyncResult::NO_WIFI;
+  if (WiFi.status() != WL_CONNECTED) {
+    if (!connectWifi(creds)) return SyncResult::NO_WIFI;
+  } else {
+    // Schon verbunden (Wachfenster-Re-Sync): connectWifi() wird übersprungen — trotzdem
+    // das aktuell genutzte WLAN pro Sync ins Log, damit es dort immer sichtbar ist.
+    LOGI("WiFi: still connected to '%s' @ %s (%d dBm)",
+         WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(), WiFi.RSSI());
+  }
   syncNtp();
 
   WiFiClientSecure client;
