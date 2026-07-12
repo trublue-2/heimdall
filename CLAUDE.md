@@ -72,6 +72,21 @@ Ziel: kein Over-Engineering. Weniger Code ist besser als mehr Code.
 - Lokale Failsafes (low-battery, offline-timeout, hard-deadline) können **nicht** durch den Server deaktiviert werden
 - Jede Änderung an `effectiveLockUntil()` braucht explizite Überprüfung dieser Failsafe-Invariante
 
+### OTA-Invariante — kritisch
+
+**Es darf nichts gebaut werden, das ein künftiges OTA-Update verunmöglicht.** Ein verschlossenes
+Board darf nie in einen Zustand geraten, aus dem es sich nicht mehr per OTA befreien/updaten lässt.
+Konkret unantastbar:
+
+- **Image-Budget:** Das kompilierte Firmware-Image muss **mit Reserve** in einen App-Slot passen
+  (`app0`/`app1`, je **1728 KB / 1'769'472 B**; aktuell ~1,05 MB → ~650 KB frei). Jede Änderung, die
+  die Binärgröße deutlich erhöht (z. B. **Bluetooth/BLE**, große Libraries), **vorher** gegen dieses
+  Budget prüfen — passt sie nicht mit Reserve in beide Slots, wird sie **nicht** gebaut.
+- **Partitionstabelle:** byte-exakter Werks-Klon (`partitions_target.csv`) — Feld-Boxen können sie
+  per OTA **nicht** ändern. `nvs`/`otadata`-Offsets und die **zwei** OTA-App-Slots bleiben fix.
+- **Rollback + Signatur:** Der signierte-OTA-/Rollback-Mechanismus (`otaCheckBoot`, `esp_ota_*`,
+  Ed25519) darf nicht gebrochen werden — er ist das Netz gegen ein „gebricktes = zu"-Board.
+
 ---
 
 ## Architektur-Konventionen
