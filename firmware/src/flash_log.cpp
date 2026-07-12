@@ -54,15 +54,15 @@ void FlashLog::persistPending() {
 }
 
 void FlashLog::toJson(JsonDocument& req) {
-  if (!gReady) return;
+  if (!gReady || !LittleFS.exists(PATH)) return; // exists() zuerst → kein [E] vfs-Spam bei fehlender Datei
   File f = LittleFS.open(PATH, FILE_READ);
-  if (!f) return; // Datei fehlt (nach clear) → nichts zu senden
+  if (!f) return;
   String content = f.readString();
   f.close();
   if (content.length()) req["backlog"] = content;
 }
 
 void FlashLog::clear() {
-  if (!gReady) return;
+  if (!gReady || !LittleFS.exists(PATH)) return; // nur löschen, wenn vorhanden → kein [E] remove-Spam
   LittleFS.remove(PATH);
 }
