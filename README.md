@@ -124,6 +124,70 @@ eine neue Version nicht sauber, fällt die Box automatisch auf die vorherige zur
 
 ---
 
+## Bedienung an der Box (Taster, LED, Sleep)
+
+Die Box hat **einen Taster** und **eine Status-LED**. Alles andere läuft über das Dashboard.
+
+### Reset — Taster beim Einschalten halten
+
+Taster schon **beim Booten** (Strom an / Reset) gedrückt halten:
+
+| Haltedauer | LED-Quittung | Wirkung |
+|---|---|---|
+| **≥ 3 s**, dann loslassen | 2× kurzes Blinken | **WLAN-Wechsel** → Setup-Hotspot, Zugangsdaten bleiben (Portal vorausgefüllt) |
+| **≥ 10 s** | 6× schnelles Blinken | **Werksreset** → WLAN-Zugangsdaten gelöscht, Setup-Hotspot startet leer |
+| nicht gehalten | — | normaler Start |
+
+Der Werksreset löscht **nur** die Zugangsdaten (WLAN-Name/-Passwort, Server-URL, Geräte-Token).
+Sperrzustand, Policy und zusätzliche WLANs bleiben erhalten.
+
+### WLAN neu setzen
+
+Taster **≥ 3 s beim Boot** halten → Setup-Hotspot mit erhaltenen Daten, nur das WLAN muss neu
+eingetippt werden. Ist die Box gerade **verschlossen**, sind Server-URL und Token gesperrt — dann
+lässt sich *nur* das WLAN ändern („🔒 Verschluss aktiv — nur WLAN änderbar"). Im Hotspot gibt es
+**„Setup verlassen (Normalbetrieb)"**, das ohne Änderung in den Betrieb zurückkehrt (nur sichtbar,
+wenn gültige Zugangsdaten vorliegen). Weitere Netze (z. B. Hotspot) lassen sich auch übers Dashboard
+hinzufügen → siehe „Mehrere WLANs".
+
+### Provisionierung (Setup-Hotspot)
+
+Eine neue oder zurückgesetzte Box spannt ein **offenes** WLAN **`Heimdall-Setup-XXXX`** auf
+(`XXXX` = letzte MAC-Bytes). Handy ins Netz, Browser auf **`http://192.168.4.1/`** (das Captive-Portal
+fängt jede URL). Einzugeben: WLAN-Name, WLAN-Passwort, Server-URL (Default `https://heimdall.trublue.ch`)
+und Geräte-Token — oder den im Dashboard kopierten `/provision?…`-Link einfügen. Nach dem Speichern
+(„✅ Gespeichert") startet die Box neu in den Normalbetrieb. Der bequeme Weg übers Dashboard steht
+oben unter „2. Box einrichten".
+
+### LED-Blink-Muster
+
+| LED | Bedeutung |
+|---|---|
+| geht bei Tastendruck **sofort an** | Tastendruck quittiert |
+| **3× Blinken** (schnell) | Wake-/Tasten-Bestätigung |
+| **schnelles Blinken (~4 Hz)** | verbindet sich mit dem WLAN |
+| **dauerhaft an** | wach & mit dem Server verbunden |
+| **langsames Blinken (~2,5 Hz)** | Setup-Hotspot aktiv — wartet auf Einrichtung |
+| **2× / 6× Blinken beim Boot** | Reset-Quittung: 3 s = WLAN-Wechsel · 10 s = Werksreset |
+| **aus** | schläft |
+
+Die LED zeigt **wach/verbunden**, *nicht* den Schloss-Zustand — der steht im Dashboard und auf der
+Status-Seite der Box.
+
+### Sleep & Aufwachen
+
+Die Box ist die meiste Zeit im **Deep-Sleep** (~10 µA) und wacht durch **Taster** oder **Timer** auf.
+
+- **Dormant:** Timer-Wake im konfigurierten **Sync-Intervall** (Standard 60 min, pro Box 1–180 min im
+  Dashboard einstellbar) → einmal syncen → sofort weiterschlafen.
+- **Wachfenster:** Ein Tastendruck (oder USB) öffnet ein **~2-min-Fenster** mit Live-Steuerung; nach
+  2 min ohne Aktivität schläft sie wieder. **Am USB bleibt sie wach.**
+- **Sofort schlafen:** Taster **≥ 1,5 s** halten → sie synct noch und geht dann direkt in den Schlaf
+  (statt auf das 2-min-Timeout zu warten). Ein kurzer Tap löst nur einen Sync aus.
+- Liegt eine Sperr-Deadline früher als das Intervall, wacht die Box genau zur Deadline auf.
+
+---
+
 ## Failsafes — die Box öffnet sich selbst
 
 Damit niemand durch einen technischen Defekt eingesperrt bleibt, öffnet die Box autonom, sobald:
