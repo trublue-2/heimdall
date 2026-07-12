@@ -3,6 +3,7 @@
 #include "certs.h"
 #include "logbuf.h"
 #include "wake_journal.h"
+#include "flash_log.h"
 #include "watchdog.h"
 #include "log.h"
 #include <WiFi.h>
@@ -276,6 +277,10 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   // wird es erst nach bestätigtem Sync (main.cpp, SyncResult::OK).
   wakeJournalToJson(req);
 
+  // Persistenten Fehl-Sync-Backlog (LittleFS) mitschicken — auch ungated. Wird erst nach
+  // bestätigtem Sync gelöscht (main.cpp, SyncResult::OK).
+  FlashLog::toJson(req);
+
   String body;
   serializeJson(req, body);
 
@@ -297,6 +302,10 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   // Autoritatives "soll zu". Fallback (Altserver ohne Feld): aus lockUntil ableiten.
   policy.serverLocked = resp["locked"] | (policy.lockUntil > 0);
   policy.offlineOpenH = resp["offlineOpenHours"] | OFFLINE_OPEN_H;
+  // Konfigurierbares Sync-Intervall (Server liefert Minuten). Hart auf [1 min, 180 min] geklemmt —
+  // die Untergrenze schützt den Akku, die Obergrenze die Offline-Failsafe-Invariante (MAX_SLEEP_S).
+  int siMin = resp["syncIntervalMin"] | (int)(HEARTBEAT_S / 60);
+  policy.syncIntervalS = constrain(siMin * 60, (int)SYNC_INTERVAL_MIN_S, (int)SYNC_INTERVAL_MAX_S);
   strlcpy(state.deviceName, resp["name"] | "", sizeof(state.deviceName));
 
   // Server-Zeit übernehmen: die Deep-Sleep-RTC driftet (Minuten pro Tage), NTP läuft nur
@@ -355,7 +364,7 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   char lu[20] = "—";
   if (policy.lockUntil > 0) { struct tm t; time_t v = policy.lockUntil; localtime_r(&v, &t);
     strftime(lu, sizeof(lu), "%d.%m.%Y %H:%M", &t); }
-  LOGI("Policy from server: serverLocked=%d lockUntil=%s offlineOpenH=%d",
-        policy.serverLocked, lu, policy.offlineOpenH);
+  LOGI("Policy from server: serverLocked=%d lockUntil=%s offlineOpenH=%d syncInterval=%dmin",
+        policy.serverLocked, lu, policy.offlineOpenH, policy.syncIntervalS / 60);
   return SyncResult::OK;
 }

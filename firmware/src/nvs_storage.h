@@ -49,6 +49,7 @@ struct BoxPolicy {
                        // Autoritativ — entkoppelt "zu" von lockUntil (Simple-Lock: zu ohne Deadline).
   time_t lockUntil;    // Unix-Epoch; 0 = keine Deadline (Failsafe-Grenze, NICHT "offen")
   int    offlineOpenH; // h — Standard: OFFLINE_OPEN_H
+  int    syncIntervalS; // Heartbeat-Sync-Intervall in Sekunden (Server, 60…10800) → Deep-Sleep-Timer
 };
 
 namespace NVS {

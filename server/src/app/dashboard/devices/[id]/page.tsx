@@ -92,6 +92,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
             deviceId={device.id}
             name={device.name}
             offlineOpenHours={device.policy?.offlineOpenHours ?? 24}
+            syncIntervalMin={device.policy?.syncIntervalMin ?? 60}
             emergencyOpensLeft={device.emergencyOpensLeft}
           />
         </Card>

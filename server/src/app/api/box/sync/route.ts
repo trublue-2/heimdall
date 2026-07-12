@@ -39,6 +39,7 @@ const syncBodySchema = z.object({
   }),
   knownSsids: z.array(z.string().max(64)).max(16).optional(), // WLANs, die die Box kennt
   logs: z.string().max(8000).optional(), // serielles Log (newline-getrennt), nur bei logToServer
+  backlog: z.string().max(20000).optional(), // persistenter Fehl-Sync-Log (LittleFS), immer gesendet
   // Aufwach-Journal (deep-sleep-fester RTC-Ring der Box): je Wake { r=Grund, t=unix-Zeit, b=Akku% }.
   wakes: z.array(z.object({
     r: z.string().max(32),
@@ -321,30 +322,33 @@ export async function POST(req: NextRequest) {
     select: { ssid: true, password: true },
   });
 
-  // Serielles Log anhängen (nur bei aktivem logToServer): Zeilen splitten, speichern,
-  // dann je Gerät auf die letzten LOG_RETENTION prunen (Verlauf bleibt beschränkt).
+  // Log anhängen: `logs` (verbose) nur bei aktivem logToServer, der persistente Fehl-Sync-`backlog`
+  // IMMER (Störungs-Diagnose der Box, inkl. der WLAN-Fehlerzeilen). Beides in eine Zeilenliste,
+  // EIN createMany, dann je Gerät auf die letzten LOG_RETENTION prunen.
+  const logLines: string[] = [];
   if (device.logToServer && body.logs) {
-    const lines = body.logs
-      .split("\n")
-      .map((l) => l.trimEnd())
-      .filter((l) => l.length > 0)
-      .slice(-500); // Sicherheitskappe pro Sync
-    if (lines.length) {
-      await prisma.deviceLog.createMany({ data: lines.map((line) => ({ deviceId: device.id, line })) });
-      // Retention ist weich (~2000). Nicht jeden Sync prunen — das spart auf dem Hot-Path
-      // den skip:LOG_RETENTION-Indexscan; ~1-in-10 reicht, kurze Drift ist unkritisch.
-      if (Math.random() < 0.1) {
-        const cutoff = await prisma.deviceLog.findFirst({
-          where: { deviceId: device.id },
-          orderBy: { createdAt: "desc" },
-          select: { createdAt: true },
-          skip: LOG_RETENTION,
+    for (const l of body.logs.split("\n").map((s) => s.trimEnd()).filter(Boolean)) logLines.push(l);
+  }
+  if (body.backlog) {
+    // Marker ⚠ → im Log-Viewer erkennbar, dass diese Zeilen aus einem fehlgeschlagenen Sync stammen.
+    for (const l of body.backlog.split("\n").map((s) => s.trimEnd()).filter(Boolean)) logLines.push(`⚠ ${l}`);
+  }
+  if (logLines.length) {
+    const lines = logLines.slice(-500); // Sicherheitskappe pro Sync
+    await prisma.deviceLog.createMany({ data: lines.map((line) => ({ deviceId: device.id, line })) });
+    // Retention ist weich (~2000). Nicht jeden Sync prunen — das spart auf dem Hot-Path
+    // den skip:LOG_RETENTION-Indexscan; ~1-in-10 reicht, kurze Drift ist unkritisch.
+    if (Math.random() < 0.1) {
+      const cutoff = await prisma.deviceLog.findFirst({
+        where: { deviceId: device.id },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+        skip: LOG_RETENTION,
+      });
+      if (cutoff) {
+        await prisma.deviceLog.deleteMany({
+          where: { deviceId: device.id, createdAt: { lt: cutoff.createdAt } },
         });
-        if (cutoff) {
-          await prisma.deviceLog.deleteMany({
-            where: { deviceId: device.id, createdAt: { lt: cutoff.createdAt } },
-          });
-        }
       }
     }
   }
@@ -401,6 +405,7 @@ export async function POST(req: NextRequest) {
     locked: boxLocked(policy, now), // autoritativ: Simple-Lock ODER aktive Zeit
     lockUntil: lockUntil?.toISOString() ?? null,
     offlineOpenHours: policy?.offlineOpenHours ?? 24,
+    syncIntervalMin: policy?.syncIntervalMin ?? 60, // Heartbeat-Sync-Intervall (min) → Deep-Sleep-Timer der Box
 
     timeUTC: now.toISOString(),
     otaVersion: otaPending ? targetVersion : null,

@@ -164,7 +164,7 @@ Die ESP32-Firmware (`firmware/`, PlatformIO/Arduino, Board `lolin_d32`) steuert 
 
 Die Box ist die meiste Zeit im **Deep-Sleep** (~10 µA). Sie erwacht auf zwei Wegen:
 
-- **Heartbeat-Wake** (RTC-Timer, stündlich): kurz aufwachen, **einmal synchronisieren**, sofort weiterschlafen. Kein Live-Fenster.
+- **Heartbeat-Wake** (RTC-Timer, im konfigurierten Intervall — Standard 60 min, pro Box **1–180 min** über den Server einstellbar): kurz aufwachen, **einmal synchronisieren**, sofort weiterschlafen. Kein Live-Fenster. Kleiner = reaktiver, aber mehr Akkuverbrauch.
 - **Aktiv-Wake** (Taster oder USB): öffnet ein ~2-min-**Wachfenster** mit **Live-MQTT** (Kommandos < 2 s), re-synct alle 30 s, schläft nach 2 min Inaktivität wieder ein.
 
 ### State-Machine
@@ -214,6 +214,7 @@ Zwei getrennte Ebenen — **NVS** (Flash, überlebt Stromausfall) und **RTC-RAM*
 |---|---|---|
 | `lockUntil` | int64 | Sperr-Deadline (Unix-Epoch, 0 = keine) |
 | `offlineH` | int | Offline-Open-Stunden (Standard 24) |
+| `syncInt` | int | Heartbeat-Sync-Intervall in Sekunden (Server, 60–10800) → Deep-Sleep-Timer |
 | `srvLocked` | bool | Server-Soll „zu" (Simple-Lock **oder** aktive Zeit) — entkoppelt „zu" von einer Deadline |
 
 **`mqtt`** — Broker-Konfig (pro Box über den gehärteten HTTPS-Sync provisioniert):
@@ -260,6 +261,15 @@ Zwei getrennte Ebenen — **NVS** (Flash, überlebt Stromausfall) und **RTC-RAM*
 | **WiFi-Fast-Reconnect-Hint** | letztes SSID/Passwort/BSSID/Kanal → Scan überspringen (~0.5–1.5 s/Wake gespart) |
 | **`gAuthFails`** | 401-Zähler in Folge → Selbstheilung in den Setup-Hotspot |
 
+#### Flash-Log (LittleFS, überlebt auch Stromverlust/Reboot)
+
+Auf der vorhandenen **128-KB-`spiffs`-Partition** (Flash) liegt ein persistenter Fehl-Sync-Log
+(`/backlog.log`, `flash_log.cpp`). **Nur bei einem fehlgeschlagenen Sync** wird der RAM-Log-Ausschnitt
+dieses Wakes (inkl. der `WiFi: connect to '<ssid>' failed …`-Zeilen) dorthin angehängt — so überlebt
+die Diagnose auch Deep-Sleep **und** Stromverlust. Beim nächsten **erfolgreichen** Sync geht der
+Backlog mit hoch und wird danach gelöscht; Rotation bei 16 KB. Best-effort: schlägt der Mount fehl,
+läuft die Box normal weiter (der Flash-Log ist rein diagnostisch, nie im Safety-/Lock-Pfad).
+
 ### Failsafes (lokal, autoritativ, nicht vom Server abschaltbar)
 
 - **Low-Battery-Auto-Open** bei ≤ 15 % (Hysterese bis ≥ 25 %) — Öffnen mit Drehmoment-Reserve
@@ -274,7 +284,7 @@ Signierte OTA (Ed25519 über sha256 der `.bin`), Public Key eingebrannt. Auto-OT
 
 ### Logging
 
-Ein RAM-Ring-Puffer (6 KB, flüchtig) speist einheitlich: UART · `/dbg/log`-Webseite · UDP-Broadcast (LAN) · Server-Log (`logToServer`) · MQTT-Live-Log. Strukturierter, deep-sleep-fester Audit-Pfad daneben: das **Wake-Journal** (siehe oben).
+Ein RAM-Ring-Puffer (6 KB, flüchtig) speist einheitlich: UART · `/dbg/log`-Webseite · UDP-Broadcast (LAN) · Server-Log (`logToServer`) · MQTT-Live-Log. Zwei persistente Audit-Pfade daneben: das **Wake-Journal** (RTC-RAM, jeder Wake) und der **Flash-Log** (LittleFS, Roh-Diagnose fehlgeschlagener Syncs — siehe Persistenz).
 
 ---
 

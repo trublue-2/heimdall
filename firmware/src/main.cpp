@@ -20,6 +20,7 @@
 #include "logbuf.h"
 #include "mqtt_client.h"
 #include "wake_journal.h"
+#include "flash_log.h"
 #include "log.h"
 
 // ── State-Machine ───────────────────────────────────────────────────────────
@@ -593,9 +594,10 @@ static const char* wakeReasonStr() {
 
 // ── Deep-Sleep ──────────────────────────────────────────────────────────────
 static void goDeepSleep() {
-  // Dormant: stündlicher Heartbeat-Sync (HEARTBEAT_S) — oder früher, wenn eine
-  // Policy-Deadline näher liegt (dann genau zur Deadline aufwachen).
-  uint64_t timerS = HEARTBEAT_S;
+  // Dormant: Heartbeat-Sync im konfigurierten Intervall (gPolicy.syncIntervalS, per Server pro Box;
+  // Fallback HEARTBEAT_S) — oder früher, wenn eine Policy-Deadline näher liegt (dann genau zur
+  // Deadline aufwachen).
+  uint64_t timerS = gPolicy.syncIntervalS > 0 ? (uint64_t)gPolicy.syncIntervalS : HEARTBEAT_S;
   if (gPolicy.lockUntil > 0) {
     time_t remaining = gPolicy.lockUntil - time(nullptr);
     if (remaining > 60 && remaining < (long)timerS) timerS = (uint64_t)remaining;
@@ -732,6 +734,7 @@ void setup() {
   otaCheckBoot(); // OTA-Validierung/Rollback (S14) — vor allem anderen
   NVS::begin();
   NVS::ensureNamespaces(); // read-only gelesene Namespaces einmal anlegen → kein NOT_FOUND-Spam
+  FlashLog::begin();       // LittleFS-Backlog mounten (best-effort; blockiert nie den Boot)
   Stepper::begin();
   gWeb.on("/", handleStatus); // konsolidierte Statusseite (Info + Funktionen + Log + WLAN), einmalig
   gWeb.on("/dbg/ota",  handleDbgOta);
@@ -841,6 +844,7 @@ void loop() {
       if (res == SyncResult::OK) {
         gAuthFails = 0;    // erfolgreicher Sync → 401-Zähler zurücksetzen
         wakeJournalClear(); // Wakes bestätigt hochgeladen → Journal leeren (erst NACH OK)
+        FlashLog::clear();  // Backlog bestätigt hochgeladen → löschen (erst NACH OK)
         otaCommit();       // neue FW (falls OTA gerade lief) bestätigen
         // "Soll zu" = serverLocked UND kein Failsafe will offen. Über shouldOpen() (Low-Batt ∨
         // Offline ∨ PolicyExpired) — sonst würde ein Failsafe-Öffnen (z.B. Low-Batt) sofort
@@ -882,6 +886,9 @@ void loop() {
         }
       } else {
         LOGE("Sync failed (code=%d) — running from cached policy", (int)res);
+        // Fehl-Sync: die WLAN-/Fehler-Zeilen dieses Wakes würden im Deep-Sleep verloren gehen —
+        // persistent ins Flash-Backlog sichern, geht beim nächsten geglückten Sync mit hoch.
+        FlashLog::persistPending();
         // Selbstheilung (S8): wiederholter 401 = Token passt nicht mehr (z.B. nach
         // Server-Token-Rotation) → Credentials löschen → Setup-Hotspot.
         if (res == SyncResult::AUTH_ERROR) {

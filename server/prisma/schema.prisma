@@ -122,6 +122,9 @@ model LockPolicy {
   deviceId         String    @unique
   lockUntil        DateTime?
   offlineOpenHours Int       @default(24)
+  // Heartbeat-Sync-Intervall in Minuten (1–180): wie oft die dormante Box aufwacht + synct.
+  // Kleiner = reaktiver, aber mehr Akkuverbrauch. Muss < Offline-Failsafe-Fenster bleiben.
+  syncIntervalMin  Int       @default(60)
   // "Einfach verschliessen" (ohne Zeit): zu, aber kein lockUntil. Box bleibt zu,
   // bis serverseitig geöffnet wird (jederzeit, kein Event). Failsafes bleiben aktiv.
   simpleLock       Boolean   @default(false)

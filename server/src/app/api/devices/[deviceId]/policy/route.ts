@@ -9,6 +9,7 @@ import { publishCommand } from "@/lib/mqttBridge";
 const policySchema = z.object({
   lockUntil: z.string().datetime().nullable().optional(),
   offlineOpenHours: z.number().int().min(1).max(168).optional(),
+  syncIntervalMin: z.number().int().min(1).max(180).optional(),
 });
 
 // Steuerung + Policy-Edit (lockUntil = sperren/öffnen, offlineOpenHours).
@@ -32,9 +33,11 @@ export async function PATCH(
   const data: {
     lockUntil?: Date | null;
     offlineOpenHours?: number;
+    syncIntervalMin?: number;
   } = {};
   if (body.lockUntil !== undefined) data.lockUntil = body.lockUntil ? new Date(body.lockUntil) : null;
   if (body.offlineOpenHours !== undefined) data.offlineOpenHours = body.offlineOpenHours;
+  if (body.syncIntervalMin !== undefined) data.syncIntervalMin = body.syncIntervalMin;
 
   const policy = await prisma.lockPolicy.upsert({
     where: { deviceId },
@@ -51,5 +54,6 @@ export async function PATCH(
     deviceName: policy.device.name,
     lockUntil: policy.lockUntil?.toISOString() ?? null,
     offlineOpenHours: policy.offlineOpenHours,
+    syncIntervalMin: policy.syncIntervalMin,
   });
 }

@@ -13,16 +13,19 @@ export function DeviceSettingsForm({
   deviceId,
   name,
   offlineOpenHours,
+  syncIntervalMin,
   emergencyOpensLeft,
 }: {
   deviceId: string;
   name: string;
   offlineOpenHours: number;
+  syncIntervalMin: number;
   emergencyOpensLeft: number;
 }) {
   const router = useRouter();
   const [nameVal, setNameVal] = useState(name);
   const [offline, setOffline] = useState(String(offlineOpenHours));
+  const [syncMin, setSyncMin] = useState(String(syncIntervalMin));
   const [emergency, setEmergency] = useState(String(emergencyOpensLeft));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +54,7 @@ export function DeviceSettingsForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           offlineOpenHours: parseInt(offline, 10),
+          syncIntervalMin: parseInt(syncMin, 10),
         }),
       });
       if (!pr.ok) throw new Error(await pr.text());
@@ -84,6 +88,15 @@ export function DeviceSettingsForm({
             max={168}
             value={offline}
             onChange={(e) => setOffline(e.target.value)}
+          />
+          <Input
+            id={`sync-${deviceId}`}
+            label="Sync-Intervall (Minuten, 1–180) — wie oft die Box aufwacht + synct (kleiner = reaktiver, mehr Akku)"
+            type="number"
+            min={1}
+            max={180}
+            value={syncMin}
+            onChange={(e) => setSyncMin(e.target.value)}
           />
           <Input
             id={`emergency-${deviceId}`}

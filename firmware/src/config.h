@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.2.28"
+#define FW_VERSION "0.2.29"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Ziel-Board: ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
@@ -68,11 +68,15 @@
 // Session-Fenster-Modell: Button/USB öffnet ein kurzes Wachfenster mit Live-MQTT;
 // dormant schläft die Box zwischen stündlichen Heartbeat-Syncs.
 #define ACTIVE_WINDOW_MS         (2UL * 60 * 1000) // 2 min ohne Aktivität → Deep-Sleep (Wachfenster, MQTT live)
-#define HEARTBEAT_S              (60UL * 60)        // dormant: stündlicher Sync-Wake (RTC-Timer)
+#define HEARTBEAT_S              (60UL * 60)        // dormant: Standard-Sync-Intervall (60 min); pro Box per Server überschreibbar
+// Konfigurierbares Heartbeat-Sync-Intervall (Server liefert es pro Box): Grenzen 1 min … 180 min.
+#define SYNC_INTERVAL_MIN_S      (1UL * 60)
+#define SYNC_INTERVAL_MAX_S      (180UL * 60)
 // Längstes reguläres Sleep-Intervall — Klemme für die monotonen Failsafe-Zähler in
 // checkFailsafes(): ein Delta darüber gilt als Uhr-Sprung und wird konservativ gekappt.
-// MUSS ≥ HEARTBEAT_S sein, sonst unterzählt der Offline-Zähler (Failsafe feuert zu spät).
-#define MAX_SLEEP_S              HEARTBEAT_S
+// MUSS ≥ dem MAXIMAL konfigurierbaren Sync-Intervall sein, sonst unterzählt der Offline-Zähler
+// (Failsafe feuert zu spät) — Safety-Invariante bei konfigurierbarem Intervall.
+#define MAX_SLEEP_S              SYNC_INTERVAL_MAX_S
 #define OFFLINE_OPEN_H           24                 // h ohne Sync → Auto-Open
 // Hardware-Watchdog: rebootet die Box, wenn die Firmware WDT_TIMEOUT_S lang haengt (kein
 // Feed) — Selbstheilung gegen Aufhaenger. Liegt bewusst ueber dem laengsten legitimen
@@ -84,6 +88,10 @@
 
 // Re-Sync-Takt im Wach-Zustand (am Netz) — hält Policy/OTA/IP frisch.
 #define DEBUG_RESYNC_MS          (30UL * 1000)
+
+// Persistentes Fehl-Sync-Log (LittleFS auf der "spiffs"-Partition): max. Dateigröße, darüber
+// rotiert (älteste Zeilen fallen weg). 16 KB deckt einen langen Offline-Stretch ab.
+#define FLASHLOG_CAP             16384
 
 // WLAN-Sendeleistung: 8,5 dBm — wieder hoch für bessere Reichweite/Stabilität
 // (Multi-WLAN, schwächere APs). Der Brownout-Fix war primär ein gutes Kabel, nicht
