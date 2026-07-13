@@ -714,6 +714,9 @@ static void lockBox() {
 // ── setup: läuft einmal nach jedem Wake / Power-On ──────────────────────────
 void setup() {
   Serial.begin(115200);
+  // Zeitzone SOFORT setzen (vor dem ersten Log) → alle Log-Zeitstempel konsistent lokal.
+  // Ohne das stempeln alle Zeilen bis zum ersten syncNtp() in UTC → +2h-Knick mitten im Boot.
+  setenv("TZ", TZ_EUROPE_ZURICH, 1); tzset();
   ets_install_putc1(logPutc); // Logs in den Ringpuffer (Browser-Serial) — nur Ring+UART, kein Netz
   xTaskCreate(udpLogTask, "udpLog", 4096, nullptr, 1, nullptr); // UDP-Broadcast in eigenem Task
   // Sofort-Quittung bei Button-Wake — GANZ am Anfang, VOR der schweren Init

@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.2.31"
+#define FW_VERSION "0.2.32"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Ziel-Board: ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
@@ -92,6 +92,10 @@
 // Persistentes Fehl-Sync-Log (LittleFS auf der "spiffs"-Partition): max. Dateigröße, darüber
 // rotiert (älteste Zeilen fallen weg). 16 KB deckt einen langen Offline-Stretch ab.
 #define FLASHLOG_CAP             16384
+
+// Zeitzone für die lokale Anzeige (Log-Zeitstempel, Statusseite). MUSS früh in setup() gesetzt
+// werden, sonst stempeln die Zeilen vor dem ersten syncNtp() noch in UTC (+2h-Knick im Log).
+#define TZ_EUROPE_ZURICH         "CET-1CEST,M3.5.0,M10.5.0/3"
 
 // WLAN-Sendeleistung: 8,5 dBm — wieder hoch für bessere Reichweite/Stabilität
 // (Multi-WLAN, schwächere APs). Der Brownout-Fix war primär ein gutes Kabel, nicht

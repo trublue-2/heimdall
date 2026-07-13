@@ -192,9 +192,7 @@ static bool connectWifi(const WifiCredentials& creds) {
 }
 
 static void syncNtp() {
-  // TZ immer setzen (für lokale Anzeige der Statusseite).
-  setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
-  tzset();
+  // TZ wird bereits in setup() gesetzt (TZ_EUROPE_ZURICH) → hier nicht mehr nötig.
   // RTC läuft im Deep-Sleep weiter: ist die Uhr schon plausibel gesetzt,
   // sparen wir den NTP-Roundtrip komplett (mehrere Sekunden auf dem Wake-Pfad).
   if (time(nullptr) > 1700000000) return; // ~2023-11 → Uhr gültig
