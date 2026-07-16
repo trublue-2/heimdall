@@ -259,6 +259,7 @@ export async function POST(req: NextRequest) {
       boxId: device.id,
       name: device.name,
       locked: boxLocked(policy, now),
+      reportedLocked: state.locked, // frische physische Meldung dieses Syncs (IST, nicht SOLL)
       lockUntil: view.lockUntil,
       simpleLock: view.simpleLock,
       keyholderLocked: view.keyholderLocked,

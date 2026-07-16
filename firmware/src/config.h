@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.2.32"
+#define FW_VERSION "0.2.33"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Ziel-Board: ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).

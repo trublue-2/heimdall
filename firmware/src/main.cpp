@@ -699,16 +699,38 @@ static bool shouldOpenNow() {
   return checkFailsafes() || (gBox.locked && Failsafe::isPolicyExpired(gPolicy));
 }
 
+// DIE eine Definition von „jemand ist am Gerät": Knopf-/Power-on-Wake ODER USB-Strom
+// (Ladung ODER Ladeschluss — beide TP4056-Signale). Zufahr-Guard und Wachfenster hängen
+// beide hieran; zwei getrennte Schreibweisen würden bei der nächsten Änderung auseinanderdriften.
+// Liest selbst NICHT — der Ladezustand muss frisch sein (readChargeState() beim Nutzer).
+static bool presentAtDevice() {
+  return gWindowWake || gBox.charging || gBox.chargeFull;
+}
+
 // Kanonische Sperr-Sequenz (Sperrbeginn merken, Riegel zu, Zustand melden). Genutzt von
 // der Policy-Entscheidung im Sync UND vom MQTT-lock-Kommando — eine Quelle statt zwei.
-static void lockBox() {
-  if (gBox.locked) return; // schon zu → nicht erneut gegen den Anschlag fahren (Aufrufer sind ohnehin geschützt)
+//
+// SICHERHEITS-GUARD IM MECHANISMUS: Zufahren NUR mit jemandem am Gerät. Open-Loop-Stepper
+// ohne Positions-Sensor — ein stiller Heartbeat darf den Motor nie Richtung zu bewegen,
+// sonst fährt z.B. nach einer Notöffnung der nächste Heartbeat blind gegen den Anschlag.
+// Der Guard sitzt bewusst HIER statt bei den Aufrufern, damit ihn kein künftiger Aufrufer
+// vergessen kann; den Ladezustand liest lockBox selbst frisch (keine Abhängigkeit von der
+// Call-Reihenfolge). Öffnen bleibt ungeguarded — Öffnen ist immer die sichere Richtung.
+// Rückgabe: true = Box ist zu (oder war es schon), false = Zufahren mangels Präsenz aufgeschoben.
+static bool lockBox() {
+  if (gBox.locked) return true; // schon zu → nicht erneut gegen den Anschlag fahren
+  readChargeState();            // Präsenz-Antwort frisch, unabhängig vom Aufrufer
+  if (!presentAtDevice()) {
+    LOGW("Close deferred: policy requires closed, but nobody present (heartbeat wake) — staying open");
+    return false;
+  }
   gBox.locked        = true;
   gBox.lockedSince   = time(nullptr);
   NVS::saveState(gBox);
   Stepper::lock();
   gLastActivityMs = millis();
   ServerSync::run(gCreds, gBox, gPolicy, true); // Zustand melden, WiFi behalten
+  return true;
 }
 
 // ── setup: läuft einmal nach jedem Wake / Power-On ──────────────────────────
@@ -863,8 +885,9 @@ void loop() {
           gState = State::OPENING;
         } else if (!gBox.locked && shouldClose) {
           LOGI("Locking: server policy requires closed (until %s)", fmtLocal(gPolicy.lockUntil).c_str());
-          lockBox(); // meldet den neuen Zustand sofort (sonst zeigt das Web "Offen")
-          gState = State::LOCKED;
+          // Präsenz-Guard sitzt IM Mechanismus (lockBox): ohne jemanden am Gerät wird das
+          // Zufahren aufgeschoben und die Box bleibt offen, bis ein Präsenz-Fenster kommt.
+          gState = lockBox() ? State::LOCKED : State::IDLE_OPEN;
         } else {
           gState = gBox.locked ? State::LOCKED : State::IDLE_OPEN;
         }
@@ -996,7 +1019,8 @@ void loop() {
       const bool onUsb = gBox.charging || gBox.chargeFull;
       // Aktives Fenster = Button/Power-on-Wake ODER am USB. Ein reiner Heartbeat-Wake
       // (rtc_timer) auf Akku öffnet KEIN Fenster → nur Sync (schon gelaufen), dann Sleep.
-      bool activeWindow = onUsb || gWindowWake;
+      // Dieselbe Definition wie der Zufahr-Guard (readChargeState() lief gerade).
+      bool activeWindow = presentAtDevice();
 
       if (activeWindow) {
         // MQTT im Fenster verbinden (throttled) + bedienen. mq.enabled=false → kein MQTT
@@ -1033,8 +1057,10 @@ void loop() {
             case Mqtt::Command::CLOSE:
             case Mqtt::Command::LOCK:
               LOGI("Command applied: lock (from server)");
-              if (!gBox.locked) lockBox();
-              gState = State::LOCKED; break;
+              // Im Wachfenster ist Präsenz konstruktionsbedingt gegeben — der Guard in
+              // lockBox() bleibt trotzdem die Autorität (robust gegen künftige Refactorings).
+              gState = lockBox() ? State::LOCKED : State::IDLE_OPEN;
+              break;
             case Mqtt::Command::SYNC:
               LOGI("Command applied: sync (from server)");
               gState = State::SYNCING; break;

@@ -86,8 +86,17 @@ export function publishCommand(deviceId: string, cmd: string, extra?: Record<str
   }
 }
 
-/** Ist die Box gerade MQTT-verbunden (Wachfenster)? Startet die Bridge lazy mit. */
+/** Ist die Box gerade MQTT-verbunden (Wachfenster)? Startet die Bridge notfalls lazy mit —
+ *  der reguläre Start passiert aber EAGER beim Server-Boot (instrumentation.ts): lazy war die
+ *  Präsenz-Liste beim allerersten Aufruf nach einem Neustart noch leer (connect + retained
+ *  Messages sind asynchron), und der erste Instant-Push wurde fälschlich übersprungen. */
 export function deviceOnline(deviceId: string): boolean {
   ensureClient();
   return state.presence.get(deviceId) ?? false;
+}
+
+/** Bridge beim Server-Start verbinden (instrumentation.ts). Die status-Topics sind retained —
+ *  kurz nach dem Connect ist die Präsenz-Liste für alle bekannten Boxen warm. */
+export function initBridge(): void {
+  ensureClient();
 }

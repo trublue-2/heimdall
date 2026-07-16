@@ -122,6 +122,10 @@ export async function pushBoxStatus(
     boxId: string;
     name: string;
     locked: boolean;
+    /** Physisches IST: hat die Box sich in DIESEM Sync als zu gemeldet? `locked` ist das SOLL
+     *  (boxLocked) — seit dem Präsenz-Guard kann die Box offen stehen, obwohl sie zu sein soll
+     *  (wartet auf Knopf/USB). Der Tracker braucht das IST für ein ehrliches hardwareEnforced. */
+    reportedLocked: boolean;
     lockUntil: Date | null;
     simpleLock: boolean;
     keyholderLocked: boolean;
@@ -145,6 +149,7 @@ export async function pushBoxStatus(
         boxId: p.boxId,
         name: p.name,
         locked: p.locked,
+        reportedLocked: p.reportedLocked,
         lockUntil: p.lockUntil?.toISOString() ?? null,
         simpleLock: p.simpleLock,
         keyholderLocked: p.keyholderLocked,

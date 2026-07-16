@@ -127,8 +127,18 @@ Die box/sync-Response schickt der Box nur zwei Sperr-Felder: `locked` (= `boxLoc
 > **`lockUntil == 0` heisst „zu ohne Deadline", nicht „offen".** `serverLocked` entscheidet, nicht
 > `lockUntil`. Ein simpleLock ist `serverLocked=true, lockUntil=0` → `isPolicyExpired` false → zu.
 >
-> **Die Box öffnet am gecachten `lockUntil` von selbst, beim nächsten Wake, ohne zu syncen.** Deshalb
-> lässt sich „bei Ablauf zubleiben" nicht serverseitig erzwingen (→ Firmware/Stage 6).
+> **Die Box öffnet am gecachten `lockUntil` von selbst, beim nächsten Wake, ohne zu syncen.**
+> Das ist BEWUSST so (Entscheid 16.07): die Frist ist das Freiheits-Versprechen, sie gilt auch
+> offline. „Zubleiben trotz Ablauf" heisst serverseitig `lockUntil=0` (simpleLock), nie eine Frist.
+
+**Zufahren (seit FW 0.2.33): nur mit jemandem am Gerät.** Der Präsenz-Guard sitzt IM Mechanismus
+(`lockBox()` prüft `presentAtDevice()` = Knopf-/Power-on-Wake ODER USB) — ein stiller Heartbeat
+bewegt den Motor NIE Richtung zu (Open-Loop-Stepper ohne Positions-Sensor; sonst führe z.B. nach
+einer Notöffnung der nächste Heartbeat blind gegen den Anschlag). Kein Aufrufer kann den Guard
+vergessen; der MQTT-Befehlspfad lief ohnehin schon nur im Wachfenster.
+**Öffnen bleibt ungeguarded — Öffnen ist immer die sichere Richtung.**
+Merksatz: *Von selbst bewegt sich die Box nur, um zu retten (Akku, Funkstille, Frist). Zufahren
+braucht Befehl UND Präsenz.*
 
 ---
 
@@ -141,6 +151,7 @@ Reine Anzeige-Kopie für den Tracker. `locked`, `lockUntil`, `simpleLock`, `keyh
 
 | Variable | Werte | Bedeutung |
 |---|---|---|
+| `reportedLocked` | bool \| null | **Physisches IST** aus der frischen Sync-Meldung (`state.locked`) — `locked` ist das SOLL. Seit dem Präsenz-Guard kann die Box offen stehen, obwohl sie zu sein soll (wartet auf Knopf/USB). `null` bei Alt-Zeilen → Fallback aufs SOLL. |
 | `offlineOpenHours` | Int \| null | Aus `policy` (NICHT aus `deviceLockView()`) mitgepusht. Der Tracker braucht die Offline-Failsafe-Schwelle, um `staleLock`/`hardwareEnforced` im MCP ehrlich zu berechnen. `null` bei Alt-Zeilen vor diesem Push. |
 | `pendingCommand` | `null` \| `lock` \| `open` | Aus einem Eintrag abgeleitetes, noch nicht von der Box abgeholtes Kommando. Keine Frist, kein Reinigungs-Kommando. |
 
@@ -149,9 +160,10 @@ Reine Anzeige-Kopie für den Tracker. `locked`, `lockUntil`, `simpleLock`, `keyh
 | Variable | Werte | Bedeutung |
 |---|---|---|
 | `locked` | bool | SOLL (aus `boxLocked()`). Der zuletzt gemeldete Wert; kippt nicht durch Zeitablauf ohne Sync — dafür `staleLock`. |
+| `reportedLocked` | bool \| null | **IST**: war die Box beim letzten Sync wirklich zu? Kann vom SOLL abweichen (Präsenz-Guard: „soll zu, steht offen, wartet auf Knopf/USB"). `null` = Alt-Zeile, dann gilt das SOLL als bester Stand. |
 | `lockUntil` | Zeit \| null | Effektive Frist, oder null (unbefristet/kein Soll). |
-| `hardwareEnforced` | bool | **Die EINE ehrliche Vollstreckungs-Antwort** — hält die Box den Schlüssel gerade fest, **online-unabhängig**. true nur bei `locked` UND `keyInBox !== false` UND `!staleLock`. Ist sie false, nennt genau eines das Warum: `locked:false`, `keyInBox:false` oder `staleLock:true`. |
-| `staleLock` | bool | Der zuletzt gemeldete „zu"-Stand ist entwertet, weil die Box sich seit dem letzten Sync **deterministisch selbst geöffnet** hat: Frist (`lockUntil`) verstrichen ODER Offline-Failsafe (`offlineOpenHours` ohne Sync) erreicht. Beides auch offline — „online" spielt keine Rolle. |
+| `hardwareEnforced` | bool | **Die EINE ehrliche Vollstreckungs-Antwort** — hält die Box den Schlüssel gerade fest, **online-unabhängig**. Basiert auf dem **IST**: true nur bei `reportedLocked` (Fallback `locked`) UND `keyInBox !== false` UND `!staleLock`. Ist sie false, nennt genau EIN Feld das Warum: `locked:false` (soll offen), `reportedLocked:false` (steht offen), `keyInBox:false` (Schlüssel beim Sub) oder `staleLock:true` (hat sich offline selbst geöffnet). |
+| `staleLock` | bool | Der zuletzt gemeldete „zu"-Stand (IST) ist entwertet, weil die Box sich seit dem letzten Sync **deterministisch selbst geöffnet** hat: Frist (`lockUntil`) verstrichen ODER Offline-Failsafe (`offlineOpenHours` ohne Sync) erreicht. Beides auch offline — „online" spielt keine Rolle. |
 | `keyInBox` | true \| false \| null | Sub-Deklaration: liegt der Schlüssel in der Box? `false` erklärt ein `hardwareEnforced:false`, das sonst wie eine Störung aussähe. |
 | `battery` / `charging` / `lastSeen` | — | Telemetrie + Zeitpunkt des letzten Syncs. Kein `online`-Feld mehr (Aktualität liest man an `lastSeen`). |
 
@@ -175,8 +187,9 @@ Reine Anzeige-Kopie für den Tracker. `locked`, `lockUntil`, `simpleLock`, `keyh
 
 | Auslöser | Was passiert | Ergebnis |
 |---|---|---|
-| VERSCHLUSS-Eintrag | Tracker → `open`? nein → `lock`. Box `simpleLock`/Sperrzeit → zu. | Box zu. |
+| VERSCHLUSS-Eintrag | Tracker → `open`? nein → `lock`. Box fährt zu, sobald jemand am Gerät ist (Knopf/USB — Präsenz-Guard). | Box zu (beim nächsten Präsenz-Fenster). |
 | OEFFNEN-Eintrag (erlaubt) | Tracker → `open`. `applyTrackerCommand`: `simpleLock=false, lockUntil=null, holdOpen = trackerIntentActive`. | Box auf; Sperrzeit läuft weiter (holdOpen). |
 | OEFFNEN-Eintrag (VERBOTEN) | Tracker sendet **kein** Kommando. | Box bleibt zu; Sperrzeit gebrochen; Strafbuch bucht. |
 | Sperrzeit-Rückzug (vorzeitig) | `shouldHoldClosedOnTrackerEnd` → eigener `simpleLock`. | Box bleibt zu, bis der Sub OEFFNEN einträgt. |
-| Sperrzeit läuft natürlich ab | Firmware öffnet am gecachten Deadline. | Box auf (heute; „zubleiben" = Stage 6). |
+| Sperrzeit läuft natürlich ab | Firmware öffnet am gecachten Deadline (bewusst, Entscheid 16.07 — Frist gilt auch offline). | Box auf. |
+| Notöffnung (Akku/Offline-Failsafe) | Box öffnet selbst. KEIN blindes Re-Lock: zu fährt sie erst wieder im Präsenz-Fenster. Tracker sieht `reportedLocked:false`. | Box offen, wartet auf jemanden am Gerät. |
