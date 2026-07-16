@@ -54,31 +54,37 @@ export async function POST(req: NextRequest) {
     //     Bei Fehler die alte Policy behalten (konservativ: lieber NICHT öffnen als fälschlich).
     let policy = await syncTrackerIntent(device, instance, device.policy).catch(() => device.policy);
 
-    if (body.command && policy && deviceOnline(device.id)) {
-      // (2) Kommando auf die Policy anwenden und SOFORT an die LIVE Box pushen. Das Anwenden muss
-      //     VOR der Prüfung unten stehen: `open` setzt einen laufenden Dauerauftrag aus (holdOpen),
-      //     sonst meldete boxLocked() weiter „zu" und der Guard unterdrückte den Push.
-      //
-      //     NUR für die live Box. Eine schlafende bekommt dasselbe Kommando beim nächsten Box-Sync
-      //     über `pendingCommand` — durch dieselbe Funktion, also nie abweichend. Hier vorab zu
-      //     schreiben brächte nichts und bewaffnete `pendingOpenReason` für eine Öffnung, die gar
-      //     nicht stattfindet: ein späterer Aufbruch würde als reguläres Öffnen protokolliert.
+    if (body.command && policy) {
+      // (2) Kommando IMMER sofort auf die Policy anwenden — auch bei schlafender Box. Das SOLL
+      //     (boxLocked) kippt damit augenblicklich, die Heimdall-Karte zeigt sofort „BEREIT ZUM
+      //     ÖFFNEN/VERSCHLIESSEN" statt bis zum nächsten Box-Sync den alten Stand (realer Fall
+      //     16.07: Aufschluss im Tracker bei simpleLock/lockUntil=0 blieb unsichtbar). Der
+      //     pendingCommand-Pull beim nächsten Sync fährt dasselbe applyTrackerCommand — idempotent,
+      //     nie abweichend. Der früher gefürchtete stale `pendingOpenReason`-Marker („späterer
+      //     Aufbruch würde als reguläres Öffnen protokolliert") ist entschärft: ein lock-Kommando
+      //     räumt ihn jetzt ab (applyTrackerCommand), und seit dem Präsenz-Gate (FW 0.2.34) IST die
+      //     nächste legitime Öffnung genau der Vollzug dieses Kommandos.
+      //     Das Anwenden muss VOR der Push-Prüfung stehen: `open` setzt einen laufenden
+      //     Dauerauftrag aus (holdOpen), sonst meldete boxLocked() weiter „zu" und der Guard
+      //     unterdrückte den Push.
       policy = await applyTrackerCommand(device.id, body.command, policy, now);
 
-      // "lock" ist immer sicher. "open" NUR, wenn die Policy jetzt keine Sperre mehr verlangt
-      // (boxLocked ist die autoritative Prüfung) UND die Box physisch zu ist (Stepper-Schutz:
-      // open-loop, kein Endlagensensor → nicht gegen den Anschlag fahren).
-      if (body.command === "lock") {
-        publishCommand(device.id, "lock");
-        console.log(`[tracker/notify] "${device.name}" → lock (MQTT)`);
-      } else if (device.locked && !boxLocked(policy, now)) {
-        publishCommand(device.id, "open");
-        console.log(`[tracker/notify] "${device.name}" → open (MQTT)`);
+      if (deviceOnline(device.id)) {
+        // (2b) Live Box → SOFORT per MQTT pushen. "lock" ist immer sicher. "open" NUR, wenn die
+        //      Policy jetzt keine Sperre mehr verlangt (boxLocked ist die autoritative Prüfung)
+        //      UND die Box physisch zu ist (Stepper-Schutz: open-loop, kein Endlagensensor →
+        //      nicht gegen den Anschlag fahren).
+        if (body.command === "lock") {
+          publishCommand(device.id, "lock");
+          console.log(`[tracker/notify] "${device.name}" → lock (MQTT)`);
+        } else if (device.locked && !boxLocked(policy, now)) {
+          publishCommand(device.id, "open");
+          console.log(`[tracker/notify] "${device.name}" → open (MQTT)`);
+        }
+      } else {
+        // Schlafende Box: SOLL ist gesetzt, vollzogen wird beim nächsten Kontakt (Sync/Knopf).
+        console.log(`[tracker/notify] "${device.name}" schläft → ${body.command} angewendet, Vollzug beim nächsten Kontakt`);
       }
-    } else if (body.command) {
-      // Kommando da, Box aber nicht im Wachfenster (Deep-Sleep, kein MQTT). Sie zieht es beim
-      // nächsten Sync — für den Sub sieht das aus wie „passiert erst auf Knopfdruck". Sichtbar machen.
-      console.log(`[tracker/notify] "${device.name}" schläft → ${body.command} wartet auf den Box-Sync`);
     } else if (shouldHoldClosedOnTrackerEnd(device.policy, policy, device.locked, now)) {
       // (3) Sperrzeit-RÜCKZUG ohne Kommando: die Tracker-Sperre ist weg, die Box aber physisch noch
       //     zu → in einen eigenen Simple-Lock überführen. Dann zeigt die Anzeige "GESCHLOSSEN, ohne

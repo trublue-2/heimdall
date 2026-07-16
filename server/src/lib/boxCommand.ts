@@ -36,10 +36,16 @@ export async function applyTrackerCommand(
   const intentHolds = trackerIntentActive(policy, now);
 
   if (command === "lock") {
-    return prisma.lockPolicy.update({
+    const updated = await prisma.lockPolicy.update({
       where: { deviceId },
       data: { holdOpen: false, simpleLock: !intentHolds },
     });
+    // Ein lock ERSETZT eine noch nicht vollzogene Öffnung: den pendingOpenReason-Marker abräumen,
+    // sonst würde ein SPÄTERER Aufbruch als reguläres (Tracker-)Öffnen protokolliert. Seit dem
+    // Präsenz-Gate (FW 0.2.34) kann zwischen open-Apply und physischem Öffnen beliebig viel Zeit
+    // liegen — der Marker darf ein dazwischengeschobenes lock nicht überleben.
+    await prisma.device.update({ where: { id: deviceId }, data: { pendingOpenReason: null } });
+    return updated;
   }
 
   const updated = await prisma.lockPolicy.update({
