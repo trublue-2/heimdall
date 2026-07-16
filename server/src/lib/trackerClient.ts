@@ -130,6 +130,9 @@ export async function pushBoxStatus(
     boltPos?: string | null;
     fwVersion?: string | null;
     lastSyncAt: Date | null;
+    /** Offline-Failsafe-Schwelle (Stunden ohne Sync → Box öffnet selbst). Der Tracker braucht sie,
+     *  um `staleLock`/`hardwareEnforced` ehrlich zu berechnen — sie ist KEIN Lock-View-Wert. */
+    offlineOpenHours: number;
     lastAppliedCommand?: string;
   }
 ): Promise<BoxCommand | null> {
@@ -150,6 +153,7 @@ export async function pushBoxStatus(
         boltPos: p.boltPos ?? undefined,
         fwVersion: p.fwVersion ?? undefined,
         lastSyncAt: p.lastSyncAt?.toISOString() ?? null,
+        offlineOpenHours: p.offlineOpenHours,
         lastAppliedCommand: p.lastAppliedCommand,
       }),
     });

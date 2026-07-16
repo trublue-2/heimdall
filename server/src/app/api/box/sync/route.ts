@@ -267,6 +267,7 @@ export async function POST(req: NextRequest) {
       boltPos: state.boltPos,
       fwVersion: state.fwVersion ?? device.fwVersion,
       lastSyncAt: now,
+      offlineOpenHours: policy.offlineOpenHours,
     });
     // Semantik in applyTrackerCommand — dieselbe Quelle wie der MQTT-Instant-Push (tracker/notify).
     if (isTrackerCommand(cmd?.pendingCommand)) {
