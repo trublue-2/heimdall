@@ -24,7 +24,7 @@ die Box führt aus (und überlebt offline), der Tracker zeigt an.
 | **„Soll zu sein?" (SOLL)** | `serverLocked` — Stand des letzten Syncs | `boxLocked(policy, now)` — live berechnet, DIE eine Quelle | `locked` — Stand des letzten Pushs |
 | **„Ist wirklich zu?" (IST)** | weiss es selbst (Riegel, `gBox.locked`) | `Device.locked` — zuletzt gemeldet | `reportedLocked` (`null` = nie gemeldet → SOLL gilt) |
 | **Frist** | gecachtes `lockUntil` (`0` = keine); öffnet daran **selbst**, auch offline | `lockUntil` + `trackerLockUntil` → `effectiveLockUntil()` | `lockUntil` — effektive Frist oder `null` |
-| **Öffnen** | von selbst: Akku, Funkstille (`offlineOpenH`), Frist — sonst Server-„offen" oder Knopf | setzt das SOLL auf offen (Eintrag, `withdraw`, `holdOpen`) | löst über Einträge aus; liest sonst nur |
+| **Öffnen** | von selbst NUR zum Retten: Akku, Funkstille (`offlineOpenH`). Frist/Server-„offen" **bewaffnen** nur — Riegel fährt erst mit Präsenz auf (Knopf/USB) | setzt das SOLL auf offen (Eintrag, `withdraw`, `holdOpen`) | löst über Einträge aus; liest sonst nur |
 | **Zufahren** | **NUR mit Präsenz** (Knopf/USB) — Guard in `lockBox()` | setzt das SOLL auf zu; erzwingt keine Bewegung | hinterlegt `pendingCommand` „lock" |
 | **Schlüssel in der Box?** | weiss es nicht (kein Sensor) | weiss es nicht | `keyInBox` — Deklaration des Subs beim Verschluss |
 | **Wann veraltet?** | Policy-Cache bis zum nächsten Sync | IST bis zur nächsten Meldung | alles bis zum nächsten Push; `staleLock` rechnet die Selbst-Öffner ein |
@@ -138,29 +138,36 @@ Die box/sync-Response schickt der Box nur zwei Sperr-Felder: `locked` (= `boxLoc
 | `lockUntil` | Response `lockUntil` | `0` = **keine Deadline** (= simpleLock, NICHT „offen"). Sonst Failsafe-Grenze. |
 | `offlineOpenH` | Response `offlineOpenHours` | Offline-Failsafe-Schwelle. |
 
-**Die Box öffnet (`shouldOpen`), wenn EINES gilt** (`firmware/src/failsafe.h`):
+**Öffnungs-Gründe und ihr Vollzug** (`firmware/src/failsafe.h` + Präsenz-Gate in `main.cpp`):
 
-| Failsafe | Bedingung | Clock nötig? |
-|---|---|---|
-| `isPolicyExpired` | `!serverLocked` (Server sagt offen) ODER (`lockUntil != 0` UND `now >= lockUntil`) | ja (bei ungültiger Uhr: nein) |
-| `isLowBattery` | Akku ≤ kritisch (Hysterese) | nein |
-| `isOfflineTimeout` | `offlineSeconds >= offlineOpenH·3600` | nein (monotoner Zähler) |
+| Grund | Bedingung | Clock nötig? | Vollzug |
+|---|---|---|---|
+| `isPolicyExpired` | `!serverLocked` (Server sagt offen) ODER (`lockUntil != 0` UND `now >= lockUntil`) | ja (bei ungültiger Uhr: nein) | **nur mit Präsenz** (bewaffnet sonst) |
+| `isLowBattery` | Akku ≤ kritisch (Hysterese) | nein | autonom (rettet) |
+| `isOfflineTimeout` | `offlineSeconds >= offlineOpenH·3600` | nein (monotoner Zähler) | autonom (rettet) |
 
 > **`lockUntil == 0` heisst „zu ohne Deadline", nicht „offen".** `serverLocked` entscheidet, nicht
 > `lockUntil`. Ein simpleLock ist `serverLocked=true, lockUntil=0` → `isPolicyExpired` false → zu.
 >
-> **Die Box öffnet am gecachten `lockUntil` von selbst, beim nächsten Wake, ohne zu syncen.**
-> Das ist BEWUSST so (Entscheid 16.07): die Frist ist das Freiheits-Versprechen, sie gilt auch
-> offline. „Zubleiben trotz Ablauf" heisst serverseitig `lockUntil=0` (simpleLock), nie eine Frist.
+> **Frist/Policy-Offen bewaffnet nur (seit FW 0.2.34, Entscheid 16.07 abends).** Läuft die Frist
+> ab (oder meldet der Sync SOLL-offen), bleibt der Riegel zu und die Box ist „scharfgestellt":
+> sie öffnet beim nächsten Präsenz-Ereignis (Knopf/USB) — auch offline (gecachte Frist + Knopf
+> genügen, kein Sync nötig). Die Frist ist das Versprechen „du DARFST jetzt öffnen", nicht „der
+> Riegel springt auf, während niemand da ist und z.B. der Schlüssel einer laufenden Session
+> drinliegt". Genau das war der Vorfall vom 16.07 nachmittags: Sperrzeit lief um 14:07 ab, die
+> Box öffnete am Heartbeat ins Leere, der Session-Schlüssel lag frei.
+> „Zubleiben auch gegen den Knopf" heisst serverseitig weiterhin `lockUntil=0` (simpleLock).
+> Ein `isPolicyExpired` wirkt ausserdem sofort als **Zufahr-Blocker** (nie zufahren, solange die
+> Policy offen will) — dieser Teil ist ungegated.
 
 **Zufahren (seit FW 0.2.33): nur mit jemandem am Gerät.** Der Präsenz-Guard sitzt IM Mechanismus
-(`lockBox()` prüft `presentAtDevice()` = Knopf-/Power-on-Wake ODER USB) — ein stiller Heartbeat
-bewegt den Motor NIE Richtung zu (Open-Loop-Stepper ohne Positions-Sensor; sonst führe z.B. nach
-einer Notöffnung der nächste Heartbeat blind gegen den Anschlag). Kein Aufrufer kann den Guard
-vergessen; der MQTT-Befehlspfad lief ohnehin schon nur im Wachfenster.
-**Öffnen bleibt ungeguarded — Öffnen ist immer die sichere Richtung.**
-Merksatz: *Von selbst bewegt sich die Box nur, um zu retten (Akku, Funkstille, Frist). Zufahren
-braucht Befehl UND Präsenz.*
+(`lockBox()` prüft `presentAtDevice()` = Knopf-/Power-on-Wake ODER USB ODER — seit 0.2.34 — ein
+konsumierter Tastendruck im laufenden Wachfenster) — ein stiller Heartbeat bewegt den Motor NIE
+Richtung zu (Open-Loop-Stepper ohne Positions-Sensor; sonst führe z.B. nach einer Notöffnung der
+nächste Heartbeat blind gegen den Anschlag). Kein Aufrufer kann den Guard vergessen; der
+MQTT-Befehlspfad lief ohnehin schon nur im Wachfenster.
+Merksatz: *Von selbst bewegt sich die Box nur, um zu retten (Akku, Funkstille). Alles andere —
+Zufahren UND Policy-Öffnen — braucht jemanden am Gerät.*
 
 ---
 
@@ -184,8 +191,9 @@ Reine Anzeige-Kopie für den Tracker. `locked` = `boxLocked()` (SOLL); `lockUnti
 | `locked` | bool | SOLL (aus `boxLocked()`). Der zuletzt gemeldete Wert; kippt nicht durch Zeitablauf ohne Sync — dafür `staleLock`. |
 | `reportedLocked` | bool \| null | **IST**: war die Box beim letzten Sync wirklich zu? Kann vom SOLL abweichen (Präsenz-Guard: „soll zu, steht offen, wartet auf Knopf/USB"). `null` = Alt-Zeile, dann gilt das SOLL als bester Stand. |
 | `lockUntil` | Zeit \| null | Effektive Frist, oder null (unbefristet/kein Soll). |
-| `hardwareEnforced` | bool | **Die EINE ehrliche Vollstreckungs-Antwort** — hält die Box den Schlüssel gerade fest, **online-unabhängig**. Basiert auf dem **IST**: true nur bei `reportedLocked` (Fallback `locked`) UND `keyInBox !== false` UND `!staleLock`. Ist sie false, nennt genau EIN Feld das Warum: `locked:false` (soll offen), `reportedLocked:false` (steht offen), `keyInBox:false` (Schlüssel beim Sub) oder `staleLock:true` (hat sich offline selbst geöffnet). |
-| `staleLock` | bool | Der zuletzt gemeldete „zu"-Stand (IST) ist entwertet, weil die Box sich seit dem letzten Sync **deterministisch selbst geöffnet** hat: Frist (`lockUntil`) verstrichen ODER Offline-Failsafe (`offlineOpenHours` ohne Sync) erreicht. Beides auch offline — „online" spielt keine Rolle. |
+| `hardwareEnforced` | bool | **Die EINE ehrliche Vollstreckungs-Antwort** — hält die Box den Schlüssel gerade fest, **online-unabhängig**. Basiert auf dem **IST**: true nur bei `reportedLocked` (Fallback `locked`) UND `keyInBox !== false` UND `!staleLock` UND `!openArmed`. Ist sie false, nennt genau EIN Feld das Warum: `locked:false` (soll offen), `reportedLocked:false` (steht offen), `keyInBox:false` (Schlüssel beim Sub), `openArmed:true` (zu, aber ein Knopfdruck vom Offen entfernt) oder `staleLock:true` (hat sich offline selbst geöffnet). |
+| `openArmed` | bool | Box ist (laut IST) zu, aber die Öffnung ist **scharfgestellt**: Frist verstrichen oder SOLL offen — der nächste Knopf/USB-Kontakt öffnet ohne weitere Prüfung (FW ≥ 0.2.34). „Hält" zählt das ehrlicherweise nicht mehr; `hardwareEnforced` ist dann false. |
+| `staleLock` | bool | Der zuletzt gemeldete „zu"-Stand (IST) ist entwertet, weil die Box sich seit dem letzten Sync per **Offline-Failsafe** (`offlineOpenHours` ohne Sync) **selbst geöffnet** hat — der einzige verbliebene deterministische Selbst-Öffner neben Akku-Not (seit 0.2.34 öffnet eine abgelaufene Frist nicht mehr autonom → dafür `openArmed`). |
 | `keyInBox` | true \| false \| null | Sub-Deklaration: liegt der Schlüssel in der Box? `false` erklärt ein `hardwareEnforced:false`, das sonst wie eine Störung aussähe. |
 | `battery` / `charging` / `lastSeen` | — | Telemetrie + Zeitpunkt des letzten Syncs. Kein `online`-Feld mehr (Aktualität liest man an `lastSeen`). |
 
@@ -213,5 +221,5 @@ Reine Anzeige-Kopie für den Tracker. `locked` = `boxLocked()` (SOLL); `lockUnti
 | OEFFNEN-Eintrag (erlaubt) | Tracker → `open`. `applyTrackerCommand`: `simpleLock=false, lockUntil=null, holdOpen = trackerIntentActive`. | Box auf; Sperrzeit läuft weiter (holdOpen). |
 | OEFFNEN-Eintrag (VERBOTEN) | Tracker sendet **kein** Kommando. | Box bleibt zu; Sperrzeit gebrochen; Strafbuch bucht. |
 | Sperrzeit-Rückzug (vorzeitig) | `shouldHoldClosedOnTrackerEnd` → eigener `simpleLock`. | Box bleibt zu, bis der Sub OEFFNEN einträgt. |
-| Sperrzeit läuft natürlich ab | Firmware öffnet am gecachten Deadline (bewusst, Entscheid 16.07 — Frist gilt auch offline). | Box auf. |
-| Notöffnung (Akku/Offline-Failsafe) | Box öffnet selbst. KEIN blindes Re-Lock: zu fährt sie erst wieder im Präsenz-Fenster. Tracker sieht `reportedLocked:false`. | Box offen, wartet auf jemanden am Gerät. |
+| Sperrzeit läuft natürlich ab | Firmware **bewaffnet** das Öffnen am gecachten Deadline (seit 0.2.34): Riegel bleibt zu, öffnet beim nächsten Knopf/USB — auch offline. Tracker sieht `openArmed`. | Box zu, „scharfgestellt" — ein Knopfdruck öffnet. |
+| Notöffnung (Akku/Offline-Failsafe) | Box öffnet selbst (rettet). KEIN blindes Re-Lock: zu fährt sie erst wieder im Präsenz-Fenster. Tracker sieht `reportedLocked:false`. | Box offen, wartet auf jemanden am Gerät. |
