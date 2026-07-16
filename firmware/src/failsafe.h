@@ -5,7 +5,9 @@
 #include "nvs_storage.h"
 
 // Alle Failsafe-Checks.  Safety > Security > Function.
-// Jeder dieser Checks kann die Box öffnen — unabhängig von Server/WLAN.
+// Die NOT-Failsafes (Low-Batt, Offline-Timeout) öffnen AUTONOM — unabhängig von Server/WLAN.
+// Ein Policy-Offen (isPolicyExpired) BEWAFFNET das Öffnen dagegen nur: der Riegel fährt erst
+// mit jemandem am Gerät auf (Präsenz-Gate policyOpenPermitted() in main.cpp, Entscheid 16.07).
 namespace Failsafe {
 
   // Akkustand in Prozent (PIN_BATT_ADC, 1:2-Teiler, 4.2V=100%, 3.2V=0%; Ziel-Board=GPIO32).
@@ -43,22 +45,18 @@ namespace Failsafe {
     return state.offlineSeconds >= (uint32_t)policy.offlineOpenH * 3600u;
   }
 
-  // "Soll offen": Server sagt offen ODER zeitliche Deadline abgelaufen.
+  // "Policy will offen": Server sagt offen ODER zeitliche Deadline abgelaufen.
   // serverLocked ist autoritativ — Simple-Lock (lockUntil==0, aber serverLocked) bleibt zu.
-  // Zeit-Deadline öffnet NUR bei gültiger Uhr — sonst übernimmt der Offline-Timeout
+  // Zeit-Deadline zählt NUR bei gültiger Uhr — sonst übernimmt der Offline-Timeout
   // (sonst bliebe die Box bei 1970 ewig zu).
+  // ACHTUNG Semantik seit 0.2.34: true heisst „darf/soll öffnen", NICHT „öffnet jetzt" —
+  // vollzogen wird ein Policy-Offen nur mit Präsenz (policyOpenPermitted() in main.cpp).
+  // Als Zufahr-Blocker wirkt es weiterhin sofort: solange die Policy offen will, wird nie zugefahren.
   inline bool isPolicyExpired(const BoxPolicy& policy) {
     if (!policy.serverLocked) return true;  // Server sagt offen
     if (policy.lockUntil == 0) return false; // Simple-Lock: zu, keine Deadline
     if (!clockValid()) return false;         // Uhr ungültig → nicht hierauf öffnen
     return time(nullptr) >= policy.lockUntil;
-  }
-
-  // Fasst alle Öffnungsgründe zusammen: true → Box muss jetzt öffnen.
-  inline bool shouldOpen(BoxState& state, const BoxPolicy& policy) {
-    return isLowBattery(state)
-        || isOfflineTimeout(state, policy)
-        || isPolicyExpired(policy);
   }
 
 } // namespace Failsafe

@@ -692,19 +692,34 @@ static bool checkFailsafes() {
   return false;
 }
 
-// Sofort-Öffnungs-Gate (VOR Sync/MQTT): failsafe-Zähler ticken + prüfen, plus abgelaufene
-// Lock-Zeit aus der gecachten Policy → öffnen ohne aufs Netz zu warten. checkFailsafes()
-// bleibt die Quelle des Zähler-Ticks (Seiteneffekt bewusst).
-static bool shouldOpenNow() {
-  return checkFailsafes() || (gBox.locked && Failsafe::isPolicyExpired(gPolicy));
-}
-
 // DIE eine Definition von „jemand ist am Gerät": Knopf-/Power-on-Wake ODER USB-Strom
-// (Ladung ODER Ladeschluss — beide TP4056-Signale). Zufahr-Guard und Wachfenster hängen
-// beide hieran; zwei getrennte Schreibweisen würden bei der nächsten Änderung auseinanderdriften.
+// (Ladung ODER Ladeschluss — beide TP4056-Signale). Zufahr-Guard, Öffnungs-Guard und
+// Wachfenster hängen alle hieran; zwei getrennte Schreibweisen würden bei der nächsten
+// Änderung auseinanderdriften.
 // Liest selbst NICHT — der Ladezustand muss frisch sein (readChargeState() beim Nutzer).
 static bool presentAtDevice() {
   return gWindowWake || gBox.charging || gBox.chargeFull;
+}
+
+// Präsenz-Gate fürs ÖFFNEN per Policy (Entscheid 16.07 abends, symmetrisch zum Zufahr-Guard
+// in lockBox): Ein Policy-Offen (Frist abgelaufen ODER Server-SOLL offen) BEWAFFNET das
+// Öffnen nur — der Riegel fährt erst auf, wenn jemand am Gerät ist (Knopf/USB). Grund:
+// Die Frist ist das Versprechen „du DARFST jetzt öffnen", nicht „der Riegel springt auf,
+// während niemand da ist und z.B. der Schlüssel einer laufenden Session drinliegt".
+// Die NOT-Failsafes (Akku, Funkstille) bleiben bewusst autonom — sie retten.
+static bool policyOpenPermitted() {
+  readChargeState(); // Präsenz-Antwort frisch, unabhängig vom Aufrufer
+  return presentAtDevice();
+  // Logging beim Aufrufer (Sync-Zweige) — hier würde jede Heartbeat-Wake-Kette doppelt loggen.
+}
+
+// Sofort-Öffnungs-Gate (VOR Sync/MQTT): failsafe-Zähler ticken + prüfen (öffnen AUTONOM),
+// plus abgelaufene Lock-Zeit aus der gecachten Policy — die öffnet NUR mit Präsenz
+// (policyOpenPermitted). checkFailsafes() bleibt die Quelle des Zähler-Ticks (Seiteneffekt
+// bewusst).
+static bool shouldOpenNow() {
+  if (checkFailsafes()) return true;
+  return gBox.locked && Failsafe::isPolicyExpired(gPolicy) && policyOpenPermitted();
 }
 
 // Kanonische Sperr-Sequenz (Sperrbeginn merken, Riegel zu, Zustand melden). Genutzt von
@@ -831,9 +846,9 @@ void setup() {
   gState = (hasState && gBox.locked) ? State::LOCKED : State::IDLE_OPEN;
 
   // ── P0: Sofort-Öffnungs-Gate VOR Sync/MQTT — Safety vor Security vor Funktion ──
-  // checkFailsafes() tickt den monotonen Zähler + prüft Low-Batt/Offline.
-  // Zusätzlich die abgelaufene Lock-Zeit aus der GECACHTEN Policy prüfen (isPolicyExpired):
-  // eine abgelaufene Sperre öffnet so sofort, ohne aufs Netz/den Sync zu warten.
+  // checkFailsafes() tickt den monotonen Zähler + prüft Low-Batt/Offline (öffnen autonom).
+  // Eine abgelaufene Lock-Zeit aus der GECACHTEN Policy öffnet dagegen nur mit jemandem am
+  // Gerät (Präsenz-Gate) — ein Heartbeat-Wake lässt die Box zu und „scharfgestellt".
   if (shouldOpenNow()) { gState = State::OPENING; return; }
 
   gState = State::SYNCING;
@@ -871,18 +886,27 @@ void loop() {
         wakeJournalClear(); // Wakes bestätigt hochgeladen → Journal leeren (erst NACH OK)
         FlashLog::clear();  // Backlog bestätigt hochgeladen → löschen (erst NACH OK)
         otaCommit();       // neue FW (falls OTA gerade lief) bestätigen
-        // "Soll zu" = serverLocked UND kein Failsafe will offen. Über shouldOpen() (Low-Batt ∨
-        // Offline ∨ PolicyExpired) — sonst würde ein Failsafe-Öffnen (z.B. Low-Batt) sofort
-        // wieder zugefahren → Oszillation (Motorzyklen, Dauer-wach, Akku-Drain). Ein Failsafe
-        // gewinnt und die Box bleibt offen, bis die Bedingung wegfällt (Hysterese ≥25 %).
-        bool shouldClose = !Failsafe::shouldOpen(gBox, gPolicy);
+        // "Soll zu" = serverLocked UND niemand will offen (Low-Batt ∨ Offline ∨ PolicyExpired) —
+        // sonst würde ein Failsafe-Öffnen (z.B. Low-Batt) sofort wieder zugefahren → Oszillation
+        // (Motorzyklen, Dauer-wach, Akku-Drain). Ein Failsafe gewinnt und die Box bleibt offen,
+        // bis die Bedingung wegfällt (Hysterese ≥25 %).
+        bool failsafeOpen = Failsafe::isLowBattery(gBox) || Failsafe::isOfflineTimeout(gBox, gPolicy);
+        bool shouldClose  = !(failsafeOpen || Failsafe::isPolicyExpired(gPolicy));
         LOGI("State: currently %s, serverLocked=%d until=%s → should be %s",
               gBox.locked ? "LOCKED" : "OPEN", gPolicy.serverLocked,
               fmtLocal(gPolicy.lockUntil).c_str(), shouldClose ? "LOCKED" : "OPEN");
 
         if (gBox.locked && !shouldClose) {
-          LOGI("Opening: no longer required closed (policy/failsafe)");
-          gState = State::OPENING;
+          // Not-Failsafes öffnen autonom; ein reines Policy-Offen (Frist abgelaufen oder
+          // Server-SOLL offen — auch das sync-vermittelte nach Sperrzeit-Ablauf) nur mit
+          // jemandem am Gerät. Sonst bleibt die Box zu und „scharfgestellt".
+          if (failsafeOpen || policyOpenPermitted()) {
+            LOGI("Opening: no longer required closed (policy/failsafe)");
+            gState = State::OPENING;
+          } else {
+            LOGI("Open armed: policy wants open, waiting for someone at the device (button/USB)");
+            gState = State::LOCKED;
+          }
         } else if (!gBox.locked && shouldClose) {
           LOGI("Locking: server policy requires closed (until %s)", fmtLocal(gPolicy.lockUntil).c_str());
           // Präsenz-Guard sitzt IM Mechanismus (lockBox): ohne jemanden am Gerät wird das
@@ -928,7 +952,12 @@ void loop() {
           }
         }
         if (gBox.locked && Failsafe::isPolicyExpired(gPolicy)) {
-          gState = State::OPENING;
+          if (policyOpenPermitted()) {
+            gState = State::OPENING;
+          } else {
+            LOGI("Open armed: cached policy expired, waiting for someone at the device (button/USB)");
+            gState = State::LOCKED;
+          }
         } else {
           gState = gBox.locked ? State::LOCKED : State::IDLE_OPEN;
         }
@@ -992,6 +1021,10 @@ void loop() {
         gBtnLatched = false;
         ledAck();
         gLastActivityMs = millis();
+        // Ein Tastendruck IST Präsenz — auch wenn dieses Wachfenster per rtc_timer begann.
+        // Ohne das scheiterte ausgerechnet der Knopfdruck an den Präsenz-Guards
+        // (policyOpenPermitted fürs Öffnen, lockBox fürs Zufahren).
+        gWindowWake = true;
         // Button: erst Sofort-Öffnung prüfen (abgelaufen/Failsafe), DANN Sync.
         if (shouldOpenNow()) { gState = State::OPENING; break; }
         LOGI("Button tap (awake) → sync");
