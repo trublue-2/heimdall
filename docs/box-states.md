@@ -11,6 +11,28 @@ dass es **mehrere „zu"-Quellen** gibt. Diese Datei benennt jede Variable, ihre
 
 ---
 
+## 0. Die drei Sichtweisen (Box · Heimdall · Tracker)
+
+Dieselbe Wirklichkeit, drei Blickwinkel. **Widersprüche zwischen den Spalten sind Information,
+keine Fehler** — sie sagen „veraltet", „wartet auf Präsenz" oder „Ehrensache". Heimdall entscheidet,
+die Box führt aus (und überlebt offline), der Tracker zeigt an.
+
+| | **Box (Firmware)** | **Heimdall (Server)** | **Tracker / MCP (Anzeige)** |
+|---|---|---|---|
+| **Rolle** | führt aus; muss offline überleben | **entscheidet** — die Autorität | zeigt an — die Keyholder-Sicht |
+| **Datenbestand** | gecachte `BoxPolicy` (NVS) + eigener Riegel | `LockPolicy` (SOLL-Quelle) + `Device` (zuletzt gemeldetes IST) | `BoxStatus`-Spiegel, gepusht bei jedem Sync |
+| **„Soll zu sein?" (SOLL)** | `serverLocked` — Stand des letzten Syncs | `boxLocked(policy, now)` — live berechnet, DIE eine Quelle | `locked` — Stand des letzten Pushs |
+| **„Ist wirklich zu?" (IST)** | weiss es selbst (Riegel, `gBox.locked`) | `Device.locked` — zuletzt gemeldet | `reportedLocked` (`null` = nie gemeldet → SOLL gilt) |
+| **Frist** | gecachtes `lockUntil` (`0` = keine); öffnet daran **selbst**, auch offline | `lockUntil` + `trackerLockUntil` → `effectiveLockUntil()` | `lockUntil` — effektive Frist oder `null` |
+| **Öffnen** | von selbst: Akku, Funkstille (`offlineOpenH`), Frist — sonst Server-„offen" oder Knopf | setzt das SOLL auf offen (Eintrag, `withdraw`, `holdOpen`) | löst über Einträge aus; liest sonst nur |
+| **Zufahren** | **NUR mit Präsenz** (Knopf/USB) — Guard in `lockBox()` | setzt das SOLL auf zu; erzwingt keine Bewegung | hinterlegt `pendingCommand` „lock" |
+| **Schlüssel in der Box?** | weiss es nicht (kein Sensor) | weiss es nicht | `keyInBox` — Deklaration des Subs beim Verschluss |
+| **Wann veraltet?** | Policy-Cache bis zum nächsten Sync | IST bis zur nächsten Meldung | alles bis zum nächsten Push; `staleLock` rechnet die Selbst-Öffner ein |
+| **„Hält sie gerade fest?"** | — | — | `hardwareEnforced` = IST ∧ `keyInBox ≠ false` ∧ `¬staleLock` |
+| **Zeitbasis** | RTC (kann ungültig sein → 1970) + monotoner Offline-Zähler | Serverzeit | Serverzeit; Aktualität an `lastSeen` |
+
+---
+
 ## 1. Die Autorität: `LockPolicy` (Heimdall-DB, `server/prisma/schema.prisma`)
 
 Der maßgebliche Server-Zustand pro Box. `boxLocked()` liest **nur** diese Felder.
@@ -100,7 +122,7 @@ noch nicht vollzogen, Failsafe hat geöffnet).
 | `boltPos` | `OPEN` \| `CLOSED` \| `UNKNOWN` | Rohe Stepper-Position (Diagnose). |
 | `pendingOpenReason` | `null` \| `early` \| `tracker` \| `silent` | Einmal-Marker: koppelt eine menschlich ausgelöste Öffnung an das NÄCHSTE Box-Event. `early`→EARLY_OPEN, `tracker`→UNLOCKED, `silent`→kein Eintrag. Kein Sperr-Zustand. |
 | `emergencyOpensLeft` | Int (Default 3) | Kontingent für „Trotzdem öffnen" ohne Passwort. 0 = nur Keyholderin/Failsafe. |
-| `lastSyncAt` | Zeit | Letzter Sync → Grundlage für „online" (< 10 min). |
+| `lastSyncAt` | Zeit | Letzter Sync → als `lastSeen` im Spiegel; Basis des Offline-Failsafe-Terms in `staleLock`. (Ein „online < 10 min"-Feld gibt es seit 16.07 nicht mehr.) |
 | `battery` / `charging` / `chargeFull` | — | Telemetrie; speisen Low-Batt-Failsafe. |
 
 ---
@@ -146,8 +168,8 @@ braucht Befehl UND Präsenz.*
 
 ### Tracker `BoxStatus` (vom Heimdall-Push, `chastitytracker` DB)
 
-Reine Anzeige-Kopie für den Tracker. `locked`, `lockUntil`, `simpleLock`, `keyholderLocked` kommen
-1:1 aus `deviceLockView()`. Zusätzlich:
+Reine Anzeige-Kopie für den Tracker. `locked` = `boxLocked()` (SOLL); `lockUntil`, `simpleLock`,
+`keyholderLocked` kommen 1:1 aus `deviceLockView()`. Zusätzlich:
 
 | Variable | Werte | Bedeutung |
 |---|---|---|
