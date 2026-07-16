@@ -56,7 +56,9 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
   // Soll-Zustand "zu": aktive Zeit ODER Simple-Lock (ohne Zeit).
   const wantClosed = wantsClosed(props.lockUntil) || props.simpleLock;
   const pending = wantClosed && !props.locked ? "closing" : !wantClosed && props.locked ? "opening" : "none";
-  const inTransit = pending !== "none"; // Soll≠Ist: Riegel dreht noch / wartet auf Box-Sync
+  // Soll≠Ist heisst seit FW 0.2.34: die Box WARTET auf jemanden am Gerät (Präsenz-Gate) —
+  // kein laufender Vorgang, sondern Bereitschaft. Der Knopfdruck vollzieht.
+  const inTransit = pending !== "none";
   const locked = props.locked;
   // Vorzeitig = noch Restzeit auf der Uhr (nur Zeit-Locks; Simple-Lock ist nie "vorzeitig").
   const isEarly = !!props.lockUntil && new Date(props.lockUntil) > new Date();
@@ -163,11 +165,13 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
 
           {/* Großer Zustandsblock */}
           <div className={`mx-4 my-3 rounded-2xl border ${stateBg} ${stateBorder} px-5 py-6 text-center`}>
+            {/* Bereitschaft ist KEIN Fortschritt: statisches Ziel-Icon statt Spinner — nichts
+                dreht sich, bis jemand am Gerät den Knopf drückt. */}
             <div className={`mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl ${stateText} bg-[var(--surface)]`}>
-              {inTransit ? <Loader2 className="h-7 w-7 animate-spin" /> : locked ? <Lock className="h-7 w-7" /> : <Unlock className="h-7 w-7" />}
+              {pending === "opening" || (!inTransit && !locked) ? <Unlock className="h-7 w-7" /> : <Lock className="h-7 w-7" />}
             </div>
             <div className={`text-3xl font-extrabold tracking-tight ${stateText}`}>
-              {pending === "closing" ? "WIRD GESCHLOSSEN" : pending === "opening" ? "WIRD GEÖFFNET" : locked ? "GESCHLOSSEN" : "OFFEN"}
+              {pending === "closing" ? "BEREIT ZUM VERSCHLIESSEN" : pending === "opening" ? "BEREIT ZUM ÖFFNEN" : locked ? "GESCHLOSSEN" : "OFFEN"}
             </div>
 
             {/* Ziel-Zeit, sobald eine Sperre gewünscht ist (auch während sie erst greift). */}
@@ -186,13 +190,22 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
               </div>
             )}
 
-            {/* Klarer Unterschied: physisch bestätigt vs. wartet auf den Box-Sync. */}
+            {/* Klarer Unterschied: physisch bestätigt vs. Bereitschaft (Präsenz-Gate). Die
+                Konsequenz des Knopfdrucks steht EXPLIZIT da — „Übernehmen" verschwieg, dass der
+                Riegel sofort aufspringt. */}
             <div className="mt-3 text-xs">
               {inTransit ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--surface)] border border-[var(--color-sperrzeit-border)] px-3 py-1 text-[var(--color-sperrzeit-text)]">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  wartet auf Box-Sync · Box drücken zum Übernehmen
-                </span>
+                <>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--surface)] border border-[var(--color-sperrzeit-border)] px-3 py-1 font-medium text-[var(--color-sperrzeit-text)]">
+                    {pending === "opening"
+                      ? "Knopfdruck an der Box öffnet den Riegel sofort"
+                      : "Knopfdruck an der Box fährt den Riegel zu"}
+                  </span>
+                  <p className="mt-2 text-[10px] text-[var(--foreground-muted)]">
+                    Die Freigabe ist erteilt — vollzogen wird sie erst mit jemandem am Gerät.
+                    Von selbst bewegt sich die Box nur, um zu retten (Akku, Funkstille).
+                  </p>
+                </>
               ) : (
                 <span className="text-[var(--foreground-muted)]">{locked ? "Riegel zu (bestätigt)" : "Riegel offen"}</span>
               )}
@@ -248,6 +261,11 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
                   <Lock className="h-4 w-4" />
                   Verschliessen
                 </button>
+                {pending === "opening" && (
+                  <p className="text-center text-xs text-[var(--foreground-muted)]">
+                    hebt die erteilte Öffnungs-Freigabe wieder auf
+                  </p>
+                )}
                 {/* Riegel-Notfall (Entklemmen/manuell) liegt jetzt versteckt auf der Box-Seite
                     selbst (⚙ Funktionen → „Riegel — Notfall", nur bei offener Box). */}
               </>
