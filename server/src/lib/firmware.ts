@@ -24,6 +24,14 @@ export async function getTargetVersion(): Promise<string | null> {
   }
 }
 
+// Dateiname für den Admin-Download: heimdall-<version>.bin. Slugt die version.txt-Angabe
+// für den Content-Disposition-Header (defensiv, auch wenn version.txt CI-kontrolliert ist).
+export async function firmwareDownloadName(): Promise<string> {
+  const version = (await getTargetVersion()) ?? "unknown";
+  const safe = version.replace(/[^a-zA-Z0-9._-]/g, "_") || "unknown";
+  return `heimdall-${safe}.bin`;
+}
+
 // Ed25519-Signatur (128 Hex-Zeichen) der latest.bin, von der CI abgelegt.
 // Ohne Signatur bietet der Sync kein OTA an → Box lädt nichts Unsigniertes.
 export async function getFirmwareSig(): Promise<string | null> {

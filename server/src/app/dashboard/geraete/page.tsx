@@ -2,7 +2,9 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { DeviceManager } from "@/app/components/DeviceManager";
+import { Card } from "@/app/components/Card";
 import { boxLocked } from "@/lib/device-auth";
+import { getTargetVersion, firmwareSize } from "@/lib/firmware";
 
 export const dynamic = "force-dynamic";
 
@@ -10,12 +12,14 @@ export default async function GeraetePage() {
   const session = await auth();
   if ((session!.user as { role?: string }).role !== "admin") redirect("/dashboard");
 
-  const [users, devices] = await Promise.all([
+  const [users, devices, fwVersion, fwSize] = await Promise.all([
     prisma.user.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, username: true } }),
     prisma.device.findMany({
       orderBy: { createdAt: "asc" },
       include: { users: { select: { id: true } }, policy: true },
     }),
+    getTargetVersion(),
+    firmwareSize(),
   ]);
 
   const now = new Date();
@@ -33,6 +37,26 @@ export default async function GeraetePage() {
           locked: d.locked || boxLocked(d.policy, now),
         }))}
       />
+
+      <Card className="space-y-1">
+        <p className="text-sm font-medium">Firmware</p>
+        {fwSize == null ? (
+          <p className="text-xs text-[var(--foreground-muted)]">Keine Firmware hinterlegt.</p>
+        ) : (
+          <>
+            <p className="text-xs text-[var(--foreground-faint)]">
+              Version {fwVersion ?? "unbekannt"} · {(fwSize / 1024).toFixed(0)} KB
+            </p>
+            <a
+              href="/api/admin/firmware"
+              download
+              className="text-sm font-medium text-[var(--foreground)] hover:underline"
+            >
+              Firmware herunterladen
+            </a>
+          </>
+        )}
+      </Card>
     </div>
   );
 }
