@@ -1,0 +1,127 @@
+name: Werks-Firmware signieren (OTA-Slot "original")
+
+# Einmalige Vorbereitung für den Knopf „Originale Firmware" auf der Geraeteseite.
+#
+# Warum ueberhaupt ein Workflow: die Box akzeptiert nur Ed25519-signierte Images, und der
+# private Schluessel liegt ausschliesslich im Secret OTA_SIGNING_KEY dieses Environments.
+# Er wird hier benutzt, aber nie ausgegeben.
+#
+# Warum die Bin vom Server kommt und nicht aus dem Repo: es ist die Werks-Firmware eines
+# fremden Herstellers. Sie gehoert nicht in ein oeffentliches Repository. Ablauf:
+#
+#   1. Bin einmalig auf den Server legen:  scp lmb_sw_v14_*.bin <user>@<server>:heimdall-ota/original.bin
+#   2. Diesen Workflow starten (Version + erwarteter sha256 als Eingabe)
+#   3. Er holt die Bin, prueft den Hash, signiert und legt original.{bin,sig} + Version ins Volume
+#
+# Danach schaltet der Knopf pro Box auf diesen Slot um.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        # Max 15 Zeichen: die Box haelt die Version in char[16] (server_sync.h) und
+        # strlcpy schneidet laenger stillschweigend ab — dann loggt sie eine Version,
+        # die es nicht gibt.
+        description: "Versionskennung der Werks-Firmware, max 15 Zeichen (landet in original-version.txt)"
+        required: true
+        default: "lmb_v14_02e5d4d"
+      sha256:
+        description: "Erwarteter sha256 der Bin — Schutz gegen das Signieren einer falschen Datei"
+        required: true
+        default: "932ca82a4905bc7a2f702b405121e582d1ed565057ea88effb687fd6a0122614"
+
+jobs:
+  sign-publish:
+    name: Signieren & veroeffentlichen
+    runs-on: ubuntu-latest
+    environment: kink # dort liegen OTA_SIGNING_KEY und die SSH-Deploy-Credentials
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Die hochgelegte Bin vom Server holen. Sie beruehrt das Repo nie.
+      # scp-action kann nur runner -> remote, darum hier scp direkt (remote -> runner).
+      - name: Fetch factory image from server
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_SERVER: ${{ secrets.DEPLOY_SERVER }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_SERVER" >> ~/.ssh/known_hosts 2>/dev/null
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_SERVER:heimdall-ota/original.bin" original.bin
+          ls -l original.bin
+
+      # Fail-closed: lieber gar nichts signieren als das Falsche. Eine einmal signierte
+      # Bin wuerde von jeder Box als echt akzeptiert.
+      - name: Verify image
+        env:
+          EXPECTED: ${{ inputs.sha256 }}
+        run: |
+          test -f original.bin || { echo "original.bin nicht gefunden — liegt sie in heimdall-ota/?"; exit 1; }
+          ACTUAL="$(sha256sum original.bin | cut -d' ' -f1)"
+          echo "sha256 erwartet: $EXPECTED"
+          echo "sha256 gefunden: $ACTUAL"
+          [ "$ACTUAL" = "$EXPECTED" ] || { echo "Hash weicht ab — Abbruch."; exit 1; }
+          # ESP32-Image-Magic 0xE9.
+          MAGIC="$(head -c 1 original.bin | xxd -p)"
+          [ "$MAGIC" = "e9" ] || { echo "Kein ESP32-Image (Magic $MAGIC statt e9) — Abbruch."; exit 1; }
+          # esp_app_desc-Magic 0xABCD5432 bei Offset 0x20 (little endian). Ohne diesen Test
+          # wuerde jeder 0xE9-Blob durchgehen — etwa ein Bootloader+App-Dump, der geflasht
+          # nicht bootet und ohne Heimdall nur noch per USB zu retten waere.
+          DESC="$(dd if=original.bin bs=1 skip=32 count=4 2>/dev/null | xxd -p)"
+          [ "$DESC" = "3254cdab" ] || { echo "Kein App-Image (esp_app_desc $DESC statt 3254cdab) — Abbruch."; exit 1; }
+          # Groesse gegen den App-Slot (1728K = 0x1b0000).
+          SIZE="$(stat -c%s original.bin)"
+          echo "Groesse: $SIZE von max 1769472"
+          [ "$SIZE" -le 1769472 ] || { echo "Passt nicht in den App-Slot — Abbruch."; exit 1; }
+
+      - name: Sign (Ed25519 over sha256)
+        env:
+          OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
+        run: |
+          pip install --quiet pynacl
+          python3 -c "import base64,hashlib,os,nacl.signing; sk=nacl.signing.SigningKey(base64.b64decode(os.environ['OTA_SIGNING_KEY'])); d=hashlib.sha256(open('original.bin','rb').read()).digest(); open('original.sig','w').write(sk.sign(d).signature.hex())"
+          echo "Signatur: $(cat original.sig)"
+
+      # Signatur UND die geprueften Bytes zurueckspielen. Die Bin muss mit hoch, obwohl sie
+      # schon auf dem Server liegt: veroeffentlicht werden darf nur, was hier verifiziert
+      # wurde. Sonst signierte man Datei A und liefe Datei B aus — die Box zoege bei jedem
+      # Sync ~1,6 MB, verwuerfe sie an der Signaturpruefung und leerte den Akku.
+      - name: Copy verified image + signature to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_SERVER }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          source: "original.bin,original.sig"
+          target: heimdall-ota
+
+      - name: Publish into container volume
+        uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          FW: ${{ inputs.version }}
+        with:
+          host: ${{ secrets.DEPLOY_SERVER }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          envs: DEPLOY_PATH,FW
+          script: |
+            DEPLOY_PATH="$(printf '%s' "$DEPLOY_PATH" | tr -d '\n\r')"
+            cd "$DEPLOY_PATH"
+            docker compose exec -T app mkdir -p /app/data/firmware
+            # Gleiche Reihenfolge wie beim Firmware-Build: erst .sig + .bin, Version ZULETZT.
+            # Die Version ist der OTA-Trigger — so sieht keine Box je eine Version ohne
+            # passende Signatur.
+            docker compose cp "$HOME/heimdall-ota/original.sig" app:/app/data/firmware/original.sig
+            docker compose cp "$HOME/heimdall-ota/original.bin" app:/app/data/firmware/original.bin
+            printf '%s\n' "$FW" | docker compose exec -T app sh -c 'cat > /app/data/firmware/original-version.txt'
+            # Beide Artefakte raeumen — die Werks-Bin soll nicht im Home des Deploy-Users liegen bleiben.
+            rm -f "$HOME/heimdall-ota/original.sig" "$HOME/heimdall-ota/original.bin"
+            echo "Werks-Firmware $FW signiert und im Slot 'original' hinterlegt."
+            echo "Sie wird NUR an Boxen ausgeliefert, die per Knopf auf diesen Slot geschaltet sind."

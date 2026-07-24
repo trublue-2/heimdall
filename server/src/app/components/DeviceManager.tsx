@@ -11,7 +11,7 @@ import { DeviceActions } from "./DeviceActions";
 import { TokenDisplayModal } from "./TokenDisplayModal";
 
 interface U { id: string; username: string; }
-interface D { id: string; name: string; assignedUserIds: string[]; locked: boolean; }
+interface D { id: string; name: string; assignedUserIds: string[]; locked: boolean; otaTarget: string; }
 
 export function DeviceManager({ devices, users }: { devices: D[]; users: U[] }) {
   const router = useRouter();
@@ -90,7 +90,7 @@ function DeviceRow({ device, users }: { device: D; users: U[] }) {
           {device.name}
         </Link>
         <div className="flex items-center gap-2">
-          <DeviceActions deviceId={device.id} deviceName={device.name} locked={device.locked} />
+          <DeviceActions deviceId={device.id} deviceName={device.name} locked={device.locked} otaTarget={device.otaTarget} />
         </div>
       </div>
 

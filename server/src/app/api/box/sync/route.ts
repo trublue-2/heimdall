@@ -4,7 +4,7 @@ import { authenticateDevice, extractBearerToken, boxLocked, deviceLockView, shou
 import { applyTrackerCommand, isTrackerCommand } from "@/lib/boxCommand";
 import { prisma } from "@/lib/prisma";
 import { notifyDeviceChange } from "@/lib/events";
-import { getTargetVersion, getFirmwareSig } from "@/lib/firmware";
+import { getTargetVersion, getFirmwareSig, slotOf } from "@/lib/firmware";
 import { syncTrackerIntent, pushBoxEvent, pushBoxStatus } from "@/lib/trackerClient";
 import { logTs as ts } from "@/lib/logTime";
 
@@ -227,10 +227,14 @@ export async function POST(req: NextRequest) {
   // Keyholder-Sperrzeit ziehen (Absicht → trackerLockUntil, greift via Hybrid-Regel in
   // effectiveLockUntil) parallel zu den OTA-Reads — kein serieller Remote-Call vor der Antwort.
   const policyBeforeTracker = policy;
+  // Firmware-Slot dieser Box: normalerweise "heimdall", nach dem Wiederherstellen-Knopf
+  // "original" (Werks-Firmware). Muss mit dem Slot in /api/box/firmware übereinstimmen —
+  // darum beide über slotOf().
+  const otaSlot = slotOf(device);
   const [policyAfterTracker, targetVersion, otaSig] = await Promise.all([
     syncTrackerIntent(device, trackerInstance, policy),
-    getTargetVersion(),
-    getFirmwareSig(),
+    getTargetVersion(otaSlot),
+    getFirmwareSig(otaSlot),
   ]);
   policy = policyAfterTracker;
 
@@ -306,7 +310,16 @@ export async function POST(req: NextRequest) {
   // sie ohnehin ab (fail-closed) und würde jeden Sync sinnlos die Bin laden.
   // otaDisabled = Server-seitiger Freeze: OTA-Felder weglassen → Box hat nichts zu flashen.
   // Wirkt sofort (auch auf bestehender Firmware); die Signaturprüfung bleibt die Schutzgrenze.
-  const otaPending = !!targetVersion && targetVersion !== state.fwVersion && !!otaSig && !device.otaDisabled;
+  //
+  // Der „original"-Slot wird ZUSÄTZLICH bei jedem Sync gegen den Riegel geprüft, nicht nur
+  // einmalig beim Umschalten: sonst bliebe ein Angebot, das bei offener Box erteilt wurde,
+  // unbegrenzt stehen und die Box verliesse Heimdall irgendwann mitten in einer später
+  // gesetzten Sperre — beim ersten Öffnen, ohne dass jemand das in dem Moment wollte.
+  // Die Firmware flasht ohnehin nur im Zustand IDLE_OPEN; hier stimmt das Angebot damit überein.
+  const slotAllowed =
+    otaSlot !== "original" || (!state.locked && !boxLocked(policy, now) && state.boltPos !== "CLOSED");
+  const otaPending =
+    !!targetVersion && targetVersion !== state.fwVersion && !!otaSig && !device.otaDisabled && slotAllowed;
 
   // Multi-WLAN: Passwort nullen, sobald die Box die SSID als bekannt meldet
   // (= ausgeliefert). Danach nur noch nicht-ausgelieferte Netze schicken.

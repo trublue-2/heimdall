@@ -13,8 +13,8 @@ import { WifiNetworksManager } from "@/app/components/WifiNetworksManager";
 import { DeviceLogViewer } from "@/app/components/DeviceLogViewer";
 import { TrackerLinkForm } from "@/app/components/TrackerLinkForm";
 import { LiveRefresh } from "@/app/components/LiveRefresh";
-import { deviceLockView } from "@/lib/device-auth";
-import { getTargetVersion } from "@/lib/firmware";
+import { deviceLockView, deviceHeldClosed } from "@/lib/device-auth";
+import { getTargetVersion, slotOf } from "@/lib/firmware";
 import { deviceOnline } from "@/lib/mqttBridge";
 import { formatDateTime } from "@/lib/utils";
 
@@ -53,7 +53,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
   // Auto-OTA-Hold sichtbar machen: der Server bietet die Ziel-FW an (ausser otaDisabled), die
   // Box flasht sie aber lokal nur bei Akku ≥ 40 % (unbekannt/am Strom zählt als ok). Erklärt,
   // warum eine hinterherhinkende Box nicht automatisch updatet — manuell über die Box-Seite geht immer.
-  const targetFw = await getTargetVersion();
+  const targetFw = await getTargetVersion(slotOf(device));
   const otaBehind = !!targetFw && !!device.fwVersion && targetFw !== device.fwVersion && !device.otaDisabled;
   const otaBattHold = otaBehind && device.battery != null && device.battery < 40 && !device.charging;
 
@@ -200,7 +200,16 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-[var(--foreground-muted)] uppercase tracking-wide">Verwaltung (Admin)</h2>
           <Card className="flex items-center gap-2">
-            <DeviceActions deviceId={device.id} deviceName={device.name} />
+            {/* `locked` sperrt hier auch „Originale Firmware": bei geschlossenem Riegel darf die
+                Box nicht aus Heimdalls Kontrolle fallen. Dieselbe Aussage wie der Guard in der
+                Route (deviceHeldClosed) — die raw `device.locked` allein liesse den Knopf bei
+                Simple-Lock aktiv aussehen und der Klick liefe in ein 409. */}
+            <DeviceActions
+              deviceId={device.id}
+              deviceName={device.name}
+              locked={deviceHeldClosed(device)}
+              otaTarget={device.otaTarget}
+            />
           </Card>
         </section>
       )}

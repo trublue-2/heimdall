@@ -42,6 +42,11 @@ model Device {
   // OTA-Freeze: Server lässt die OTA-Felder im Sync weg → Box updatet nicht. Not-Aus
   // für den Multi-Board-Rollout (verhindert versehentliches Flashen eines falschen Profils).
   otaDisabled Boolean  @default(false)
+  // Welchen Firmware-Slot der Server dieser Box anbietet: "heimdall" (Normalfall) oder
+  // "original" = Werks-Firmware der Ziel-Box wiederherstellen. Der Wechsel auf "original"
+  // ist faktisch eine Einbahnstrasse: die Werks-Firmware kennt Heimdall nicht und synct
+  // nie wieder. Umschalten nur bei OFFENEM Riegel (api/admin/devices/[deviceId]/ota-target).
+  otaTarget   String   @default("heimdall")
   // Server-Log: Box hängt ihr serielles Log bei jedem Sync an (auch schlafend, ~5 min).
   logToServer Boolean  @default(false)
   // MQTT-Push (Session-Fenster) ist Standard für jede Box: der Server liefert die Broker-Konfig

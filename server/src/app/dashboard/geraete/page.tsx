@@ -18,8 +18,10 @@ export default async function GeraetePage() {
       orderBy: { createdAt: "asc" },
       include: { users: { select: { id: true } }, policy: true },
     }),
-    getTargetVersion(),
-    firmwareSize(),
+    // Die Firmware-Karte zeigt den Heimdall-Slot — sie beschreibt, was die CI zuletzt
+    // veröffentlicht hat, nicht den Sonderfall einzelner Boxen auf der Werks-Firmware.
+    getTargetVersion("heimdall"),
+    firmwareSize("heimdall"),
   ]);
 
   const now = new Date();
@@ -35,6 +37,7 @@ export default async function GeraetePage() {
           // Verschluss = Server/Token + Zuweisung eingefroren. Muss isDeviceLocked() spiegeln —
           // `effectiveLockUntil` allein übersah den Simple-Lock (zu, aber ohne Uhr).
           locked: d.locked || boxLocked(d.policy, now),
+          otaTarget: d.otaTarget,
         }))}
       />
 

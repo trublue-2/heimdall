@@ -149,6 +149,29 @@ export async function isDeviceLocked(deviceId: string): Promise<boolean> {
 }
 
 /**
+ * Ist der Riegel zu — oder soll er es sein? Für Eingriffe, bei denen ein geschlossener
+ * Riegel jemanden einsperren könnte (Firmware-Slot wechseln), auf einem bereits
+ * geladenen Datensatz.
+ *
+ * Bewusst NICHT dasselbe wie `isDeviceLocked`: das beantwortet „läuft eine Session?"
+ * (ab Sperr-Zeitpunkt, gegen Mid-Session-Takeover). Hier zählt zusätzlich die zuletzt
+ * gemeldete Riegelstellung — eine physisch geschlossene Box ohne aktive Sperre ist keine
+ * Session, aber sehr wohl ein zugefahrener Riegel. `isDeviceLocked` um diesen Term zu
+ * erweitern würde Token-Rotation und Zuweisung mitsperren, was dort nicht gemeint ist.
+ */
+export function deviceHeldClosed(
+  device: { locked: boolean; boltPos: string | null; policy: LockPolicy | null },
+  now: Date = new Date()
+): boolean {
+  // `boxLocked` liefert bei gesetztem `holdOpen` bewusst false — die Box DARF gerade offen
+  // sein (Reinigungspause des Trackers), die Keyholder-Sperre läuft aber weiter. Für „darf
+  // ich hier eingreifen?" ist das eine laufende Sperre, keine beendete: sonst gäbe man
+  // ausgerechnet im Pausenfenster eine Box frei, deren Sperrzeit noch Wochen läuft.
+  const trackerLockPaused = !!device.policy?.holdOpen && trackerIntentActive(device.policy, now);
+  return device.locked || device.boltPos === "CLOSED" || boxLocked(device.policy, now) || trackerLockPaused;
+}
+
+/**
  * Effektives lockUntil für die Box: die eigene Heimdall-Zeit UND die aus dem Tracker
  * gezogene Sperrzeit, die strengere (spätere) gewinnt. Keine Obergrenze — der
  * Keyholder öffnet jederzeit übers Dashboard, lokale Failsafes (Low-Batt/Offline)
