@@ -250,6 +250,10 @@ SyncResult ServerSync::run(const WifiCredentials& creds,
   if (state.batteryPct >= 0) s["battery"] = state.batteryPct; // <0 = unbekannt → weglassen (Server zeigt „—")
   s["charging"]   = state.charging;
   s["full"]       = state.chargeFull; // Ladeschluss (TP4056 STDBY / grüne LED) — Dashboard-Anzeige
+  // Akku-Kalibrierfaktor dieser Box; 0 = unkalibriert. Bewusst IMMER senden, auch die 0 —
+  // liesse man das Feld weg, könnte der Server ein Zurücksetzen der Kalibrierung nie von
+  // "Alt-Firmware meldet nichts" unterscheiden und zeigte für immer den alten Faktor an.
+  s["battCalib"] = state.battCalib;
   s["boltPos"]    = "UNKNOWN"; // TODO: Endlagensensor
   s["fwVersion"]  = FW_VERSION;
   s["wakeReason"] = state.wakeReason;

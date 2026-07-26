@@ -23,6 +23,8 @@ struct BoxState {
   time_t lastSyncAt;   // Unix-Epoch des letzten erfolgreichen Syncs
   char   wakeReason[32];
   int    batteryPct;   // Aktuell gemessen, vor WiFi-Init (ADC ungestört)
+  float  battCalib;    // Akku-Kalibrierfaktor dieser Box; 0 = noch nie voll geladen. Nur
+                       // Meldewert für den Server. Transient (Quelle ist die NVS-Referenz)
   bool   charging;     // true = USB/Netz dran (GPIO26, PIN_CHARGE_DETECT)
   bool   chargeFull;   // true = Ladeschluss (TP4056 STDBY, grüne LED, GPIO13); nur mit charging. Transient (nicht persistiert)
   char   deviceName[64]; // Anzeigename vom Server (nur RAM, je Sync gesetzt)
@@ -68,6 +70,13 @@ namespace NVS {
 
   bool loadMqtt(MqttConfig& out);   // false, wenn nie ein Block gespeichert wurde
   void saveMqtt(const MqttConfig& in);
+
+  // Akku-Referenzspannung dieser Box (Selbstabgleich am Ladeschluss, Rechnung in failsafe.h).
+  // 0 = noch nie voll geladen; das ist der reguläre Werkszustand, kein Fehlerfall. Bewusst
+  // pro Gerät persistiert und nicht vom Server geliefert: die Streuung sitzt in der Hardware,
+  // nicht in der Konfiguration.
+  float loadBattRefV();
+  void  saveBattRefV(float refV);
 
   int  loadExtraNets(WifiNet* out, int maxN);          // gibt Anzahl zurück
   void saveExtraNet(const char* ssid, const char* pass); // dedup nach SSID, max MAX_EXTRA_NETS

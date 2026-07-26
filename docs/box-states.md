@@ -124,6 +124,7 @@ noch nicht vollzogen, Failsafe hat geöffnet).
 | `emergencyOpensLeft` | Int (Default 3) | Kontingent für „Trotzdem öffnen" ohne Passwort. 0 = nur Keyholderin/Failsafe. |
 | `lastSyncAt` | Zeit | Letzter Sync → als `lastSeen` im Spiegel; Basis des Offline-Failsafe-Terms in `staleLock`. (Ein „online < 10 min"-Feld gibt es seit 16.07 nicht mehr.) |
 | `battery` / `charging` / `chargeFull` | — | Telemetrie; speisen Low-Batt-Failsafe. |
+| `battCalib` | `null` \| Float | Akku-Kalibrierfaktor, den die Box sich am Ladeschluss selbst gegeben hat. `null` = noch nie voll geladen (oder FW < 0.2.35). Reine Anzeige — der Server rechnet nie damit. |
 
 ---
 

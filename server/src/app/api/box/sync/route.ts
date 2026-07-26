@@ -33,6 +33,14 @@ const syncBodySchema = z.object({
     wifiRssi: z.number().int().min(-120).max(0).optional(),
     charging: z.boolean().optional(),
     full: z.boolean().optional(), // Ladeschluss (TP4056 STDBY / grüne LED)
+    // Akku-Kalibrierfaktor der Box (Selbstabgleich am Ladeschluss); 0 = unkalibriert,
+    // fehlend = Firmware < 0.2.35. Reine Diagnose-Anzeige — die Box rechnet damit, der Server nie.
+    // BEWUSST OHNE min/max und mit nullish(): jeder abgelehnte Wert liesse sonst das GANZE
+    // Sync-Payload auf 400 laufen (Zod validiert das Objekt, nicht das Feld) — die Box verlöre
+    // Policy, Zeit, OTA und Wake-Journal und zählte weiter Richtung Offline-Failsafe. null deckt
+    // dabei den Fall ab, dass ArduinoJson einen nicht-endlichen Float als `null` serialisiert.
+    // Ein Anzeigewert darf keine Box vom Server trennen; die Grenzen prüft die Firmware.
+    battCalib: z.number().nullish(),
     ip: z.string().max(45).optional(),
     mac: z.string().max(32).optional(),
   }),
@@ -152,6 +160,13 @@ export async function POST(req: NextRequest) {
         wifiRssi: state.wifiRssi  ?? null,
         charging: state.charging  ?? null,
         chargeFull: state.full    ?? null,
+        // Drei Fälle, bewusst unterschieden: Feld fehlt = Alt-Firmware, die den Abgleich nicht
+        // kennt → letzten bekannten Stand halten. 0 (oder null aus einem kaputten Float) = die
+        // Box sagt ausdrücklich "unkalibriert", z.B. nach einem Reset auf der Box-Seite → Spalte
+        // leeren, sonst zeigte das Dashboard für immer den alten, gerade verworfenen Faktor an.
+        battCalib: state.battCalib === undefined
+          ? device.battCalib
+          : (state.battCalib && state.battCalib > 0 ? state.battCalib : null),
         boxIp:    state.ip        ?? null,
         mac:      state.mac       ?? device.mac,
         primarySsid: body.knownSsids?.[0] ?? device.primarySsid,

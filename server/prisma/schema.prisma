@@ -58,6 +58,10 @@ model Device {
   wifiRssi    Int?
   charging    Boolean?
   chargeFull  Boolean?  // Ladeschluss (TP4056 STDBY / grüne LED) — nur mit charging aussagekräftig
+  // Akku-Kalibrierfaktor, den die Box sich am Ladeschluss selbst gegeben hat; null = die Box
+  // war noch nie voll (oder läuft auf Firmware < 0.2.35). Reine Diagnose-Anzeige — der Server
+  // rechnet nie damit. Herleitung und Grenzen: firmware/src/failsafe.h.
+  battCalib   Float?
   boxIp       String?
   primarySsid String? // Provisioning-Netz (knownSsids[0] der Box)
   // Zuletzt von der Box gemeldete WLAN-Namen (NVS: Primär + Extras), JSON-Array-String.

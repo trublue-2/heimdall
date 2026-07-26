@@ -337,6 +337,10 @@ static void handleStatus() {
     "<h3>Gerät</h3>"
     "<button onclick=reboot()>↻ Reboot</button>"
     "<button onclick=slp()>💤 Schlafen</button>"
+    "<button onclick=bcal()>🔋 Akku-Kalibrierung zurücksetzen</button>"
+    "<p class=k style='font-size:.75rem;margin:.3rem 0 0'>Die Box gleicht ihren Akku-Messwert "
+    "beim Ladeschluss selbst ab. Zurücksetzen nur, wenn der Prozentwert offensichtlich falsch "
+    "ist — die nächste Volladung kalibriert dann neu.</p>"
     "<h3>Riegel — Notfall</h3>"
     "<div id=boltbox>"
     "<button onclick=\"jog('open')\">◂ auf</button>"
@@ -374,7 +378,7 @@ static void handleStatus() {
     "else{s.className='s open';s.textContent='OFFEN';}"
     "$('boltbox').style.display=d.locked?'none':'';$('boltlock').style.display=d.locked?'':'none';" // manuelles Fahren nur bei offen
     "$('net').innerHTML='<span class=k>WLAN</span> '+esc(d.ssid)+' ('+d.rssi+' dBm)<br><span class=k>IP</span> '+esc(d.ip)+'<br><span class=k>MAC</span> '+esc(d.mac);"
-    "$('box').innerHTML='<span class=k>FW</span> '+esc(d.fw)+' · <span class=k>Akku</span> '+d.batt+'% ('+d.vbat+' V)<br>'+"
+    "$('box').innerHTML='<span class=k>FW</span> '+esc(d.fw)+' · <span class=k>Akku</span> '+d.batt+'% ('+d.vbat+' V'+(d.cal>0?', Cal '+d.cal:', unkalibriert')+')<br>'+"
     "'<span class=k>Laden</span> '+(d.full?'✅voll':(d.charging?'⚡ja':'nein'))+' · <span class=k>USB</span> '+(d.usb?'ja':'nein')+'<br>'+"
     "'<span class=k>Heap</span> '+d.heap+' kB · <span class=k>Up</span> '+d.uptime+' s<br>'+"
     "'<span class=k>Boots</span> '+d.boots+' · <span class=k>unerw.</span> '+d.unexp+' · <span class=k>Reset</span> '+esc(d.reset);"
@@ -385,6 +389,7 @@ static void handleStatus() {
     "async function ota(){S('OTA: prüfe & flashe…');try{S(await(await fetch('/dbg/ota')).text())}catch(e){S('Verbindung weg — vermutlich Reboot nach Flash ✓')}}"
     "async function revert(){if(!confirm('⚠️ Bootet die FW im anderen OTA-Slot und übergibt ihr die Kontrolle — Heimdalls Sperre & Failsafes gelten dann nicht mehr. Einbahn aus dieser Oberfläche. Fortfahren?'))return;S('Slot-Switch…');try{S(await(await fetch('/dbg/switch')).text())}catch(e){S('Verbindung weg — vermutlich Reboot ✓')}}"
     "async function reboot(){if(!confirm('Box neu starten?'))return;S('Reboot…');try{S(await(await fetch('/dbg/reboot')).text())}catch(e){S('Verbindung weg — Box rebootet ✓')}}"
+    "async function bcal(){if(!confirm('Akku-Kalibrierung verwerfen? Der Prozentwert ist danach bis zur nächsten Volladung ungenauer.'))return;S('Setze zurück…');try{S(await(await fetch('/dbg/battreset')).text())}catch(e){S('Fehler — nicht erreichbar')}}"
     "async function slp(){if(!confirm('Box in den Deep-Sleep legen? Danach nur per Taster/USB wieder erreichbar.'))return;S('Schlafen…');try{S(await(await fetch('/dbg/sleep')).text())}catch(e){S('Verbindung weg — Box schläft ✓')}}"
     "let lc=0;async function pl(){if(!$('dlog').open)return;try{let t=await(await fetch('/dbg/log?since='+lc)).text();"
     "let nl=t.indexOf('\\n');lc=parseInt(t.slice(0,nl));let d=t.slice(nl+1);"
@@ -506,6 +511,12 @@ static void handleDbgSwitch() {
 
 // GPIO26 (USB/VBUS) + GPIO13 (STDBY/voll) frisch lesen. Muss bei JEDEM Sync laufen, nicht
 // nur beim Boot — sonst friert "lädt" auf dem Boot-Zustand ein (Box bootet im Debug nie neu).
+//
+// Die Akku-Selbstkalibrierung (Failsafe::calibrateIfFull) hängt bewusst NICHT hier drin,
+// obwohl sie auf chargeFull reagiert: diese Funktion ist ein billiger Pin-Read auf dem
+// Präsenz-/Riegel-Pfad (policyOpenPermitted, lockBox, Wachfenster-Loop) und darf keine
+// 16 ADC-Samples plus möglichen NVS-Schreibzugriff nachziehen. Kalibriert wird an den zwei
+// Stellen, die ohnehin messen: setup() und der SYNCING-Zweig.
 static void readChargeState() {
 #if PIN_CHARGE_DETECT >= 0
   pinMode(PIN_CHARGE_DETECT, INPUT_PULLDOWN); // idle LOW, HIGH = USB/VBUS da
@@ -525,15 +536,18 @@ static void readChargeState() {
 
 // Info-Panel (JSON, alle ~2 s gepollt): FW, Akku, USB/Laden, MAC/IP/WLAN, Lock, Uptime.
 static void handleDbgInfo() {
-  uint32_t acc = 0; for (int i = 0; i < 16; i++) acc += analogRead(PIN_BATT_ADC);
-  float vbat = (acc / 16 / 4095.0f) * 3.3f * BATT_DIVIDER;
   readChargeState();
+  // EINMAL messen (16 ADC-Samples) und beide Felder daraus ableiten — das Panel pollt alle 2 s,
+  // und zwei getrennte Messungen könnten batt und vbat auch widersprüchlich zeigen.
+  float vbat = Failsafe::batteryVolts(); // NAN bei unplausibel → percentFromVolts liefert -1
   int usb = gBox.charging ? 1 : 0;
   String j = "{";
   j += "\"name\":\"" + jsonEsc(String(gBox.deviceName[0] ? gBox.deviceName : "Heimdall")) + "\",";
   j += "\"fw\":\"" FW_VERSION "\",";
-  j += "\"batt\":" + String(Failsafe::batteryPercent()) + ","; // frisch, konsistent zu vbat
-  j += "\"vbat\":" + String(vbat, 2) + ",";
+  j += "\"batt\":" + String(Failsafe::percentFromVolts(vbat)) + ",";
+  j += "\"vbat\":" + String(isfinite(vbat) ? vbat : 0.0f, 2) + ",";
+  // 0 = noch nie voll geladen → die Seite zeigt „unkalibriert" statt eines geratenen Faktors
+  j += "\"cal\":" + String(Failsafe::batteryCalibrated() ? Failsafe::batteryGain() : 0.0f, 3) + ",";
   j += "\"usb\":" + String(usb) + ",";
   j += "\"charging\":" + String(gBox.charging ? "true" : "false") + ",";
   j += "\"full\":" + String(gBox.chargeFull ? "true" : "false") + ",";
@@ -640,6 +654,7 @@ static void handleDbgReboot() {
   ESP.restart();
 }
 
+
 // Debug-Seite: sofort in den Deep-Sleep (statt aufs Fenster-Timeout zu warten). Nutzt den
 // regulären goDeepSleep() → Wake per Taster/USB oder Heartbeat-/Deadline-Timer, wie sonst.
 static void handleDbgSleep() {
@@ -665,6 +680,16 @@ static void handleDbgReopen() {
   if (!jogGuardOpen()) return;
   Stepper::reopen();
   gWeb.send(200, "text/plain", "Entklemm-Zyklus gefahren (zurück + voll auf)");
+}
+
+// Akku-Kalibrierung auf Werkszustand — die Rückfalltür, falls eine Messung die Referenz
+// verdorben hat. NUR bei offener Box, gleiche Invariante wie beim manuellen Riegel: auf einer
+// Box, deren Messpfad zu HOCH liest, schiebt der Reset die Notöffnungs-Schwelle nach unten,
+// und das ist genau die Richtung, in der eine verschlossene Box wegsterben kann.
+static void handleDbgBattReset() {
+  if (!jogGuardOpen()) return;
+  Failsafe::resetCalibration();
+  gWeb.send(200, "text/plain", "Akku-Kalibrierung zurückgesetzt — nächste Volladung kalibriert neu.");
 }
 
 // Lokale Failsafes: monotoner Zähler tickt (delta-basiert, persistiert) + Öffnungsgründe prüfen.
@@ -774,6 +799,7 @@ void setup() {
   otaCheckBoot(); // OTA-Validierung/Rollback (S14) — vor allem anderen
   NVS::begin();
   NVS::ensureNamespaces(); // read-only gelesene Namespaces einmal anlegen → kein NOT_FOUND-Spam
+  Failsafe::batteryRefV() = NVS::loadBattRefV(); // Akku-Referenz dieser Box — VOR der ersten Messung
   FlashLog::begin();       // LittleFS-Backlog mounten (best-effort; blockiert nie den Boot)
   Stepper::begin();
   gWeb.on("/", handleStatus); // konsolidierte Statusseite (Info + Funktionen + Log + WLAN), einmalig
@@ -782,6 +808,7 @@ void setup() {
   gWeb.on("/dbg/info", handleDbgInfo);
   gWeb.on("/dbg/log",  handleDbgLog);
   gWeb.on("/dbg/reboot", handleDbgReboot);
+  gWeb.on("/dbg/battreset", handleDbgBattReset); // Akku-Kalibrierung auf Werkszustand
   gWeb.on("/dbg/sleep",  handleDbgSleep);
   gWeb.on("/dbg/jog",    handleDbgJog);    // manueller Notfall-Riegel (nur bei offen)
   gWeb.on("/dbg/reopen", handleDbgReopen); // Entklemm-Zyklus (nur bei offen)
@@ -811,8 +838,9 @@ void setup() {
   // Ein-Zeilen-Wake-Spur: wake=warum wach (button/rtc_timer/power_on), reset=WIE gebootet
   // (DEEPSLEEP=sauberer Wake, BROWNOUT/POWERON/PANIC=Reset → kein Ack-Blink), boot#/unexp=
   // kumulative Zähler, batt=letzter LIVE-Wert aus NVS, ack=hat's quittiert.
-  LOGI("=== Heimdall %s | wake=%s reset=%s boot#%u unexpected=%u battery=%d%% button-ack=%s ===",
-        FW_VERSION, reason, gResetReason, gBootCount, gUnexpected, gBox.batteryPct, extWake ? "yes" : "no");
+  LOGI("=== Heimdall %s | wake=%s reset=%s boot#%u unexpected=%u battery=%d%% (cal %.3f) button-ack=%s ===",
+        FW_VERSION, reason, gResetReason, gBootCount, gUnexpected, gBox.batteryPct,
+        Failsafe::batteryGain(), extWake ? "yes" : "no");
   // Deep-sleep-festes Aufwach-Journal (RTC-RAM): hält diesen Wake fest; wird beim nächsten
   // erfolgreichen Sync hochgeladen und dort geleert. Fängt so auch Wakes ab, deren Sync scheitert.
   recordWake(reason, gBox.batteryPct);
@@ -828,6 +856,10 @@ void setup() {
   // Lade-Status frisch lesen (GPIO26). Wird zusätzlich bei jedem Sync aktualisiert,
   // damit "lädt" auch ohne Reboot dem echten USB-Zustand folgt.
   readChargeState();
+  // Ladezustand beobachten: die Flanke laden→Ladeschluss ist die Spannungsreferenz dieser Box.
+  // Hier beim Boot setzt das im Regelfall nur die "hat Laden gesehen"-Marke — kalibriert wird
+  // erst, wenn dieselbe Wachphase auch den Ladeschluss erlebt (am Kabel bleibt die Box wach).
+  Failsafe::observeCharge(gBox.charging, gBox.chargeFull);
 
   // LED zeigt Lock-Status NUR während die Box wach ist (Knopfdruck → Status auf Abruf).
   // Bewusst KEIN gpio_hold im Deep-Sleep: spart Akku, LED erlischt im Schlaf.
@@ -876,7 +908,9 @@ void loop() {
     case State::SYNCING: {
       LOGI("Sync: starting");
       readChargeState();                              // Lade-Status frisch (folgt USB ohne Reboot)
+      Failsafe::observeCharge(gBox.charging, gBox.chargeFull); // trifft die Lade-Flanke (alle 30 s am Kabel)
       gBox.batteryPct = Failsafe::batteryPercent();   // Akku-% frisch (friert im Debug sonst ein)
+      gBox.battCalib  = Failsafe::batteryCalibrated() ? Failsafe::batteryGain() : 0.0f;
       OtaInfo ota = {};
       // keepWifi=true: WiFi bleibt an für Statusseite + mögliches OTA (kein Re-Connect).
       SyncResult res = ServerSync::run(gCreds, gBox, gPolicy, true, &ota);

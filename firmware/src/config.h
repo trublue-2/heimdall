@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.2.34"
+#define FW_VERSION "0.2.35"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Ziel-Board: ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
@@ -39,18 +39,20 @@
 #define BTN_SLEEP_HOLD_MS 1500
 
 // ── Batterie ADC + Lade-Erkennung ──────────────────────────────────────────
-// Ziel-Board: Akkuspannung auf GPIO32, 1:2-Teiler (per ADC-Scan ermittelt: 2,06 V → 4,12 V).
-// LOLIN-Dev war GPIO35 — Teiler bei beiden 1:2 (der ×2 in failsafe.h bleibt).
+// Ziel-Board: Akkuspannung auf GPIO32, 1:2-Teiler. LOLIN-Dev war GPIO35 — Teiler bei beiden 1:2.
 #define PIN_BATT_ADC      32
-// Skalierung: V_batt = V_adc × BATT_DIVIDER. Am Multimeter kalibriert (2026-07-06):
-// 4,10 V real ÷ 1,990 V (GPIO32-Node) = 2,06. (Original-FW nutzte ~2,2625 + ADC-Kurve.)
-#define BATT_DIVIDER      2.06f
+// Skalierung: V_batt = V_adc × BATT_DIVIDER. NOMINELLER Teilerfaktor (1:2), KEIN kalibrierter
+// Wert: der Messpfad liest über analogReadMilliVolts() (eFuse-ADC-Kalibrierung des Chips),
+// den Rest holt die Selbstkalibrierung pro Box (siehe unten).
+#define BATT_DIVIDER      2.0f
 // Lade-Erkennung: GPIO26, active-HIGH (HIGH = Ladung LÄUFT). Fällt am Ladeschluss (STDBY)
 // weg — „am USB" ist daher charging ODER chargeFull (siehe readChargeState). -1 = kein Pin.
 #define PIN_CHARGE_DETECT 26
 // Ladeschluss „voll/fertig" (TP4056 STDBY, grüne LED): GPIO13, open-drain → INPUT_PULLUP,
 // LOW = fertig & am Kabel. UNABHÄNGIG von GPIO26 gelesen (bei voll ist charging bereits weg).
-// Reine Anzeige + „am USB"-Signal, KEIN Safety-Pfad. -1 = kein Pin (z.B. LOLIN).
+// Anzeige + „am USB"-Signal — und seit FW 0.2.35 die Referenz der Akku-Selbstkalibrierung,
+// womit dieser Pin mittelbar den Low-Batt-Failsafe beeinflusst (Klammer: BATT_CAL_MIN/MAX).
+// -1 = kein Pin (z.B. LOLIN) → keine Kalibrierung, Box misst nominell.
 #define PIN_CHARGE_FULL   13
 #define BATT_LOW_PERCENT  20  // % Warnung (Dashboard-Badge, Server-seitig ausgewertet)
 #define BATT_CRITICAL_PCT  15 // % → Auto-Open Failsafe (Notöffnung mit Reserve fürs Drehmoment)
@@ -63,6 +65,33 @@
 #define BATT_UNKNOWN        (-1)
 #define BATT_PLAUSIBLE_MIN_V 2.5f
 #define BATT_PLAUSIBLE_MAX_V 4.5f
+// SoC-Fenster: 0 % / 100 %. BATT_FULL_V ist zugleich die Referenz der Selbstkalibrierung
+// (TP4056-Ladeschluss) — bewusst DIESELBE Konstante, sonst läse eine frisch kalibrierte Box
+// am Ladeschluss nicht exakt 100 %.
+#define BATT_EMPTY_V         3.20f
+#define BATT_FULL_V          4.20f
+
+// ── Akku-Selbstkalibrierung ────────────────────────────────────────────────
+// Warum überhaupt: ADC-Streuung (eFuse-Vref 1000–1200 mV je Chip) + Teilertoleranz sind
+// PRO GERÄT verschieden — eine Compile-Zeit-Konstante kann für mehr als eine Box nicht
+// stimmen. Weil das SoC-Fenster nur 1,0 V breit ist, wird ein 5-%-Spannungsfehler zu
+// 22 Prozentpunkten Anzeigefehler. Referenz ist PIN_CHARGE_FULL (Ladeschluss = BATT_FULL_V,
+// CV-Genauigkeit ±1 %); ein Multimeter-Abgleich je Gerät ist im Feld nicht erhebbar
+// (nur OTA-Zugang). Ablauf und Sicherheits-Argument stehen in failsafe.h.
+//
+// Klammer für den Gain — sie prüft die REFERENZMESSUNG, nicht das Ergebnis: angenommen wird
+// nur eine Rohmessung, die schon von sich aus im Ladeschluss-Fenster liegt. Umgerechnet
+// BATT_FULL_V/[MAX,MIN] = 3,89 V … 4,52 V. Ein spontan falsches chargeFull auf einer halb
+// vollen Zelle fällt damit raus, statt einen zu hohen Gain zu latchen — und ein zu hoher Gain
+// ist die gefährliche Richtung (Box liest zu hoch → Notöffnung feuert zu spät).
+// Eng genug gewählt, dass der verbleibende Fehler klein bleibt: mit analogReadMilliVolts()
+// ist nur noch die Teilertoleranz (~2 %) plus ADC-Restfehler zu erwarten, nicht die volle
+// Vref-Streuung. Verworfen heisst „bleibt unkalibriert" — der sichere Ausgang.
+#define BATT_CAL_MIN        0.93f
+#define BATT_CAL_MAX        1.08f
+// Mindest-Änderung, bevor eine neue Referenz nach NVS geschrieben wird — sonst kostet jeder
+// Ladezyklus eine Flash-Zelle für einen praktisch unveränderten Wert.
+#define BATT_CAL_MIN_STEP_V 0.01f
 
 // ── Timeouts ───────────────────────────────────────────────────────────────
 // Session-Fenster-Modell: Button/USB öffnet ein kurzes Wachfenster mit Live-MQTT;

@@ -69,7 +69,7 @@ Sammelstelle für alles, was dir im **Betrieb der Ziel-Box** auffällt und was d
 
 - [ ] LiPo-Kapazität so dimensionieren, dass **Max-Verschlusszeit + Reserve fürs Öffnen** sicher abgedeckt sind (mit Sicherheitsfaktor).
 - [ ] **Laden im verschlossenen Zustand** möglich (USB-Zugang von aussen am Gehäuse). Das kann die Ziel-Box — behalten.
-- [x] **Akkustand-Messung** — `Failsafe::batteryPercent()` (GPIO32, 1:2-Teiler, 16× gemittelt, am Multimeter kalibriert), Basis der Low-Batt-Logik.
+- [x] **Akkustand-Messung** — `Failsafe::batteryPercent()` (GPIO32, 1:2-Teiler, 16× gemittelt über `analogReadMilliVolts()`), Basis der Low-Batt-Logik. Seit FW 0.2.35 gleicht jede Box ihren Messpfad am Ladeschluss (TP4056-STDBY) selbst ab — der frühere Multimeter-Abgleich galt nur für eine Box und war für jede weitere falsch.
 - [x] Ladeverhalten: `readChargeState()` (GPIO26 = USB dran, GPIO13 = TP4056-STDBY) — reine Erkennung, Einstecken löst keinen Reset/Öffnen/Zustandswechsel aus.
 
 ---

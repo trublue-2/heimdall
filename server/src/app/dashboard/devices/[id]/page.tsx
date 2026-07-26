@@ -114,19 +114,31 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
         <Card className="grid grid-cols-2 gap-3 text-sm">
           <Info label="WLAN" value={device.wifiSsid ?? "—"} />
           <Info label="Signal" value={device.wifiRssi != null ? `${device.wifiRssi} dBm` : "—"} />
-          <Info label="Akku" value={device.battery != null ? `${device.battery}%${device.charging ? (device.chargeFull ? " ✅ voll" : " ⚡ lädt") : ""}` : "—"} />
+          <Info label="Akku" value={
+            <>
+              {device.battery != null ? `${device.battery}%${device.charging ? (device.chargeFull ? " ✅ voll" : " ⚡ lädt") : ""}` : "—"}
+              {/* Selbstabgleich der Box: erst nach der ersten Volladung ist der Prozentwert
+                  wirklich belastbar — bis dahin misst sie mit dem nominellen Teilerfaktor.
+                  null hat ZWEI Ursachen: nie voll geladen, oder Firmware kennt den Abgleich
+                  noch nicht. Der Text nennt beide, statt eine Volladung zu versprechen, die
+                  einer Alt-Firmware nichts nützt — die FW-Version steht in der Zeile daneben. */}
+              <InfoNote>
+                {device.battCalib != null
+                  ? `selbst kalibriert · Faktor ${device.battCalib.toFixed(3)}`
+                  : "kein Selbstabgleich gemeldet — ab FW 0.2.35 gleicht die erste Volladung ab"}
+              </InfoNote>
+            </>
+          } />
           <Info label="Letzter Sync" value={formatDateTime(device.lastSyncAt)} />
           <Info label="Firmware" mono value={
             <>
               {device.fwVersion ? `v${device.fwVersion}` : "—"}
               {otaBattHold ? (
-                <span className="block font-sans text-xs text-[var(--color-warn)] mt-0.5">
+                <InfoNote tone="warn">
                   ⚠ v{targetFw} verfügbar — Auto-OTA pausiert (Akku {device.battery}%, unter 40%). Manuell über die Box-Seite.
-                </span>
+                </InfoNote>
               ) : otaBehind ? (
-                <span className="block font-sans text-xs text-[var(--foreground-faint)] mt-0.5">
-                  v{targetFw} verfügbar — lädt beim nächsten offenen Sync.
-                </span>
+                <InfoNote>v{targetFw} verfügbar — lädt beim nächsten offenen Sync.</InfoNote>
               ) : null}
             </>
           } />
@@ -215,6 +227,12 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
       )}
     </div>
   );
+}
+
+// Leiser Zusatz unter einem Info-Wert. font-sans hebt das mono der Firmware-Zeile wieder auf.
+function InfoNote({ tone = "muted", children }: { tone?: "muted" | "warn"; children: React.ReactNode }) {
+  const color = tone === "warn" ? "var(--color-warn)" : "var(--foreground-faint)";
+  return <span className="block font-sans text-xs mt-0.5" style={{ color }}>{children}</span>;
 }
 
 function Info({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {

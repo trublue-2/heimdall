@@ -15,7 +15,7 @@ void NVS::begin() {
 // öffnen (legt ihn an) + neutralen Marker schreiben (persistiert den leeren Namespace). Die
 // Loader prüfen ihre echten Keys ("locked"/"lockUntil"/"host"/"count"/…) — der Marker ändert nichts.
 void NVS::ensureNamespaces() {
-  static const char* NS[] = { "state", "policy", "mqtt", "nets", "wifi" };
+  static const char* NS[] = { "state", "policy", "mqtt", "nets", "wifi", "batt" };
   for (const char* ns : NS) {
     prefs.begin(ns, false); // READWRITE legt den Namespace an, falls er fehlt
     if (!prefs.isKey("_ns")) prefs.putUChar("_ns", 1);
@@ -125,6 +125,22 @@ void NVS::saveMqtt(const MqttConfig& in) {
   prefs.putBool("en", in.enabled);
   prefs.putString("host", in.host);
   prefs.putString("did",  in.deviceId);
+  prefs.end();
+}
+
+// ── Akku-Kalibrierung ──────────────────────────────────────────────────────
+// Kein bool-Rückgabewert wie bei loadPolicy/loadMqtt: "nie kalibriert" ist der reguläre
+// Werkszustand einer frischen Box, kein Fehlerfall — der Default 0 ist dann korrekt.
+float NVS::loadBattRefV() {
+  prefs.begin("batt", true);
+  float refV = prefs.getFloat("refV", 0.0f);
+  prefs.end();
+  return refV;
+}
+
+void NVS::saveBattRefV(float refV) {
+  prefs.begin("batt", false);
+  prefs.putFloat("refV", refV);
   prefs.end();
 }
 
