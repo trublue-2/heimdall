@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminApi } from "@/lib/authGuards";
+import { requireDeviceAccess } from "@/lib/authGuards";
 import { prisma } from "@/lib/prisma";
 import { notifyDeviceChange } from "@/lib/events";
 import { publishCommand } from "@/lib/mqttBridge";
@@ -15,11 +15,18 @@ function parseKnown(json: string | null | undefined): string[] {
   }
 }
 
+// Zugriff auf alle WLAN-Routen: Admin ODER das Konto, dem die Box zugewiesen ist. Wer seine Box
+// bedienen darf, darf sie auch ins eigene Netz bringen — sonst hängt jeder Netzwechsel am Admin.
+// Passwörter verlässt die API nie (nur `delivered`), das gilt für beide Rollen gleichermassen.
+//
+// Die Routen liegen deshalb NICHT unter /api/admin: proxy.ts sperrt diesen Pfad-Präfix für
+// Nicht-Admins schon vor dem Handler — ein Rollen-Check im Handler allein käme nie zum Zug.
+
 // Zusatz-WLANs eines Geräts + bevorzugtes Netz auflisten (ohne Passwörter).
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ deviceId: string }> }) {
-  const { response } = await requireAdminApi();
-  if (response) return response;
   const { deviceId } = await params;
+  const { response } = await requireDeviceAccess(deviceId);
+  if (response) return response;
   const [device, nets] = await Promise.all([
     prisma.device.findUnique({ where: { id: deviceId }, select: { preferredSsid: true, primaryLastUsedAt: true, primarySsid: true, knownSsids: true } }),
     prisma.wifiNetwork.findMany({
@@ -45,9 +52,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ dev
 // Zusatz-WLAN hinzufügen/aktualisieren. Passwort wird beim nächsten Box-Sync
 // ausgeliefert und danach automatisch genullt.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ deviceId: string }> }) {
-  const { response } = await requireAdminApi();
-  if (response) return response;
   const { deviceId } = await params;
+  const { response } = await requireDeviceAccess(deviceId);
+  if (response) return response;
   const { ssid, password } = await req.json();
   if (!ssid || typeof ssid !== "string") {
     return NextResponse.json({ error: "SSID nötig" }, { status: 400 });
@@ -63,9 +70,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dev
 // Bevorzugtes Netz setzen/aufheben (Server gewinnt → wird beim Sync an die Box gepusht).
 // Erlaubt nur ein der Box bekanntes Netz (Primär oder ein Extra) oder null.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ deviceId: string }> }) {
-  const { response } = await requireAdminApi();
-  if (response) return response;
   const { deviceId } = await params;
+  const { response } = await requireDeviceAccess(deviceId);
+  if (response) return response;
   const body = await req.json();
 
   // „Vergessen": ein von der Box gemeldetes Extra-WLAN aus deren NVS entfernen. Primär ist

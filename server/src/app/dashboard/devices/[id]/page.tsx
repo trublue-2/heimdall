@@ -172,15 +172,14 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
         />
       </section>
 
-      {/* Weitere WLAN-Zugänge (Admin) */}
-      {isAdmin && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-semibold text-[var(--foreground-muted)] uppercase tracking-wide">Weitere WLAN-Zugänge (Admin)</h2>
-          <Card>
-            <WifiNetworksManager deviceId={device.id} primarySsid={device.primarySsid} />
-          </Card>
-        </section>
-      )}
+      {/* Weitere WLAN-Zugänge — bewusst NICHT admin-only: wer die Box bedient, muss sie auch
+          ins eigene Netz bringen können (Umzug, neuer Router, Hotspot unterwegs). */}
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-[var(--foreground-muted)] uppercase tracking-wide">Weitere WLAN-Zugänge</h2>
+        <Card>
+          <WifiNetworksManager deviceId={device.id} primarySsid={device.primarySsid} />
+        </Card>
+      </section>
 
       {/* Server-Log (Admin) */}
       {isAdmin && (
