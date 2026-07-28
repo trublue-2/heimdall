@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/authGuards";
 import { prisma } from "@/lib/prisma";
-import { generateProvisioningToken, hashProvisioningToken } from "@/lib/utils";
+import { generateProvisioningToken, hashProvisioningToken, DEFAULT_OFFLINE_OPEN_HOURS } from "@/lib/utils";
 
 export async function GET() {
   const { response } = await requireAdminApi();
@@ -17,7 +17,7 @@ export async function GET() {
       deviceId: d.id,
       deviceName: d.name,
       lockUntil: d.policy?.lockUntil?.toISOString() ?? null,
-      offlineOpenHours: d.policy?.offlineOpenHours ?? 24,
+      offlineOpenHours: d.policy?.offlineOpenHours ?? DEFAULT_OFFLINE_OPEN_HOURS,
     }))
   );
 }

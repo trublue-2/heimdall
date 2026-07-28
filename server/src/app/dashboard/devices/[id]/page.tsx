@@ -16,7 +16,7 @@ import { LiveRefresh } from "@/app/components/LiveRefresh";
 import { deviceLockView, deviceHeldClosed } from "@/lib/device-auth";
 import { getTargetVersion, slotOf } from "@/lib/firmware";
 import { deviceOnline } from "@/lib/mqttBridge";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, DEFAULT_OFFLINE_OPEN_HOURS, DEFAULT_SYNC_INTERVAL_MIN } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +75,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
         keyholderLocked={lockView.keyholderLocked}
         hasOpenPassword={!!device.policy?.openPasswordHash}
         lastSyncAt={device.lastSyncAt?.toISOString() ?? null}
+        offlineOpenHours={device.policy?.offlineOpenHours ?? DEFAULT_OFFLINE_OPEN_HOURS}
         battery={device.battery}
         charging={device.charging ?? null}
         chargeFull={device.chargeFull ?? null}
@@ -91,8 +92,8 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
           <DeviceSettingsForm
             deviceId={device.id}
             name={device.name}
-            offlineOpenHours={device.policy?.offlineOpenHours ?? 24}
-            syncIntervalMin={device.policy?.syncIntervalMin ?? 60}
+            offlineOpenHours={device.policy?.offlineOpenHours ?? DEFAULT_OFFLINE_OPEN_HOURS}
+            syncIntervalMin={device.policy?.syncIntervalMin ?? DEFAULT_SYNC_INTERVAL_MIN}
             emergencyOpensLeft={device.emergencyOpensLeft}
           />
         </Card>

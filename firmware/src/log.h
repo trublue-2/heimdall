@@ -4,7 +4,8 @@
 // Einheitliches Firmware-Log. Geht über log_printf → derselbe Zeichenstrom, den der
 // ets_install_putc1-Hook in main.cpp (logPutc) einfängt → Ring-Puffer, UART, /dbg/log,
 // Server-Log (logToServer) und MQTT-Live-Log. Bewusst schlank: nur ein Level-Tag [I/W/E];
-// die Wanduhr [HH:MM:SS] setzt logPutc davor. KEIN datei:zeile/func() — das ist ein
+// die Wanduhr [TT.MM. HH:MM:SS] setzt logPutc davor (mit Datum: ein Backlog aus tagelanger
+// Funkstille liesse sich sonst keinem Tag mehr zuordnen). KEIN datei:zeile/func() — das ist ein
 // Betriebs-Log für den Operator, kein Entwickler-Trace (spart Rauschen + Flash).
 //
 // Nutzung wie printf: LOGI("Sync ok — HTTP %d", code);

@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.2.35"
+#define FW_VERSION "0.2.36"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Ziel-Board: ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
@@ -54,7 +54,8 @@
 // womit dieser Pin mittelbar den Low-Batt-Failsafe beeinflusst (Klammer: BATT_CAL_MIN/MAX).
 // -1 = kein Pin (z.B. LOLIN) → keine Kalibrierung, Box misst nominell.
 #define PIN_CHARGE_FULL   13
-#define BATT_LOW_PERCENT  20  // % Warnung (Dashboard-Badge, Server-seitig ausgewertet)
+#define BATT_LOW_PERCENT  20  // % — HISTORISCH, wird nirgends mehr gelesen: die Anzeige-Vorwarnung
+                              // leitet der Server aus BATT_CRITICAL_PCT ab (BATTERY_WARN_PCT in server/src/lib/utils.ts)
 #define BATT_CRITICAL_PCT  15 // % → Auto-Open Failsafe (Notöffnung mit Reserve fürs Drehmoment)
 // Hysterese: einmal unter BATT_CRITICAL gilt "leer", bis der Akku wieder ≥ BATT_RECOVER
 // steigt → kein Flattern durch ADC-Rauschen um die 15%-Schwelle (latch in BoxState).

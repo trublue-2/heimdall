@@ -137,6 +137,10 @@ export async function pushBoxStatus(
     /** Offline-Failsafe-Schwelle (Stunden ohne Sync → Box öffnet selbst). Der Tracker braucht sie,
      *  um `staleLock`/`hardwareEnforced` ehrlich zu berechnen — sie ist KEIN Lock-View-Wert. */
     offlineOpenHours: number;
+    /** Akku-Failsafe-Schwelle in Prozent (darunter öffnet die Box AUTONOM). Aus demselben Grund
+     *  mitgeschickt wie `offlineOpenHours`: der Tracker soll vor einer Selbst-Öffnung warnen können,
+     *  ohne eine Firmware-Konstante ein drittes Mal zu kopieren. */
+    lowBatteryOpenPercent: number;
     lastAppliedCommand?: string;
   }
 ): Promise<BoxCommand | null> {
@@ -159,6 +163,7 @@ export async function pushBoxStatus(
         fwVersion: p.fwVersion ?? undefined,
         lastSyncAt: p.lastSyncAt?.toISOString() ?? null,
         offlineOpenHours: p.offlineOpenHours,
+        lowBatteryOpenPercent: p.lowBatteryOpenPercent,
         lastAppliedCommand: p.lastAppliedCommand,
       }),
     });
