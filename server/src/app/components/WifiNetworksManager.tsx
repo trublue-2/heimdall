@@ -25,7 +25,7 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    const r = await fetch(`/api/admin/devices/${deviceId}/wifi`);
+    const r = await fetch(`/api/devices/${deviceId}/wifi`);
     if (r.ok) {
       const d = await r.json();
       setNets(d.nets);
@@ -40,7 +40,7 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
     if (!confirm(`WLAN „${s}" von der Box vergessen?`)) return;
     setError(null);
     try {
-      const r = await fetch(`/api/admin/devices/${deviceId}/wifi`, {
+      const r = await fetch(`/api/devices/${deviceId}/wifi`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ forgetSsid: s }),
@@ -60,7 +60,7 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
     setSaving(true);
     setError(null);
     try {
-      const r = await fetch(`/api/admin/devices/${deviceId}/wifi`, {
+      const r = await fetch(`/api/devices/${deviceId}/wifi`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ssid, password: pass }),
@@ -78,7 +78,7 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
   }
 
   async function remove(id: string) {
-    await fetch(`/api/admin/devices/${deviceId}/wifi/${id}`, { method: "DELETE" });
+    await fetch(`/api/devices/${deviceId}/wifi/${id}`, { method: "DELETE" });
     load();
   }
 
@@ -86,7 +86,7 @@ export function WifiNetworksManager({ deviceId, primarySsid }: { deviceId: strin
   async function setPref(next: string | null) {
     setError(null);
     try {
-      const r = await fetch(`/api/admin/devices/${deviceId}/wifi`, {
+      const r = await fetch(`/api/devices/${deviceId}/wifi`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ preferredSsid: next }),
