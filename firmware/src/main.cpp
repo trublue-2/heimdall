@@ -40,6 +40,13 @@ static unsigned long   gLastActivityMs = 0;
 // Öffnet dieser Wake ein aktives MQTT-Wachfenster? Button/Power-on = ja, Heartbeat
 // (rtc_timer) = nein (nur Sync, dann sofort weiterschlafen). USB überstimmt (immer Fenster).
 static bool            gWindowWake     = false;
+// Letzter Sync-Versuch dieses Wachzyklus gescheitert? Dann verzichtet OPENING auf seine
+// Melde-Runde — sie träfe Sekunden später auf dieselbe Ursache: ohne Netz auf denselben
+// WLAN-Timeout (bis ~25 s Funk auf Akku), bei 401/5xx auf denselben ablehnenden Server.
+// Verloren geht dabei nichts: der geöffnete Zustand steht im NVS, der 30-s-Resync im
+// Wachfenster bzw. der nächste Heartbeat meldet ihn nach. Ein MQTT-Kommando setzt das Flag
+// zurück — eine lebende Broker-Verbindung ist der Beweis, dass das Netz wieder da ist.
+static bool            gSyncFailed     = false;
 
 // Aufeinanderfolgende 401 (überlebt Deep-Sleep) → Selbstheilung in den Hotspot (S8).
 RTC_DATA_ATTR static uint32_t gAuthFails = 0;
@@ -742,15 +749,6 @@ static bool policyOpenPermitted() {
   // Logging beim Aufrufer (Sync-Zweige) — hier würde jede Heartbeat-Wake-Kette doppelt loggen.
 }
 
-// Sofort-Öffnungs-Gate (VOR Sync/MQTT): failsafe-Zähler ticken + prüfen (öffnen AUTONOM),
-// plus abgelaufene Lock-Zeit aus der gecachten Policy — die öffnet NUR mit Präsenz
-// (policyOpenPermitted). checkFailsafes() bleibt die Quelle des Zähler-Ticks (Seiteneffekt
-// bewusst).
-static bool shouldOpenNow() {
-  if (checkFailsafes()) return true;
-  return gBox.locked && Failsafe::isPolicyExpired(gPolicy) && policyOpenPermitted();
-}
-
 // Kanonische Sperr-Sequenz (Sperrbeginn merken, Riegel zu, Zustand melden). Genutzt von
 // der Policy-Entscheidung im Sync UND vom MQTT-lock-Kommando — eine Quelle statt zwei.
 //
@@ -882,10 +880,17 @@ void setup() {
   gState = (hasState && gBox.locked) ? State::LOCKED : State::IDLE_OPEN;
 
   // ── P0: Sofort-Öffnungs-Gate VOR Sync/MQTT — Safety vor Security vor Funktion ──
-  // checkFailsafes() tickt den monotonen Zähler + prüft Low-Batt/Offline (öffnen autonom).
-  // Eine abgelaufene Lock-Zeit aus der GECACHTEN Policy öffnet dagegen nur mit jemandem am
-  // Gerät (Präsenz-Gate) — ein Heartbeat-Wake lässt die Box zu und „scharfgestellt".
-  if (shouldOpenNow()) { gState = State::OPENING; return; }
+  // checkFailsafes() tickt den monotonen Zähler + prüft Low-Batt/Offline: die öffnen AUTONOM
+  // und SOFORT, ohne auf ein Netz zu warten — sie retten, und beide Bedingungen misst die Box
+  // selbst (Akku am ADC, Funkstille am eigenen Zähler). Kein Server kann sie besser wissen.
+  //
+  // Eine abgelaufene Lock-Zeit aus der GECACHTEN Policy gehört bewusst NICHT hierher: sie ist
+  // eine Server-Aussage von letztem Kontakt und kann überholt sein. Darüber entscheidet erst
+  // SYNCING — mit frischer Policy, und nur ohne Netz weiter aus dem Cache (Fehlschlag-Zweig).
+  // Kostet einen Sync-Versuch (bis ~25 s, wenn kein AP in Reichweite ist), gewinnt dafür die
+  // aktuelle Wahrheit; ein Policy-Öffnen ist nie zeitkritisch. Vorfall und Herleitung:
+  // docs/box-states.md → „Öffnungs-Gründe und ihr Vollzug".
+  if (checkFailsafes()) { gState = State::OPENING; return; }
 
   gState = State::SYNCING;
   gBtnLatched = false; // Boot-Bounce verwerfen — der Initial-Sync läuft ohnehin
@@ -918,6 +923,7 @@ void loop() {
       OtaInfo ota = {};
       // keepWifi=true: WiFi bleibt an für Statusseite + mögliches OTA (kein Re-Connect).
       SyncResult res = ServerSync::run(gCreds, gBox, gPolicy, true, &ota);
+      gSyncFailed = (res != SyncResult::OK); // OPENING spart sich danach die Melde-Runde
 
       if (res == SyncResult::OK) {
         gAuthFails = 0;    // erfolgreicher Sync → 401-Zähler zurücksetzen
@@ -1017,8 +1023,9 @@ void loop() {
       gLastActivityMs = millis();
       // Best-effort Sync nach Öffnen (wakeReason landet im Event-Log). keepWifi=true:
       // im aktiven Fenster bleibt WiFi an, damit MQTT weiterlebt; auf dem Sleep-Pfad
-      // schaltet goDeepSleep WiFi ohnehin ab.
-      ServerSync::run(gCreds, gBox, gPolicy, true);
+      // schaltet goDeepSleep WiFi ohnehin ab. Scheiterte der Sync dieses Zyklus bereits,
+      // wird hier nicht nachgesetzt — der zweite Anlauf liefe in dieselbe Ursache.
+      if (!gSyncFailed) ServerSync::run(gCreds, gBox, gPolicy, true);
       break;
 
     // ── LOCKED / IDLE_OPEN ────────────────────────────────────────────────
@@ -1063,8 +1070,9 @@ void loop() {
         // Ohne das scheiterte ausgerechnet der Knopfdruck an den Präsenz-Guards
         // (policyOpenPermitted fürs Öffnen, lockBox fürs Zufahren).
         gWindowWake = true;
-        // Button: erst Sofort-Öffnung prüfen (abgelaufen/Failsafe), DANN Sync.
-        if (shouldOpenNow()) { gState = State::OPENING; break; }
+        // Button: erst die Not-Failsafes prüfen (öffnen autonom), DANN Sync. Über ein
+        // Policy-Öffnen entscheidet auch hier erst der Sync — siehe Begründung in setup().
+        if (checkFailsafes()) { gState = State::OPENING; break; }
         LOGI("Button tap (awake) → sync");
         gState = State::SYNCING;
         break;
@@ -1121,6 +1129,7 @@ void loop() {
         Mqtt::Command cmd = Mqtt::takeCommand();
         if (cmd != Mqtt::Command::NONE) {
           gLastActivityMs = millis(); // Aktivität → Fenster verlängern
+          gSyncFailed = false; // Kommando über den Broker = das Netz steht wieder → melden lohnt
           switch (cmd) {
             case Mqtt::Command::OPEN:
               LOGI("Command applied: open (from server)");

@@ -9,7 +9,9 @@
 // Alle Failsafe-Checks.  Safety > Security > Function.
 // Die NOT-Failsafes (Low-Batt, Offline-Timeout) öffnen AUTONOM — unabhängig von Server/WLAN.
 // Ein Policy-Offen (isPolicyExpired) BEWAFFNET das Öffnen dagegen nur: der Riegel fährt erst
-// mit jemandem am Gerät auf (Präsenz-Gate policyOpenPermitted() in main.cpp, Entscheid 16.07).
+// mit jemandem am Gerät auf (Präsenz-Gate policyOpenPermitted() in main.cpp, Entscheid 16.07)
+// UND erst, nachdem ein Sync-Versuch die Frist bestätigt oder das Netz gefehlt hat (0.2.37) —
+// eine gecachte Policy kann überholt sein, eine selbst gemessene Not-Lage nie.
 namespace Failsafe {
 
   // ── Akku-Messpfad + Selbstkalibrierung ─────────────────────────────────────
@@ -144,7 +146,9 @@ namespace Failsafe {
   // Zeit-Deadline zählt NUR bei gültiger Uhr — sonst übernimmt der Offline-Timeout
   // (sonst bliebe die Box bei 1970 ewig zu).
   // ACHTUNG Semantik seit 0.2.34: true heisst „darf/soll öffnen", NICHT „öffnet jetzt" —
-  // vollzogen wird ein Policy-Offen nur mit Präsenz (policyOpenPermitted() in main.cpp).
+  // vollzogen wird ein Policy-Offen nur mit Präsenz (policyOpenPermitted() in main.cpp) und
+  // seit 0.2.37 nur aus dem SYNCING-Zustand heraus, also erst nach einem Sync-Versuch: auf
+  // eine gecachte Frist zu öffnen, ohne die aktuelle erfragt zu haben, war der Vorfall 28.07.
   // Als Zufahr-Blocker wirkt es weiterhin sofort: solange die Policy offen will, wird nie zugefahren.
   inline bool isPolicyExpired(const BoxPolicy& policy) {
     if (!policy.serverLocked) return true;  // Server sagt offen
