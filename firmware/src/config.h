@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.2.37"
+#define FW_VERSION "0.2.38"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Ziel-Board: ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
@@ -45,11 +45,14 @@
 // Wert: der Messpfad liest über analogReadMilliVolts() (eFuse-ADC-Kalibrierung des Chips),
 // den Rest holt die Selbstkalibrierung pro Box (siehe unten).
 #define BATT_DIVIDER      2.0f
-// Lade-Erkennung: GPIO26, active-HIGH (HIGH = Ladung LÄUFT). Fällt am Ladeschluss (STDBY)
-// weg — „am USB" ist daher charging ODER chargeFull (siehe readChargeState). -1 = kein Pin.
+// Lade-Erkennung: GPIO26, active-HIGH. MESSUNG 28.07.2026: der Pin folgt der USB-/VBUS-
+// Anwesenheit, NICHT dem CHRG-Signal — am Ladeschluss stehen `charging` und `chargeFull`
+// gleichzeitig an, GPIO26 fällt erst beim Kabelziehen. Die frühere Annahme („fällt am
+// Ladeschluss weg") stimmte nicht und machte die Selbstkalibrierung unerreichbar; die
+// Flanken-Erkennung in failsafe.h hängt seit 0.2.38 deshalb an chargeFull. -1 = kein Pin.
 #define PIN_CHARGE_DETECT 26
 // Ladeschluss „voll/fertig" (TP4056 STDBY, grüne LED): GPIO13, open-drain → INPUT_PULLUP,
-// LOW = fertig & am Kabel. UNABHÄNGIG von GPIO26 gelesen (bei voll ist charging bereits weg).
+// LOW = fertig & am Kabel. UNABHÄNGIG von GPIO26 gelesen.
 // Anzeige + „am USB"-Signal — und seit FW 0.2.35 die Referenz der Akku-Selbstkalibrierung,
 // womit dieser Pin mittelbar den Low-Batt-Failsafe beeinflusst (Klammer: BATT_CAL_MIN/MAX).
 // -1 = kein Pin (z.B. LOLIN) → keine Kalibrierung, Box misst nominell.
@@ -93,6 +96,26 @@
 // Mindest-Änderung, bevor eine neue Referenz nach NVS geschrieben wird — sonst kostet jeder
 // Ladezyklus eine Flash-Zelle für einen praktisch unveränderten Wert.
 #define BATT_CAL_MIN_STEP_V 0.01f
+// Karenz: so lange muss die Box „am Kabel und noch nicht voll" gesehen haben, bevor ein
+// Ladeschluss als Referenz zählt.
+//
+// Wogegen sie WIRKLICH schützt: ein kurzes Flackern des open-drain-Signals GPIO13 mitten im
+// Laden. Ein einzelner falscher chargeFull-Poll bei z.B. 4,1 V läge INNERHALB der Klammer
+// BATT_CAL_MIN/MAX und würde sonst als Referenz angenommen → Gain 1,024 → die Box liest zu hoch
+// und die Notöffnung feuert zu spät (die gefährliche Richtung). Über 10 Minuten hinweg muss das
+// Signal konsistent bleiben, ein einzelner Ausreisser fällt raus.
+//
+// NICHT ihr Verdienst ist der Fall „entspannte Zelle geht beim Einstecken sofort in STDBY" —
+// den fängt schon die erste Schicht in failsafe.h ab: wer den Übergang chargeFull false→true nie
+// gesehen hat, kalibriert gar nicht. Wer die Karenz also für redundant hält, irrt — aber aus dem
+// anderen Grund als gedacht.
+//
+// Bewusst in Kauf genommen: eine kurze Nachladung von der Recharge-Schwelle (~4,05 V) hoch endet
+// sauber bei 4,20 V, dauert am Kabel aber oft < 10 min und kalibriert damit NICHT. Das kostet nur
+// einen ausgelassenen Zyklus — der sichere Ausgang, er heilt bei der nächsten echten Volladung
+// von selbst. Am Kabel bleibt die Box wach und misst alle 30 s (DEBUG_RESYNC_MS), 10 Minuten sind
+// also ~20 Messpunkte.
+#define BATT_CAL_MIN_CHARGE_MS (10UL * 60 * 1000)
 
 // ── Timeouts ───────────────────────────────────────────────────────────────
 // Session-Fenster-Modell: Button/USB öffnet ein kurzes Wachfenster mit Live-MQTT;

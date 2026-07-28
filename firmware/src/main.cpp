@@ -858,9 +858,10 @@ void setup() {
   // Lade-Status frisch lesen (GPIO26). Wird zusätzlich bei jedem Sync aktualisiert,
   // damit "lädt" auch ohne Reboot dem echten USB-Zustand folgt.
   readChargeState();
-  // Ladezustand beobachten: die Flanke laden→Ladeschluss ist die Spannungsreferenz dieser Box.
-  // Hier beim Boot setzt das im Regelfall nur die "hat Laden gesehen"-Marke — kalibriert wird
-  // erst, wenn dieselbe Wachphase auch den Ladeschluss erlebt (am Kabel bleibt die Box wach).
+  // Ladezustand beobachten: der Ladeschluss am Kabel ist die Spannungsreferenz dieser Box.
+  // Hier beim Boot startet das im Regelfall nur die Beobachtung ("am Kabel, noch nicht voll") —
+  // kalibriert wird erst, wenn dieselbe Wachphase den Ladeschluss erlebt und lange genug
+  // geladen hat (am Kabel bleibt die Box wach). Herleitung: failsafe.h.
   Failsafe::observeCharge(gBox.charging, gBox.chargeFull);
 
   // LED zeigt Lock-Status NUR während die Box wach ist (Knopfdruck → Status auf Abruf).
@@ -917,7 +918,7 @@ void loop() {
     case State::SYNCING: {
       LOGI("Sync: starting");
       readChargeState();                              // Lade-Status frisch (folgt USB ohne Reboot)
-      Failsafe::observeCharge(gBox.charging, gBox.chargeFull); // trifft die Lade-Flanke (alle 30 s am Kabel)
+      Failsafe::observeCharge(gBox.charging, gBox.chargeFull); // trifft den Ladeschluss (alle 30 s am Kabel)
       gBox.batteryPct = Failsafe::batteryPercent();   // Akku-% frisch (friert im Debug sonst ein)
       gBox.battCalib  = Failsafe::batteryCalibrated() ? Failsafe::batteryGain() : 0.0f;
       OtaInfo ota = {};
