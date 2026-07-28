@@ -77,13 +77,23 @@ namespace Failsafe {
   // die Box liest zu hoch, der Failsafe feuert zu spät, die Box kann verschlossen wegsterben.
   // Ein zu hoher Gain entsteht aus einer zu NIEDRIGEN Referenzmessung. Zwei Schutzschichten:
   //
-  // 1. Nur die FLANKE laden→Ladeschluss zählt. chargeFull allein genügt NICHT: das Signal
-  //    bleibt am Kabel stehen, während die Zelle Richtung TP4056-Recharge-Schwelle (~4,05 V)
-  //    absackt. Eine Box, die erst Stunden nach Ladeende aufwacht, sähe chargeFull auf einer
-  //    entspannten Zelle und nähme 4,05 V für 4,20 V — Gain 1,037, Notöffnung erst bei real
-  //    ~3,2 V statt 3,35 V. Deshalb wird nur kalibriert, wenn dieselbe Box das Laden vorher
-  //    SELBST gesehen hat. Am Kabel bleibt sie wach und resynct alle 30 s (DEBUG_RESYNC_MS),
-  //    trifft die Flanke also im Normalfall live. Verschlafene Ladung → keine Kalibrierung.
+  // 1. Nur ein SELBST BEOBACHTETER Ladevorgang zählt. chargeFull allein genügt NICHT: das
+  //    Signal bleibt am Kabel stehen, während die Zelle Richtung TP4056-Recharge-Schwelle
+  //    (~4,05 V) absackt. Eine Box, die erst Stunden nach Ladeende aufwacht, sähe chargeFull
+  //    auf einer entspannten Zelle und nähme 4,05 V für 4,20 V — Gain 1,037, Notöffnung erst
+  //    bei real ~3,2 V statt 3,35 V. Gemessen wird deshalb erst, wenn die Box mindestens
+  //    BATT_CAL_MIN_CHARGE_MS am Stück „am Kabel und noch nicht voll" gesehen hat. Am Kabel
+  //    bleibt sie wach und misst alle 30 s (DEBUG_RESYNC_MS), trifft den Ladeschluss also live.
+  //
+  //    ACHTUNG — das war der Bug bis 0.2.37: die Bedingung lautete „nicht mehr ladend UND voll",
+  //    gedacht als Flanke laden→Ladeschluss. Auf der realen Hardware folgt GPIO26 aber der
+  //    USB-Anwesenheit statt dem CHRG-Signal: am Ladeschluss stehen BEIDE Signale an, und beim
+  //    Kabelziehen fällt chargeFull mit weg. Der verlangte Zustand konnte nie eintreten, keine
+  //    Box hat je kalibriert (Beleg 28.07.2026: charging=1 UND chargeFull=1 im selben Sync).
+  //    Der beobachtete Übergang chargeFull false→true ersetzt die unerreichbare Flanke und hält
+  //    dieselbe Zusicherung aufrecht: kalibriert wird nur dort, wo wirklich geladen wurde. Die
+  //    Karenz BATT_CAL_MIN_CHARGE_MS liegt als zweite Schicht darüber — sie fängt ein Flackern
+  //    des open-drain-Signals mitten im Laden ab, nicht den Fall oben (Begründung in config.h).
   // 2. Die Klammer BATT_CAL_MIN/MAX prüft die REFERENZMESSUNG, nicht das Ergebnis: nur ein
   //    Rohwert, der schon von sich aus im Ladeschluss-Fenster liegt, wird angenommen.
   //
@@ -94,11 +104,20 @@ namespace Failsafe {
   // die Referenz dauerhaft hoch (Gain < 1 → Box liest zu niedrig → öffnet zu früh), ohne je
   // zurückzufinden. Überschreiben heilt sich mit der nächsten Volladung selbst.
   inline void observeCharge(bool charging, bool chargeFull) {
-    static bool sawCharging = false;                 // nur RAM: ein verschlafener Ladevorgang
-    if (charging)   { sawCharging = true; return; }  // lädt noch → Referenz erst am Ende
-    if (!chargeFull) { sawCharging = false; return; }// kein Kabel mehr → Zyklus verfällt
-    if (!sawCharging) return;                        // Ladeschluss ohne beobachtetes Laden
-    sawCharging = false;                             // genau eine Referenz je Ladezyklus
+    // Seit wann sieht diese Box ununterbrochen „am Kabel und noch nicht voll"? 0 = gerade nicht
+    // (kein Kabel, oder die Referenz dieses Zyklus ist schon genommen). Nur RAM und nur millis():
+    // am Kabel schläft die Box nie, der Zähler kann also nicht über einen Deep-Sleep hinweg
+    // lügen — und ein verschlafener Ladevorgang bleibt folgerichtig unkalibriert.
+    static unsigned long chargingSinceMs = 0;
+
+    if (!charging)  { chargingSinceMs = 0; return; }  // kein Kabel → Zyklus verfällt
+    if (!chargeFull) {                                // lädt noch → Referenz erst am Ende
+      if (chargingSinceMs == 0) chargingSinceMs = millis();
+      return;
+    }
+    if (chargingSinceMs == 0) return;                 // Ladeschluss ohne beobachtetes Laden
+    if (millis() - chargingSinceMs < BATT_CAL_MIN_CHARGE_MS) return; // zu kurz → keine echte Ladung
+    chargingSinceMs = 0;                              // genau eine Referenz je Ladezyklus
 
     float raw = batteryVoltsRaw();                   // roh: die Referenz darf nicht durch den Gain laufen
     if (!refPlausible(raw)) {
