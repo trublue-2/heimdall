@@ -7,6 +7,7 @@ import { Card } from "@/app/components/Card";
 import { deviceOnline } from "@/lib/mqttBridge";
 import { deviceLockView } from "@/lib/device-auth";
 import Link from "next/link";
+import { DEFAULT_OFFLINE_OPEN_HOURS } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,7 @@ export default async function DashboardPage() {
               keyholderLocked={lv.keyholderLocked}
               hasOpenPassword={!!device.policy?.openPasswordHash}
               lastSyncAt={device.lastSyncAt?.toISOString() ?? null}
+              offlineOpenHours={device.policy?.offlineOpenHours ?? DEFAULT_OFFLINE_OPEN_HOURS}
               battery={device.battery}
               charging={device.charging ?? null}
               chargeFull={device.chargeFull ?? null}

@@ -7,6 +7,7 @@ import { notifyDeviceChange } from "@/lib/events";
 import { getTargetVersion, getFirmwareSig, slotOf } from "@/lib/firmware";
 import { syncTrackerIntent, pushBoxEvent, pushBoxStatus } from "@/lib/trackerClient";
 import { logTs as ts } from "@/lib/logTime";
+import { BATTERY_OPEN_PCT, BATTERY_WARN_PCT, DEFAULT_OFFLINE_OPEN_HOURS, DEFAULT_SYNC_INTERVAL_MIN } from "@/lib/utils";
 
 const LEGITIMATE_OPEN_REASONS = [
   "button",         // keyholder pressed button on box
@@ -200,10 +201,10 @@ export async function POST(req: NextRequest) {
     }
   });
 
-  // Low-Batt-Vorwarnung: einmaliges Event beim Übergang unter die Warnschwelle (20%) —
-  // rechtzeitige Warnung im Verlauf/Dashboard, bevor der Auto-Open bei 15% greift.
-  const WARN_PCT = 20;
-  if (state.battery != null && state.battery <= WARN_PCT && (device.battery == null || device.battery > WARN_PCT)) {
+  // Low-Batt-Vorwarnung: einmaliges Event beim Übergang unter die Warnschwelle — rechtzeitige
+  // Warnung im Verlauf/Dashboard, bevor der Auto-Open bei BATTERY_OPEN_PCT greift. Die Schwelle
+  // kommt aus lib/utils (nicht mehr lokal), damit sie mit Karte und Tracker-Push zusammenbleibt.
+  if (state.battery != null && state.battery <= BATTERY_WARN_PCT && (device.battery == null || device.battery > BATTERY_WARN_PCT)) {
     await prisma.deviceEvent.create({
       data: { deviceId: device.id, type: "LOW_BATTERY", timestamp: now, battery: state.battery },
     });
@@ -288,6 +289,7 @@ export async function POST(req: NextRequest) {
       fwVersion: state.fwVersion ?? device.fwVersion,
       lastSyncAt: now,
       offlineOpenHours: policy.offlineOpenHours,
+      lowBatteryOpenPercent: BATTERY_OPEN_PCT,
     });
     // Semantik in applyTrackerCommand — dieselbe Quelle wie der MQTT-Instant-Push (tracker/notify).
     if (isTrackerCommand(cmd?.pendingCommand)) {
@@ -439,8 +441,8 @@ export async function POST(req: NextRequest) {
     name: device.name,
     locked: boxLocked(policy, now), // autoritativ: Simple-Lock ODER aktive Zeit
     lockUntil: lockUntil?.toISOString() ?? null,
-    offlineOpenHours: policy?.offlineOpenHours ?? 24,
-    syncIntervalMin: policy?.syncIntervalMin ?? 60, // Heartbeat-Sync-Intervall (min) → Deep-Sleep-Timer der Box
+    offlineOpenHours: policy?.offlineOpenHours ?? DEFAULT_OFFLINE_OPEN_HOURS,
+    syncIntervalMin: policy?.syncIntervalMin ?? DEFAULT_SYNC_INTERVAL_MIN, // Heartbeat-Sync-Intervall (min) → Deep-Sleep-Timer der Box
 
     timeUTC: now.toISOString(),
     otaVersion: otaPending ? targetVersion : null,

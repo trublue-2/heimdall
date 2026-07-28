@@ -9,7 +9,8 @@ import { Modal } from "./Modal";
 import { Input } from "./Input";
 import { Button } from "./Button";
 import { FormError } from "./FormError";
-import { formatDateTime, formatDuration, wantsClosed } from "@/lib/utils";
+import { formatDateTime, formatDuration, wantsClosed, offlineFailsafeOutlook, BATTERY_OPEN_PCT, BATTERY_WARN_PCT } from "@/lib/utils";
+import { CardNotice } from "./CardNotice";
 
 export interface DeviceControlCardProps {
   id: string;
@@ -20,6 +21,7 @@ export interface DeviceControlCardProps {
   keyholderLocked: boolean; // durch Tracker-Sperrzeit gehalten — lokal nicht öffenbar
   hasOpenPassword: boolean; // Öffnen nur mit Passwort
   lastSyncAt: string | null;
+  offlineOpenHours: number; // Funkstille-Failsafe: nach so vielen Stunden ohne Sync öffnet die Box selbst
   battery: number | null;
   charging: boolean | null;
   chargeFull: boolean | null;
@@ -65,8 +67,28 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
   const locked = props.locked;
   // Vorzeitig = noch Restzeit auf der Uhr (nur Zeit-Locks; Simple-Lock ist nie "vorzeitig").
   const isEarly = !!props.lockUntil && new Date(props.lockUntil) > new Date();
-  // Low-Batt-Vorwarnung: ab ≤20% (Auto-Open-Failsafe erst bei 15%). Am USB irrelevant.
-  const lowBatt = props.battery != null && props.battery <= 20 && !props.charging;
+  // Low-Batt-Vorwarnung. BEWUSST ohne `!charging`: `Failsafe::isLowBattery` (firmware/src/failsafe.h)
+  // fragt den Ladezustand gar nicht — eine Box, die am Kabel unter die Schwelle fällt, öffnet
+  // trotzdem, und der Latch löst erst bei der höheren Erholungsschwelle. Ausgerechnet am Kabel zu
+  // schweigen hiesse, im Moment des Handelns die Folge zu verschweigen.
+  const lowBatt = props.battery != null && props.battery <= BATTERY_WARN_PCT;
+
+  // Vorwarnung vor dem Funkstille-Failsafe: nach `offlineOpenHours` ohne Sync öffnet die Box
+  // AUTONOM (firmware/src/failsafe.h: isOfflineTimeout) — ohne Knopfdruck, ohne Server. Bis diese
+  // Zeile existierte, war der Zustand nirgends sichtbar: die Box verfehlte 24 stündliche Syncs am
+  // Stück, und das erste Signal war die Not-Öffnung selbst (Issue #1). Der einzige Weg, sie zu
+  // verhindern, ist rechtzeitig für Netz zu sorgen — dafür braucht es diese Vorwarnung.
+  //
+  // Kein `mqttLive`-Vorbehalt: den Offline-Zähler setzt in der Firmware NUR ein erfolgreicher Sync
+  // zurück (server_sync.cpp), nicht eine MQTT-Verbindung — eine live verbundene Box mit
+  // scheiterndem Sync zählt weiter, und genau die dürfte hier nicht stumm bleiben.
+  //
+  // Eine gesund syncende Box erreicht die erste Stufe nur dann nie, wenn `offlineOpenHours`
+  // deutlich über dem Heartbeat-Intervall liegt. Beide Werte werden getrennt validiert (Policy-Route:
+  // 1–168 h bzw. 1–180 min), das „muss darunter bleiben" aus dem Schema erzwingt niemand — bei einer
+  // sehr knappen Einstellung steht die Zeile also dauerhaft. Das ist dann die richtige Anzeige einer
+  // falschen Konfiguration, keine Fehlwarnung.
+  const offline = offlineFailsafeOutlook(props);
 
   // Zustands-Farbe: in-transit (wartet auf Box) = AMBER; sonst gesperrt = ROT, offen = GRÜN.
   const stateText = inTransit ? "text-[var(--color-sperrzeit-text)]" : locked ? "text-[var(--color-warn)]" : "text-[var(--color-ok)]";
@@ -223,11 +245,29 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
             </div>
           </div>
 
-          {/* Low-Batt-Vorwarnung */}
+          {/* Low-Batt-Vorwarnung. Unterhalb der Schwelle ist es keine Vorwarnung mehr: dort HAT der
+              Failsafe gelatcht (failsafe.h) und die Box öffnet beim nächsten Wake — „öffnet bei
+              15 %" wäre dann eine Ankündigung für etwas längst Eingetretenes. */}
           {lowBatt && (
-            <div className="mx-4 mb-3 rounded-xl bg-[var(--color-warn-bg)] border border-[var(--color-warn-border)] px-3 py-2 text-xs text-[var(--color-warn)] flex items-center gap-1.5">
-              ⚠ Akku niedrig ({props.battery}%) — die Box öffnet automatisch bei 15 %.
-            </div>
+            <CardNotice tone="warn">
+              {props.battery! <= BATTERY_OPEN_PCT
+                ? `⚠ Akku kritisch (${props.battery}%) — die Box öffnet sich selbst (Schwelle ${BATTERY_OPEN_PCT} %). Sofort laden.`
+                : `⚠ Akku niedrig (${props.battery}%) — die Box öffnet automatisch ab ${BATTERY_OPEN_PCT} %.`}
+            </CardNotice>
+          )}
+
+          {/* Funkstille-Vorwarnung — dieselbe Optik wie die Low-Batt-Zeile: beides sind Failsafes,
+              die von selbst öffnen, und beide kündigen sich hier an, statt zu überraschen. */}
+          {offline && (
+            <CardNotice tone={offline.severity === "info" ? "muted" : "warn"}>
+              {/* Das ⚠ erst ab der lauten Stufe: die erste Stufe ist bewusst ein Hinweis, kein Alarm
+                  (CardNotice überlässt das Zeichen deshalb dem Aufrufer). */}
+              {offline.severity === "due"
+                ? `⚠ Box seit ${offline.hoursOffline} h ohne Kontakt — die Not-Öffnung ist erfolgt oder steht unmittelbar bevor.`
+                : offline.severity === "warn"
+                  ? `⚠ Box seit ${offline.hoursOffline} h ohne Kontakt — Not-Öffnung in ${offline.hoursLeft} h. Netz in Reichweite bringen.`
+                  : `Box seit ${offline.hoursOffline} h ohne Kontakt — Not-Öffnung in ${offline.hoursLeft} h.`}
+            </CardNotice>
           )}
 
           {/* Aktion */}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateDevice, extractBearerToken, boxLocked, deviceLockView } from "@/lib/device-auth";
 import { prisma } from "@/lib/prisma";
 import { logTs as ts } from "@/lib/logTime";
+import { DEFAULT_OFFLINE_OPEN_HOURS } from "@/lib/utils";
 
 export async function POST(req: NextRequest) {
   const rawToken = extractBearerToken(req.headers.get("authorization"));
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     locked: boxLocked(device.policy, now),
     lockUntil: lockUntil?.toISOString() ?? null,
-    offlineOpenHours: device.policy?.offlineOpenHours ?? 24,
+    offlineOpenHours: device.policy?.offlineOpenHours ?? DEFAULT_OFFLINE_OPEN_HOURS,
     timeUTC: now.toISOString(),
     fwTarget: null,
   });

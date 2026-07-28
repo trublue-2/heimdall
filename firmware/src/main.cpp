@@ -50,7 +50,7 @@ static bool            gOtaPending     = false; // läuft eine OTA-Validierung? 
 // Arduinos log_* landen via log_printf → ets_printf → putc1. Wir hängen uns per
 // ets_install_putc1 in DIESEN Zeichenstrom (fängt damit ALLE Logs), schreiben jedes
 // Zeichen in den Ringpuffer UND weiterhin auf UART. Am Zeilenanfang eine lesbare
-// [HH:MM:SS]. /dbg/log liefert neue Bytes ab einem Cursor (= gLogHead).
+// [TT.MM. HH:MM:SS]. /dbg/log liefert neue Bytes ab einem Cursor (= gLogHead).
 extern "C" {
   void ets_install_putc1(void (*p)(char));
   void ets_write_char_uart(char c);
@@ -69,8 +69,12 @@ static void logPutc(char c) {
     gLine[gLineLen] = 0;
     if (gLineLen > 0 && !strstr(gLine, "Unexpected: RES:")) { // WiFiClient-Socket-Rauschen wegfiltern
       time_t now = time(nullptr);                 // lesbare Zeit nur in den Ring (UART hat millis)
+      // MIT Datum: eine Funkstille dauert Stunden bis Tage, und der Backlog wird erst danach
+      // hochgeladen — eine reine Uhrzeit lässt sich im Nachhinein keinem Tag mehr zuordnen
+      // (24 Wakes sehen dann alle gleich aus). Bewusst pro Zeile statt als Tageswechsel-Marker:
+      // der Marker fällt genau bei langem Offline aus dem Ringpuffer, also dann, wenn er zählt.
       if (now > 1700000000) { struct tm t; localtime_r(&now, &t);
-        char ts[14]; int n = snprintf(ts, sizeof(ts), "[%02d:%02d:%02d] ", t.tm_hour, t.tm_min, t.tm_sec);
+        char ts[24]; int n = (int)strftime(ts, sizeof(ts), "[%d.%m. %H:%M:%S] ", &t);
         for (int i = 0; i < n; i++) ringPut(ts[i]); }
       for (int i = 0; i < gLineLen; i++) { ringPut(gLine[i]); ets_write_char_uart(gLine[i]); }
       ringPut('\n'); ets_write_char_uart('\r'); ets_write_char_uart('\n'); // immer sauber umbrechen
