@@ -65,6 +65,7 @@ export default async function DashboardPage() {
               wifiRssi={device.wifiRssi ?? null}
               mqttLive={deviceOnline(device.id)}
               emergencyOpensLeft={device.emergencyOpensLeft}
+              showSettingsLink
             />
             );
           })}
