@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Lock, Unlock, Loader2, Zap } from "lucide-react";
+import { Lock, Unlock, Loader2, Zap, Settings } from "lucide-react";
 import { LockModal } from "./LockModal";
 import { Modal } from "./Modal";
 import { Input } from "./Input";
@@ -29,7 +29,7 @@ export interface DeviceControlCardProps {
   wifiRssi: number | null;
   mqttLive?: boolean; // Box gerade MQTT-verbunden (Wachfenster) → "Live"; sonst "letzter Sync"
   emergencyOpensLeft: number; // Kontingent für vorzeitiges Notfall-Öffnen (0 = blockiert)
-  linkToDetail?: boolean; // Kachel auf die Detailseite verlinken (Default nein — Dashboard = nur öffnen/schliessen)
+  showSettingsLink?: boolean; // Zahnrad hinter dem Namen → Detailseite (Default nein: die Detailseite zeigt dieselbe Kachel)
 }
 
 /** Verbleibende Zeit bis until, kompakt (z.B. "23 Min", "5 h 12 Min", "3 T 4 h"). */
@@ -123,9 +123,7 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
     }
   }
 
-  function openDevice(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
+  function openDevice() {
     setError(null);
     if (isEarly && props.hasOpenPassword) { setPwOpen(true); return; }
     if (isEarly && !props.hasOpenPassword) {
@@ -138,30 +136,38 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
     doOpen({}); // Simple-Lock / bereits abgelaufen → lautlos
   }
 
-  function openLockModal(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
+  // preventDefault/stopPropagation sind hier entfallen: sie schützten die Buttons vor dem
+  // früheren Link-Wrapper um die ganze Kachel. Ohne ihn tun sie nichts.
+  function openLockModal() {
     setModalOpen(true);
   }
 
-  // Kachel wahlweise als Detail-Link (Default nein — Dashboard verlinkt NICHT auf die Detailseite)
-  // oder als neutraler Container. Die inneren Buttons/preventDefault bleiben in beiden Fällen gleich.
-  const cardShell = (children: React.ReactNode) =>
-    props.linkToDetail ? (
-      <Link href={`/dashboard/devices/${props.id}`} className="block group">
-        {children}
-      </Link>
-    ) : (
-      <div className="block group">{children}</div>
-    );
-
   return (
     <>
-      {cardShell(
+      {/* min-w-0: als Grid-Item gilt sonst `min-width:auto` — die Kachel schrumpft dann nicht
+          unter ihre Min-Content-Breite und schiebt auf dem Handy die ganze Seite quer. */}
+      <div className="block group min-w-0">
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden group-hover:border-[var(--foreground-faint)] transition-colors">
-          {/* Kopfzeile: Name + Telemetrie */}
+          {/* Kopfzeile: Name (+ Zahnrad zur Detailseite) + Telemetrie */}
           <div className="flex items-center justify-between gap-3 px-4 pt-3.5">
-            <p className="font-semibold truncate">{props.name}</p>
+            {/* min-w-0: sonst gewinnt der Name gegen `truncate` und schiebt das Zahnrad raus. */}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <p className="font-semibold truncate">{props.name}</p>
+              {/* Nur das Zahnrad führt auf die Detailseite — die GANZE Kachel zu verlinken war
+                  mehrdeutig (sie trägt Öffnen/Verschliessen-Buttons) und wurde deshalb entfernt.
+                  Ein eigenes, kleines Ziel löst beides: Weg zurück da, Klickfläche eindeutig.
+                  -m-1.5 p-1.5: Trefferfläche auf Fingergrösse, ohne das Icon zu vergrössern. */}
+              {props.showSettingsLink && (
+                <Link
+                  href={`/dashboard/devices/${props.id}`}
+                  aria-label={`Einstellungen für ${props.name}`}
+                  title="Einstellungen"
+                  className="shrink-0 -m-1.5 p-1.5 text-[var(--foreground-faint)] hover:text-[var(--foreground)] transition-colors"
+                >
+                  <Settings className="h-4 w-4" />
+                </Link>
+              )}
+            </div>
             <div className="flex items-center gap-3 text-xs text-[var(--foreground-faint)] shrink-0">
               {/* Ein Indikator statt widersprüchlichem online+live: MQTT-verbunden → „Live",
                   sonst der letzte Sync-Zeitpunkt. */}
@@ -323,7 +329,7 @@ export function DeviceControlCard(props: DeviceControlCardProps) {
             )}
           </div>
         </div>
-      )}
+      </div>
 
       {modalOpen && (
         <LockModal deviceId={props.id} deviceName={props.name} onClose={() => setModalOpen(false)} />
