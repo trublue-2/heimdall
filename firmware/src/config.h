@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.2.39"
+#define FW_VERSION "0.2.40"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Ziel-Board: ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
@@ -136,6 +136,10 @@
 // Einzelblocker: OTA-Download wird per Chunk gefuettert, TLS/Sync/Stepper laufen << 30 s.
 #define WDT_TIMEOUT_S            30
 #define WIFI_CONNECT_TIMEOUT_MS  (15 * 1000)        // 15 s WiFi-Connect-Limit
+// Bekannte Netze aus dem Scan werden der Reihe nach probiert (bevorzugtes zuerst, dann RSSI) —
+// ein sichtbarer, aber schlafender Handy-Hotspot soll den Rückfall aufs Heim-WLAN nicht mehr
+// kosten. Gedeckelt, weil jeder Fehlversuch bis WIFI_CONNECT_TIMEOUT_MS wach kostet: 3 × 15 s.
+#define WIFI_MAX_CONNECT_TRIES   3
 #define AUTH_FAIL_LIMIT          10                 // N×401 in Folge → Setup-Hotspot (Selbstheilung)
 #define OTA_VALIDATE_SYNCS       1                  // erfolgreiche Syncs bis OTA bestätigt (sonst Rollback)
 

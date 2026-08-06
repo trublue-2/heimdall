@@ -126,7 +126,9 @@ static bool tryConnect(const char* ssid, const char* pass, unsigned long timeout
   return waitConnected(timeout);
 }
 
-// Verbindet mit dem stärksten *bekannten* Netz (Primär + Zusatz-WLANs aus NVS).
+// Verbindet mit einem *bekannten* Netz (Primär + Zusatz-WLANs aus NVS): aus dem Scan werden
+// alle bekannten Netze zu Kandidaten, sortiert nach Präferenz und dann RSSI, und der Reihe
+// nach probiert (max. WIFI_MAX_CONNECT_TRIES).
 // Schnellpfad: zuletzt erfolgreiches Netz direkt (kein Scan).
 static bool connectWifi(const WifiCredentials& creds) {
   WiFi.persistent(false); // keine Flash-Writes pro Connect
@@ -159,30 +161,35 @@ static bool connectWifi(const WifiCredentials& creds) {
     radioReset();
   }
 
-  // Scan → bevorzugtes Netz zuerst, sonst stärkstes bekanntes.
   int found = WiFi.scanNetworks();
   if (found < 0) { // WIFI_SCAN_FAILED/-RUNNING: Funkteil hängt → einmal zurücksetzen, neu scannen
     LOGW("WiFi: scan failed (%d) → radio reset, retry", found);
     radioReset();
     found = WiFi.scanNetworks();
   }
-  int bestNet = -1, bestRssi = -999, bestChannel = 0;
-  uint8_t bestBssid[6] = {0};
-  bool bestPref = false;
+  // Je bekanntem Netz den stärksten Treffer merken — NICHT nur den einen besten. Ein
+  // sichtbares Netz heisst nicht verbindbar (Handy-Hotspot schläft ohne Client): mit nur
+  // einem Kandidaten war der Sync nach dem ersten Fehlschlag tot, obwohl das Heim-WLAN
+  // im selben Scan-Ergebnis stand.
+  struct Cand { int net; int32_t rssi; int32_t ch; uint8_t bssid[6]; bool pref; };
+  Cand cands[1 + MAX_EXTRA_NETS];
+  int nc = 0;
   for (int s = 0; s < found; s++) {
     for (int k = 0; k < n; k++) {
       if (WiFi.SSID(s) != known[k].ssid) continue;
-      bool isPref = pref[0] && strcmp(known[k].ssid, pref) == 0;
-      // Bevorzugtes gewinnt immer; sonst das mit stärkstem RSSI.
-      if ((isPref && !bestPref) || (isPref == bestPref && WiFi.RSSI(s) > bestRssi)) {
-        bestRssi = WiFi.RSSI(s); bestNet = k; bestChannel = WiFi.channel(s);
-        memcpy(bestBssid, WiFi.BSSID(s), 6); bestPref = isPref;
+      int c = 0;
+      while (c < nc && cands[c].net != k) c++;
+      if (c == nc) cands[nc++] = Cand{k, -999, 0, {0}, pref[0] && strcmp(known[k].ssid, pref) == 0};
+      if (WiFi.RSSI(s) > cands[c].rssi) {
+        cands[c].rssi = WiFi.RSSI(s);
+        cands[c].ch   = WiFi.channel(s);
+        memcpy(cands[c].bssid, WiFi.BSSID(s), 6);
       }
     }
   }
   WiFi.scanDelete();
 
-  if (bestNet < 0) {
+  if (nc == 0) {
     // Scan-FEHLER ist nicht "nichts da": ehrlich benennen, sonst sucht man den Fehler beim WLAN.
     if (found < 0) {
       LOGW("WiFi: scan failed twice (%d) — kein Verbindungsversuch", found);
@@ -194,24 +201,37 @@ static bool connectWifi(const WifiCredentials& creds) {
     return false;
   }
 
-  LOGI("WiFi: connecting to '%s'%s (%d dBm)", known[bestNet].ssid, bestPref ? " [preferred]" : "", bestRssi);
-  gDiscReason = 0; // frischen Grund fürs kommende Disconnect-Event
-  if (!tryConnect(known[bestNet].ssid, known[bestNet].pass, WIFI_CONNECT_TIMEOUT_MS,
-                  bestChannel, bestBssid)) {
-    setWifiErr(known[bestNet].ssid, wifiReasonMsg(gDiscReason));
-    LOGW("WiFi: connect to '%s' failed: %s (reason %u)", known[bestNet].ssid, gWifiErrMsg, gDiscReason);
-    radioReset(); // Auto-Reconnect stoppen — sonst scheitert jeder weitere Scan dieser Session
-    return false;
-  }
+  // Reihenfolge: Bevorzugtes zuerst, danach nach RSSI. Die Präferenz bestimmt damit nur noch,
+  // wer zuerst drankommt — sie kann die anderen Netze nicht mehr aussperren.
+  for (int i = 1; i < nc; i++)
+    for (int j = i; j > 0 && (cands[j].pref > cands[j-1].pref ||
+                              (cands[j].pref == cands[j-1].pref && cands[j].rssi > cands[j-1].rssi)); j--) {
+      Cand t = cands[j]; cands[j] = cands[j-1]; cands[j-1] = t;
+    }
 
-  memcpy(rtcBssid, WiFi.BSSID(), 6);
-  rtcChannel = WiFi.channel();
-  strlcpy(rtcSsid, known[bestNet].ssid, sizeof(rtcSsid));
-  strlcpy(rtcPass, known[bestNet].pass, sizeof(rtcPass));
-  rtcWifiHint = true;
-  gWifiErrMsg[0] = '\0'; // Erfolg → letzten Fehler löschen
-  LOGI("WiFi: connected to '%s' @ %s (%d dBm)", known[bestNet].ssid, WiFi.localIP().toString().c_str(), bestRssi);
-  return true;
+  // Der Reihe nach durchprobieren. Gedeckelt, weil jeder Fehlversuch bis
+  // WIFI_CONNECT_TIMEOUT_MS wach kostet — Akku vor Vollständigkeit.
+  int tries = nc < WIFI_MAX_CONNECT_TRIES ? nc : WIFI_MAX_CONNECT_TRIES;
+  for (int c = 0; c < tries; c++) {
+    const WifiNet& net = known[cands[c].net];
+    LOGI("WiFi: connecting to '%s'%s (%d dBm, Versuch %d/%d)",
+         net.ssid, cands[c].pref ? " [preferred]" : "", cands[c].rssi, c + 1, tries);
+    gDiscReason = 0; // frischen Grund fürs kommende Disconnect-Event
+    if (tryConnect(net.ssid, net.pass, WIFI_CONNECT_TIMEOUT_MS, cands[c].ch, cands[c].bssid)) {
+      memcpy(rtcBssid, WiFi.BSSID(), 6);
+      rtcChannel = WiFi.channel();
+      strlcpy(rtcSsid, net.ssid, sizeof(rtcSsid));
+      strlcpy(rtcPass, net.pass, sizeof(rtcPass));
+      rtcWifiHint = true;
+      gWifiErrMsg[0] = '\0'; // Erfolg → letzten Fehler löschen
+      LOGI("WiFi: connected to '%s' @ %s (%d dBm)", net.ssid, WiFi.localIP().toString().c_str(), cands[c].rssi);
+      return true;
+    }
+    setWifiErr(net.ssid, wifiReasonMsg(gDiscReason));
+    LOGW("WiFi: connect to '%s' failed: %s (reason %u)", net.ssid, gWifiErrMsg, gDiscReason);
+    radioReset(); // Auto-Reconnect stoppen — sonst scheitert jeder weitere Scan dieser Session
+  }
+  return false; // Fehler steht schon vom letzten Versuch
 }
 
 static void syncNtp() {
