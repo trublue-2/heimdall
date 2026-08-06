@@ -107,6 +107,17 @@ static bool waitConnected(unsigned long timeoutMs) {
   return true;
 }
 
+// Nach einem gescheiterten Connect läuft der Auto-Reconnect des WiFi-Stacks weiter, und
+// solange der läuft, liefert WiFi.scanNetworks() nur noch WIFI_SCAN_FAILED (-2). Ohne
+// diesen Reset macht ein einziger Fehlversuch die Box für die ganze Boot-Session blind:
+// jeder Folge-Scan scheitert, sie meldet "kein bekanntes WLAN" und nur ein Reboot hilft.
+static void radioReset() {
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  delay(100);
+  WiFi.mode(WIFI_STA);
+}
+
 static bool tryConnect(const char* ssid, const char* pass, unsigned long timeout,
                        int32_t channel = 0, const uint8_t* bssid = nullptr) {
   if (channel && bssid) WiFi.begin(ssid, pass, channel, bssid);
@@ -144,12 +155,17 @@ static bool connectWifi(const WifiCredentials& creds) {
       return true;
     }
     LOGW("WiFi: fast path to '%s' failed → full scan", rtcSsid);
-    rtcWifiHint = false;
-    WiFi.disconnect();
+    rtcWifiHint = false; // Kanal/BSSID-Hint verwerfen — ein Hotspot wandert
+    radioReset();
   }
 
   // Scan → bevorzugtes Netz zuerst, sonst stärkstes bekanntes.
   int found = WiFi.scanNetworks();
+  if (found < 0) { // WIFI_SCAN_FAILED/-RUNNING: Funkteil hängt → einmal zurücksetzen, neu scannen
+    LOGW("WiFi: scan failed (%d) → radio reset, retry", found);
+    radioReset();
+    found = WiFi.scanNetworks();
+  }
   int bestNet = -1, bestRssi = -999, bestChannel = 0;
   uint8_t bestBssid[6] = {0};
   bool bestPref = false;
@@ -167,8 +183,14 @@ static bool connectWifi(const WifiCredentials& creds) {
   WiFi.scanDelete();
 
   if (bestNet < 0) {
-    LOGW("WiFi: no known network in range (%d APs scanned)", found);
-    setWifiErr("", "kein bekanntes WLAN in Reichweite");
+    // Scan-FEHLER ist nicht "nichts da": ehrlich benennen, sonst sucht man den Fehler beim WLAN.
+    if (found < 0) {
+      LOGW("WiFi: scan failed twice (%d) — kein Verbindungsversuch", found);
+      setWifiErr("", "WLAN-Scan fehlgeschlagen");
+    } else {
+      LOGW("WiFi: no known network in range (%d APs scanned)", found);
+      setWifiErr("", "kein bekanntes WLAN in Reichweite");
+    }
     return false;
   }
 
@@ -178,6 +200,7 @@ static bool connectWifi(const WifiCredentials& creds) {
                   bestChannel, bestBssid)) {
     setWifiErr(known[bestNet].ssid, wifiReasonMsg(gDiscReason));
     LOGW("WiFi: connect to '%s' failed: %s (reason %u)", known[bestNet].ssid, gWifiErrMsg, gDiscReason);
+    radioReset(); // Auto-Reconnect stoppen — sonst scheitert jeder weitere Scan dieser Session
     return false;
   }
 
