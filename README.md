@@ -128,18 +128,37 @@ eine neue Version nicht sauber, fällt die Box automatisch auf die vorherige zur
 
 Die Box hat **einen Taster** und **eine Status-LED**. Alles andere läuft über das Dashboard.
 
-### Reset — Taster beim Einschalten halten
+### Setup-Hotspot — Taster beim Einschalten halten
 
 Taster schon **beim Booten** (Strom an / Reset) gedrückt halten:
 
 | Haltedauer | LED-Quittung | Wirkung |
 |---|---|---|
-| **≥ 3 s**, dann loslassen | 2× kurzes Blinken | **WLAN-Wechsel** → Setup-Hotspot, Zugangsdaten bleiben (Portal vorausgefüllt) |
-| **≥ 10 s** | 6× schnelles Blinken | **Werksreset** → WLAN-Zugangsdaten gelöscht, Setup-Hotspot startet leer |
+| **≥ 3 s**, dann loslassen | 2× kurzes Blinken | **Setup-Hotspot** → Zugangsdaten bleiben, Portal vorausgefüllt |
 | nicht gehalten | — | normaler Start |
 
-Der Werksreset löscht **nur** die Zugangsdaten (WLAN-Name/-Passwort, Server-URL, Geräte-Token).
-Sperrzustand, Policy und zusätzliche WLANs bleiben erhalten.
+**Der Taster löscht nichts.** Er führt nur in den Hotspot; WLAN, Server-URL und Geräte-Token
+bleiben stehen. Gelöscht wird ausschliesslich im Portal über **„Credentials löschen (neue Box)"**,
+mit Rückfrage — und **nie bei geschlossenem Riegel**: eine Box, die jemanden einschliesst, muss den
+Weg zurück zu ihrem Server behalten.
+
+> Bis FW 0.2.40 löschte ein 10-Sekunden-Halten die Zugangsdaten, auch bei zugefahrenem Riegel.
+> Danach verlangte das Portal einen Token, den es nirgends mehr gab — die Box hatte ihn verloren,
+> der Server hält nur seinen Hash —, und der Server stellte keinen neuen aus, *weil* die Box
+> verschlossen war. Beide Schutzmechanismen sperrten sich gegenseitig aus; heraus kam man nur über
+> einen Eingriff in die Server-Datenbank (Vorfall 01.09.2026).
+
+Ein **per Taster** geöffneter Hotspot gibt nach **10 Minuten** von selbst auf und kehrt in den
+Normalbetrieb zurück — ein versehentlich gestreifter Taster kostet so zehn Minuten Funkstille
+statt eines Tages. Die Frist läuft ab dem Start des Hotspots, nicht ab dem letzten Zugriff:
+sonst hielte schon ein beliebiges Handy, das sich mit dem offenen Setup-Netz verbindet, den
+Hotspot mit seinen Captive-Portal-Proben unbegrenzt am Leben.
+
+Nicht betroffen sind die beiden anderen Wege in den Hotspot: eine Box **ohne** Zugangsdaten hat
+keinen Normalbetrieb, in den sie zurückkönnte, und eine, die wegen eines abgelehnten Tokens hier
+gelandet ist, wartet auf jemanden, der sich anderswo einen frischen Setup-Link holt — dafür muss
+er das Setup-Netz verlassen. In beiden Fällen bleibt der Hotspot stehen; die Failsafe-Wache läuft
+dort weiter (siehe unten).
 
 ### WLAN neu setzen
 
@@ -168,7 +187,7 @@ oben unter „2. Box einrichten".
 | **schnelles Blinken (~4 Hz)** | verbindet sich mit dem WLAN |
 | **dauerhaft an** | wach & mit dem Server verbunden |
 | **langsames Blinken (~2,5 Hz)** | Setup-Hotspot aktiv — wartet auf Einrichtung |
-| **2× / 6× Blinken beim Boot** | Reset-Quittung: 3 s = WLAN-Wechsel · 10 s = Werksreset |
+| **2× Blinken beim Boot** | Taster-Quittung: ≥ 3 s gehalten → Setup-Hotspot |
 | **aus** | schläft |
 
 Die LED zeigt **wach/verbunden**, *nicht* den Schloss-Zustand — der steht im Dashboard und auf der
@@ -250,7 +269,7 @@ Zwei getrennte Ebenen — **NVS** (Flash, überlebt Stromausfall) und **RTC-RAM*
 
 #### NVS (Flash) — 7 Namespaces
 
-**`wifi`** — Provisioning-Credentials (bei Full-Reset gelöscht):
+**`wifi`** — Provisioning-Credentials (nur über „Credentials löschen" im Setup-Portal gelöscht):
 
 | Key | Typ | Inhalt |
 |---|---|---|

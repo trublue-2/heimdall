@@ -217,33 +217,33 @@ static void recordBoot() {
         (bo & RTC_CNTL_BROWN_OUT_RST_ENA) ? "on" : "off", bo);
 }
 
-// Taster (GND↔GPIO14) gehalten beim Boot → Setup-Hotspot. Zwei Stufen (Intent; der
-// eigentliche Eintritt läuft über die eine State-Machine-Route State::PROVISIONING):
-//  • ≥3 s losgelassen → WifiChange: Credentials BLEIBEN, Portal vorausgefüllt (nur
-//    SSID/Passwort neu; Server-URL+Token + Box-Identität bleiben erhalten).
-//  • ≥10 s gehalten   → FullWipe: Credentials werden gelöscht, Portal leer (neue Box).
-// Reine Erkennung (Blink-Quittung inklusive); löscht/öffnet nichts selbst.
-enum class ResetIntent { None, WifiChange, FullWipe };
-static ResetIntent checkFactoryReset() {
-  if (digitalRead(PIN_BUTTON) != LOW) return ResetIntent::None; // nicht gedrückt
-  LOGW("Button held at boot — hold 3s = WiFi change, 10s = full reset …");
-  unsigned long t0 = millis();
+// Taster (GND↔GPIO14) ≥3 s beim Boot gehalten → Setup-Hotspot. Credentials BLEIBEN immer;
+// das Portal ist vorausgefüllt (Server-URL, Token und Box-Identität eingeschlossen). Reine
+// Erkennung samt Blink-Quittung; der Eintritt läuft über State::PROVISIONING, gelöscht oder
+// geöffnet wird hier nichts.
+//
+// KEIN Vollreset mehr am Knopf — die Begründung steht bei `Provisioning::handleWipe`, wo das
+// Löschen heute wohnt. Kurz: der alte 10-Sekunden-Griff nahm einer VERSCHLOSSENEN Box ihren
+// Weg zurück zum Server (Vorfall 01.09.2026).
+//
+// Die Warteschleife ist nach BTN_SETUP_MAX_HOLD_MS zu Ende, auch wenn der Taster gedrückt
+// bleibt: ein klemmender oder kurzgeschlossener Kontakt hinge sonst `setup()` unbegrenzt auf,
+// und der Watchdog ist hier noch nicht scharf (er wird erst im ersten `loop()` aktiviert).
+// Früher endete die Schleife bei 10 s ohnehin — über den Vollreset-Zweig, den es nicht mehr gibt.
+static bool checkSetupButton() {
+  if (digitalRead(PIN_BUTTON) != LOW) return false; // nicht gedrückt
+  LOGW("Button held at boot — hold 3s for setup hotspot …");
+  const unsigned long t0 = millis();
   bool acked = false;
-  while (digitalRead(PIN_BUTTON) == LOW) {
-    unsigned long held = millis() - t0;
-    if (!acked && held >= 3000) { // 3-s-Schwelle: kurze Doppel-Quittung
+  while (digitalRead(PIN_BUTTON) == LOW && millis() - t0 < BTN_SETUP_MAX_HOLD_MS) {
+    if (!acked && millis() - t0 >= 3000) { // 3-s-Schwelle: kurze Doppel-Quittung
       acked = true;
       for (int i = 0; i < 2; i++) { digitalWrite(PIN_LED, LED_ON); delay(60); digitalWrite(PIN_LED, LED_OFF); delay(60); }
     }
-    if (held >= 10000) {          // 10 s: Vollreset
-      LOGW("Full reset (10s hold): clearing credentials → empty setup hotspot");
-      for (int i = 0; i < 6; i++) { digitalWrite(PIN_LED, LED_ON); delay(80); digitalWrite(PIN_LED, LED_OFF); delay(80); }
-      return ResetIntent::FullWipe;
-    }
     delay(20);
   }
-  if (acked) LOGW("WiFi change (button): credentials kept, portal prefilled → setup hotspot");
-  return acked ? ResetIntent::WifiChange : ResetIntent::None;
+  if (acked) LOGW("Setup hotspot (button): credentials kept, portal prefilled");
+  return acked;
 }
 
 // ── OTA-Validierung / Rollback (S14) ─────────────────────────────────────────
@@ -293,6 +293,8 @@ static void ledAck() {
 // ── Statusseite (nur aktiv solange am Strom, siehe loop) ────────────────────
 static WebServer gWeb(80);
 static bool      gWebOn = false;
+// Wurde der Setup-Hotspot per Taster betreten? Steuert allein den Leerlauf-Timeout dort.
+static bool      gSetupByButton = false;
 
 // Epoch → "TT.MM.JJJJ HH:MM" in lokaler Zeit (TZ in syncNtp gesetzt).
 static String fmtLocal(time_t t) {
@@ -822,9 +824,9 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), onButtonIsr, FALLING);
   gLastActivityMs = millis();
 
-  // Taster gehalten → Setup-Hotspot (3 s = WLAN-Wechsel, 10 s = Vollreset).
-  // Nur die Intent merken; betreten wird der Hotspot unten über State::PROVISIONING.
-  ResetIntent btnIntent = checkFactoryReset();
+  // Taster ≥3 s gehalten → Setup-Hotspot. Nur merken; betreten wird er unten über
+  // State::PROVISIONING.
+  const bool btnSetup = checkSetupButton();
 
   // NVS-Zustand VOR dem Banner laden — u.a. der zuletzt an den Server gemeldete, LIVE
   // (unter WiFi-Last) gemessene Akkuwert. So zeigt das Banner denselben Live-Wert wie
@@ -847,10 +849,14 @@ void setup() {
   // erfolgreichen Sync hochgeladen und dort geleert. Fängt so auch Wakes ab, deren Sync scheitert.
   recordWake(reason, gBox.batteryPct);
 
-  // Taster-Intent: Hotspot über die eine Provisioning-Route betreten. Vollreset löscht
-  // vorher die Credentials (→ leeres Portal); WLAN-Wechsel behält sie (→ vorausgefüllt).
-  if (btnIntent != ResetIntent::None) {
-    if (btnIntent == ResetIntent::FullWipe) NVS::clearCredentials();
+  // Taster-Wunsch: Hotspot über die eine Provisioning-Route betreten, Credentials unberührt.
+  // Der Merker entscheidet drüben über den Leerlauf-Timeout: ein per Taster betretener Hotspot
+  // ist fast immer ein Versehen und darf nach zehn Minuten aufgeben. Der aus der 401-Heilung
+  // NICHT — dort holt jemand gerade einen frischen Setup-Link, und dafür muss er den offenen
+  // AP verlassen (im Setup-WLAN gibt es kein Internet). Ein Timeout nähme ihm den Hotspot weg,
+  // während er genau daran arbeitet, ihn zu bedienen.
+  if (btnSetup) {
+    gSetupByButton = true;
     gState = State::PROVISIONING;
     return;
   }
@@ -910,8 +916,20 @@ void loop() {
 
     // ── PROVISIONING ──────────────────────────────────────────────────────
     case State::PROVISIONING:
-      // Setup-Hotspot: blockiert bis QR-/Formular-Provisionierung, dann Reboot.
-      Provisioning::run(); // kehrt nicht zurück
+      // Setup-Hotspot: blockiert bis Provisionierung/Abbruch/Timeout, dann Reboot.
+      //
+      // VORHER abbauen, was der Hotspot gleich selbst braucht. Solange jeder Weg hierher über
+      // `ESP.restart()` lief, war das kostenlos; seit die 401-Heilung direkt herwechselt, nicht
+      // mehr: die Statusseite hält Port 80 (`gWeb`), und `Provisioning::run()` will denselben
+      // Port. lwIP verweigert den zweiten LISTEN still — `begin()` kehrt einfach zurück, und
+      // das Captive-Portal antwortet auf nichts. Der Browser verbindet sich, hängt, niemand
+      // kommt an das Formular. Also: Server stoppen, Broker sauber verabschieden (sonst bleibt
+      // seine retained-Präsenz eine Keepalive-Runde lang fälschlich „online"), STA trennen.
+      // Steht hier statt an den zwei Eintrittsstellen, damit es eine dritte nicht vergessen kann.
+      if (gWebOn) { gWeb.stop(); gWebOn = false; }
+      Mqtt::disconnect();
+      WiFi.disconnect(true);
+      Provisioning::run(gSetupByButton); // kehrt nicht zurück
       break;
 
     // ── SYNCING ───────────────────────────────────────────────────────────
@@ -985,15 +1003,20 @@ void loop() {
         // persistent ins Flash-Backlog sichern, geht beim nächsten geglückten Sync mit hoch.
         FlashLog::persistPending();
         // Selbstheilung (S8): wiederholter 401 = Token passt nicht mehr (z.B. nach
-        // Server-Token-Rotation) → Credentials löschen → Setup-Hotspot.
+        // Server-Token-Rotation) → Setup-Hotspot, damit jemand einen frischen Setup-Link
+        // einfügen kann.
+        //
+        // OHNE zu löschen (Begründung bei `Provisioning::handleWipe`). Der alte Token bleibt
+        // im Feld stehen, der Abbrechen-Knopf ist da, und ein Setup-Link ersetzt beides in
+        // einem Zug. Der Wechsel geht direkt über die State-Machine statt über einen
+        // Neustart; was dabei abzubauen ist, erledigt der PROVISIONING-Zweig unten.
         if (res == SyncResult::AUTH_ERROR) {
           gAuthFails++;
           LOGW("Auth failed (401/403) %u/%d — token may be stale", gAuthFails, AUTH_FAIL_LIMIT);
           if (gAuthFails >= AUTH_FAIL_LIMIT) {
-            LOGW("Repeated auth failure → clearing credentials, entering setup hotspot");
-            NVS::clearCredentials();
-            delay(100);
-            ESP.restart();
+            LOGW("Repeated auth failure → setup hotspot (credentials kept, token prefilled)");
+            gState = State::PROVISIONING;
+            return;
           }
         }
         if (gBox.locked && Failsafe::isPolicyExpired(gPolicy)) {

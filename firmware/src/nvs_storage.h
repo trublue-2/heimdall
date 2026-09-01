@@ -60,7 +60,7 @@ namespace NVS {
 
   bool loadCredentials(WifiCredentials& out);
   void saveCredentials(const WifiCredentials& in);
-  void clearCredentials(); // Long-Press Reset
+  void clearCredentials(); // NUR aus dem Setup-Portal (/wipe) — kein Taster, kein Automatismus
 
   bool loadState(BoxState& out);
   void saveState(const BoxState& in);
