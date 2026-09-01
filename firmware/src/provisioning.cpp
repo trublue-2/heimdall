@@ -14,8 +14,10 @@ namespace {
 
 WebServer server(80);
 DNSServer dns;
-bool      gProvisioned = false;
-bool      gCancel      = false; // „Setup verlassen" → Reboot in den Normalbetrieb (Creds unverändert)
+// Alle Ausgänge des Hotspots enden gleich: LED aus, Antwort ausliefern, Neustart. Was den
+// Unterschied macht, steht in den LOG-Zeilen — hier genügt „fertig". Drei Bools hätten drei
+// Bedingungen an derselben Schleife bedeutet, ohne dass ein Leser sie je unterscheidet.
+bool      gDone = false;
 
 String apName() {
   uint8_t mac[6];
@@ -63,6 +65,12 @@ const char* PAGE_HEAD =
   "background:#4ade80;color:#04130a;font-weight:700;font-size:1rem}"
   ".m{color:#8a8a8a;font-size:.85rem}</style></head><body>";
 
+// Antwortseite: Kopf + Rumpf + Abschluss. Der Schwanz `</body></html>` stand an sieben
+// Stellen wörtlich da und fehlte damit irgendwann an einer.
+void sendPage(int code, const String& body) {
+  server.send(code, "text/html", String(PAGE_HEAD) + body + "</body></html>");
+}
+
 // Captive-Seite: Variante A = Setup-Link einfügen (aus der App kopiert),
 // Variante B = manuelles Formular. Der QR-Link trifft /provision direkt.
 void handleRoot() {
@@ -73,8 +81,7 @@ void handleRoot() {
   bool haveCreds = NVS::loadCredentials(cur);
   bool frozen = haveCreds && isServerFrozen(cur);
 
-  String html = PAGE_HEAD;
-  html += "<h2>🔒 Heimdall einrichten</h2>"
+  String html = "<h2>🔒 Heimdall einrichten</h2>"
 
           "<p class=m><b>A — Setup-Link einfügen</b> (in der App kopiert):</p>"
           "<input id=lnk placeholder='http://192.168.4.1/provision?...'>"
@@ -101,12 +108,24 @@ void handleRoot() {
   html += "<button type=submit>Speichern &amp; verbinden</button></form>";
   // „Setup verlassen" nur, wenn gültige Credentials vorliegen — sonst gäbe es keinen
   // Normalbetrieb, in den man zurückkönnte (die Box liefe direkt wieder in den Hotspot).
+  // Dass der Knopf fehlt, wird BENANNT statt verschwiegen: wer ihn sucht und nicht findet,
+  // hält die Box sonst für hängend (Vorfall 01.09.2026).
   if (haveCreds) {
     html += "<form action=/cancel method=get style='margin-top:1rem'>"
             "<button type=submit style='background:#2a3340;color:#e6e6e6'>Setup verlassen (Normalbetrieb)</button></form>";
+    // Löschen ist ab jetzt der EINZIGE Weg, Credentials loszuwerden — und ein ausdrücklicher.
+    // Bei geschlossenem Riegel verweigert (siehe handleWipe), deshalb dort auch kein Knopf.
+    if (!frozen) {
+      html += "<form action=/wipe method=post style='margin-top:.6rem'>"
+              "<button type=submit style='background:#3a2326;color:#e6b0b0'>Credentials löschen (neue Box)</button></form>";
+    }
+  } else {
+    html += "<p class=m style='margin-top:1rem'>Es gibt hier kein &bdquo;Setup verlassen&ldquo;: "
+            "ohne gespeicherte Zugangsdaten hat die Box keinen Normalbetrieb, in den sie "
+            "zurückkehren könnte — sie käme sofort wieder hierher. Trage WLAN und Token ein "
+            "oder füge oben einen Setup-Link ein.</p>";
   }
-  html += "</body></html>";
-  server.send(200, "text/html", html);
+  sendPage(200, html);
 }
 
 // „Abbrechen": zurück in den Normalbetrieb, ohne Credentials anzufassen. Nur mit gültigen
@@ -115,17 +134,56 @@ void handleRoot() {
 void handleCancel() {
   WifiCredentials cur = {};
   if (!NVS::loadCredentials(cur)) {
-    server.send(400, "text/html",
-                String(PAGE_HEAD) + "<h2>Nicht möglich</h2><p class=m>Keine Credentials gespeichert — "
-                "ohne WLAN/Token gibt es keinen Normalbetrieb zum Zurückkehren. "
-                "<a style=color:#4ade80 href=/>Zurück</a></p></body></html>");
+    sendPage(400, "<h2>Nicht möglich</h2><p class=m>Keine Credentials gespeichert — "
+                   "ohne WLAN/Token gibt es keinen Normalbetrieb zum Zurückkehren. "
+                   "<a style=color:#4ade80 href=/>Zurück</a></p>");
     return;
   }
-  server.send(200, "text/html",
-              String(PAGE_HEAD) + "<h2>Setup verlassen</h2>"
-              "<p class=m>Die Box startet neu und verbindet sich mit <b>" + htmlAttr(cur.ssid) +
-              "</b> (Normalbetrieb). Credentials bleiben unverändert.</p></body></html>");
-  gCancel = true;
+  sendPage(200, "<h2>Setup verlassen</h2>"
+                "<p class=m>Die Box startet neu und verbindet sich mit <b>" + htmlAttr(cur.ssid) +
+                "</b> (Normalbetrieb). Credentials bleiben unverändert.</p>");
+  gDone = true;
+}
+
+// „Credentials löschen" — der EINZIGE Weg, die Zugangsdaten loszuwerden, und ein
+// ausdrücklicher. Früher tat das der Taster beim Booten: ohne Rückfrage und ohne Rücksicht auf
+// den Riegel. Eine so ausgeräumte, VERSCHLOSSENE Box kam nicht mehr zu ihrem Server zurück —
+// sie brauchte einen Token, den nur er ausstellt, und er stellte keinen aus, weil sie
+// verschlossen war (Vorfall 01.09.2026, Hergang im README).
+//
+// Deshalb hier dieselbe Invariante wie beim Speichern (`isServerFrozen`): bei geschlossenem
+// Riegel wird nicht gelöscht. Die Prüfung steht VOR der Bestätigung, damit auch eine von Hand
+// getippte URL mit `confirm` daran scheitert — der Knopf, den das Portal in dem Fall ohnehin
+// nicht zeigt, ist nur die halbe Absicherung.
+//
+// Bleibt: bei OFFENEM Riegel genügt Funkreichweite statt physischem Zugriff, um eine Box
+// auszuräumen. Der Setup-AP hat kein Passwort, und das ist beim Einrichten auch schwer anders
+// zu haben. Der Schaden ist begrenzt (der Besitzer holt sich einen frischen Setup-Link), der
+// Riegel bleibt unberührt — deshalb POST und Rückfrage statt einer Zugangshürde.
+void handleWipe() {
+  WifiCredentials cur = {};
+  const bool haveCreds = NVS::loadCredentials(cur);
+  if (haveCreds && isServerFrozen(cur)) {
+    sendPage(403, "<h2>🔒 Nicht möglich</h2><p class=m>Der Riegel ist geschlossen. "
+                   "Die Box behält ihre Server-Bindung, solange sie jemanden einschliesst — sonst "
+                   "käme sie ohne Token nicht mehr zu ihrem Server zurück. Erst öffnen, dann "
+                   "löschen. <a style=color:#4ade80 href=/>Zurück</a></p>");
+    return;
+  }
+  if (!server.hasArg("confirm")) {
+    sendPage(200, "<h2>Credentials löschen?</h2><p class=m>WLAN, Server-URL und Token werden "
+                   "gelöscht. Die Box startet neu und meldet sich mit einem LEEREN Setup — zum "
+                   "Einrichten brauchst du dann einen frischen Setup-Link vom Server.</p>"
+                   "<form action=/wipe method=post><input type=hidden name=confirm value=1>"
+                   "<button type=submit style='background:#3a2326;color:#e6b0b0'>Ja, löschen</button></form>"
+                   "<p class=m style='margin-top:1rem'><a style=color:#4ade80 href=/>Abbrechen</a></p>");
+    return;
+  }
+  LOGW("Wipe requested via portal — clearing credentials");
+  NVS::clearCredentials();
+  sendPage(200, "<h2>Gelöscht</h2><p class=m>Die Box startet neu und kommt mit leerem Setup "
+                "zurück.</p>");
+  gDone = true;
 }
 
 void handleProvision() {
@@ -139,10 +197,9 @@ void handleProvision() {
   bool needToken = !serverFrozen;
   if (!server.hasArg("ssid") || server.arg("ssid").isEmpty() ||
       (needToken && (!server.hasArg("token") || server.arg("token").isEmpty()))) {
-    server.send(400, "text/html",
-                String(PAGE_HEAD) + "<h2>Fehlt</h2><p class=m>SSID"
-                + (needToken ? " und Token sind" : " ist") + " nötig. "
-                "<a style=color:#4ade80 href=/>Zurück</a></p></body></html>");
+    sendPage(400, String("<h2>Fehlt</h2><p class=m>SSID")
+                  + (needToken ? " und Token sind" : " ist") + " nötig. "
+                    "<a style=color:#4ade80 href=/>Zurück</a></p>");
     return;
   }
 
@@ -179,21 +236,19 @@ void handleProvision() {
   NVS::saveCredentials(c);
 
   LOGI("Provisioning: stored — ssid=%s server=%s (rebooting into normal operation)", c.ssid, c.serverUrl);
-  server.send(200, "text/html",
-              String(PAGE_HEAD) + "<h2>✅ Gespeichert</h2>"
-              "<p class=m>Die Box startet neu und verbindet sich mit <b>" + htmlAttr(c.ssid) +
-              "</b>. Du kannst dieses WLAN verlassen.</p>" +
-              (serverFrozen
-                ? "<p class=m>🔒 Verschluss aktiv — Server &amp; Token wurden "
-                  "<b>nicht</b> geändert (nur WLAN aktualisiert).</p>"
-                : "") +
-              "</body></html>");
-  gProvisioned = true;
+  sendPage(200, "<h2>✅ Gespeichert</h2>"
+                "<p class=m>Die Box startet neu und verbindet sich mit <b>" + htmlAttr(c.ssid) +
+                "</b>. Du kannst dieses WLAN verlassen.</p>" +
+                (serverFrozen
+                  ? "<p class=m>🔒 Verschluss aktiv — Server &amp; Token wurden "
+                    "<b>nicht</b> geändert (nur WLAN aktualisiert).</p>"
+                  : ""));
+  gDone = true;
 }
 
 } // namespace
 
-void Provisioning::run() {
+void Provisioning::run(bool idleTimeout) {
   WiFi.persistent(false);
   WiFi.mode(WIFI_AP);
   String ssid = apName();
@@ -205,6 +260,9 @@ void Provisioning::run() {
   server.on("/", handleRoot);
   server.on("/provision", handleProvision);
   server.on("/cancel", handleCancel);     // „Setup verlassen" → Reboot in den Normalbetrieb
+  // NUR POST. Der Setup-AP ist offen (ohne Passwort) — als GET liesse sich das Löschen aus
+  // jedem Tab eines verbundenen Geräts auslösen, ein `<img src=…/wipe?confirm=1>` genügte.
+  server.on("/wipe",   HTTP_POST, handleWipe); // „Credentials löschen" → einziger Löschweg
   server.onNotFound(handleRoot);          // jede URL → Setup-Seite
   server.begin();
 
@@ -218,16 +276,31 @@ void Provisioning::run() {
   const uint32_t startMs = millis();
   uint32_t lastFsMs = 0;
 
+  // ── Leerlauf-Timeout: zurück in den Normalbetrieb, wenn niemand kommt ──────────────────
+  // Zwei Bedingungen, beide nötig. `idleTimeout` sagt der Aufrufer: nur ein per Taster
+  // betretener Hotspot gibt auf — die 401-Selbstheilung nicht, denn dort holt jemand gerade
+  // einen frischen Setup-Link und muss dafür den AP verlassen. `canReturn` ist die Frage,
+  // ob es überhaupt einen Normalbetrieb gibt; ohne Credentials wäre der Neustart eine
+  // Endlosschleife (die Box landete sofort wieder hier).
+  WifiCredentials curCreds = {}; // nur als Existenz-Sonde geladen, der Inhalt zählt hier nicht
+  const bool canReturn = NVS::loadCredentials(curCreds);
+
   // Blockiert, bis provisioniert — dann Reboot in den Normalbetrieb.
   // Blaue LED blinkt (~2,5 Hz) als Erkennung „Setup-Hotspot aktiv"
   // (solid = ZU, aus = offen/Schlaf, blinkend = warte auf Einrichtung).
   pinMode(PIN_LED, OUTPUT);
   uint32_t lastBlink = 0;
   bool ledOn = false;
-  while (!gProvisioned && !gCancel) {
+  while (!gDone) {
     Watchdog::feed(); // Hotspot wartet legitim minutenlang auf den Nutzer → WDT nicht ausloesen
     dns.processNextRequest();
     server.handleClient();
+
+    if (idleTimeout && canReturn && millis() - startMs >= SETUP_IDLE_TIMEOUT_MS) {
+      LOGW("Setup hotspot unattended for %lu min — returning to normal operation",
+            (unsigned long)(SETUP_IDLE_TIMEOUT_MS / 60000));
+      gDone = true; // Credentials unverändert → der Reboot unten führt in den Normalbetrieb
+    }
     if (millis() - lastBlink >= 200) {
       lastBlink = millis();
       ledOn = !ledOn;

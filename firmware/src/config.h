@@ -1,6 +1,6 @@
 #pragma once
 
-#define FW_VERSION "0.2.40"
+#define FW_VERSION "0.2.41"
 
 // ── Stepper (28BYJ-48 via ULN2003) ────────────────────────────────────────
 // Ziel-Board: ULN2003 an GPIO 23/17/16/4 (per Debug-Sweep ermittelt, auf/zu ok).
@@ -141,6 +141,17 @@
 // kosten. Gedeckelt, weil jeder Fehlversuch bis WIFI_CONNECT_TIMEOUT_MS wach kostet: 3 × 15 s.
 #define WIFI_MAX_CONNECT_TRIES   3
 #define AUTH_FAIL_LIMIT          10                 // N×401 in Folge → Setup-Hotspot (Selbstheilung)
+// Setup-Hotspot ohne Zutun: zurück in den Normalbetrieb. Ein versehentlich gehaltener Taster
+// kostet damit zehn Minuten Funkstille statt eines Tages — im Hotspot syncht die Box nicht und
+// hält ihren AP oben. Wann die Frist überhaupt gilt, entscheidet der Aufrufer (Provisioning::run).
+//
+// ABSOLUT ab Hotspot-Start, nicht ab dem letzten Zugriff. Eine Frist, die jeder HTTP-Treffer
+// zurücksetzt, misst nicht Anwesenheit: ein beliebiges Handy, das sich mit dem offenen
+// `Heimdall-Setup-…` verbindet, schickt im Minutentakt Captive-Portal-Proben und hielte den
+// Hotspot unbegrenzt am Leben — genau das Versehen, das die Frist heilen soll.
+#define SETUP_IDLE_TIMEOUT_MS    (10UL * 60 * 1000)
+// Obergrenze für die Taster-Warteschleife beim Boot (klemmender Kontakt, siehe checkSetupButton).
+#define BTN_SETUP_MAX_HOLD_MS    (10UL * 1000)
 #define OTA_VALIDATE_SYNCS       1                  // erfolgreiche Syncs bis OTA bestätigt (sonst Rollback)
 
 // Re-Sync-Takt im Wach-Zustand (am Netz) — hält Policy/OTA/IP frisch.
