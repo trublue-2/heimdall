@@ -105,18 +105,30 @@ export function boxLocked(
 }
 
 /**
- * Die aus dem Tracker gezogene Sperre war VORZEITIG noch aktiv und ist jetzt weg — die Keyholderin
- * hat sie zurückgezogen (nicht: natürlich abgelaufen). Die Box ist aber physisch noch zu. Dann in
- * einen Heimdall-eigenen simpleLock überführen, damit sie NICHT von selbst öffnet; der Sub öffnet über
+ * Die aus dem Tracker gezogene Sperre ist GERADE weg, die Box aber physisch noch zu. Dann in einen
+ * Heimdall-eigenen simpleLock überführen, damit sie NICHT von selbst öffnet; der Sub öffnet über
  * einen Eintrag (OEFFNEN → `applyTrackerCommand("open")`).
  *
- * Ohne diese Umwandlung im AUTORITATIVEN Sync-Pfad hinge das Zubleiben allein am Instant-Push
- * (tracker/notify) — verpasst die Box den, meldet `box/sync` `locked:false` und die Box öffnet selbst.
+ * ZWEI Arten, wie die Sperre endet — beide sollen zuhalten:
+ *  · RÜCKZUG durch die Keyholderin: war VOR dem Config-Pull noch aktiv.
+ *  · NATÜRLICHER ABLAUF: ein getimtes `trackerLockUntil`, das inzwischen verstrichen ist. Früher war
+ *    dieser Fall bewusst ausgenommen und die Firmware öffnete am Deadline auf Knopfdruck; das ist die
+ *    Lücke, die dieser Zweig schliesst (Sperrzeit-Ende ⇒ zubleiben, bis der Sub die Öffnung einträgt).
  *
- * Erkennung über `trackerIntentActive` (nicht die Rohfelder): ein natürlich abgelaufener Timer war
- * schon VOR dem Config-Pull inaktiv → zählt NICHT als Rückzug. Den öffnet die Firmware am Deadline
- * (unverändert; „auch bei Ablauf zubleiben" ist ein Firmware-Failsafe-Thema). `!boxLocked(after)`
- * lässt eine noch aktive Eigen-Sperre in Ruhe, `!after.holdOpen` eine laufende Reinigungspause.
+ * Deshalb prüft der Zweig NICHT `trackerIntentActive(before)` (das zählt einen abgelaufenen Timer schon
+ * als inaktiv und verpasste so den Ablauf), sondern nur, ob `before` überhaupt eine Tracker-Sperre trug.
+ * Ob ihr Timer noch lief, ist gleichgültig: dass sie JETZT weg ist, verlangt der `!trackerIntentActive(after)`-Guard.
+ *
+ * `before` trägt in beiden Fällen den maßgeblichen Wert, weil er VOR dem Config-Pull gelesen wird
+ * (box/sync: `policyBeforeTracker`; notify: `device.policy`) — nach dem Pull ist `trackerLockUntil`
+ * bei Rückzug/Ablauf bereits genullt. Ohne die Umwandlung im AUTORITATIVEN Sync-Pfad hinge das
+ * Zubleiben allein am Instant-Push (tracker/notify) — verpasst die Box den, meldete `box/sync`
+ * `locked:false` und die Box öffnete selbst.
+ *
+ * Die Guards bleiben: `deviceLocked` + `!boxLocked(after)` greifen nur, wenn die Box physisch zu ist,
+ * das SOLL aber offen sagt — genau der Moment nach Ende. Eine noch aktive Eigen-Sperre (`boxLocked`)
+ * bleibt in Ruhe, eine laufende Reinigungspause (`after.holdOpen`) ebenso. Lokale Failsafes bleiben
+ * unberührt: ein simpleLock trägt kein `lockUntil`, der Offline-/Low-Batt-Failsafe wirkt weiter.
  */
 export function shouldHoldClosedOnTrackerEnd(
   before: LockPolicy | null,
@@ -124,8 +136,13 @@ export function shouldHoldClosedOnTrackerEnd(
   deviceLocked: boolean,
   now: Date,
 ): boolean {
+  // `before` trug ÜBERHAUPT eine Tracker-Sperre — indefinit ODER getimt, egal ob der Timer noch lief.
+  // (Die frühere Fallunterscheidung `trackerIntentActive(before) || trackerLockUntil <= now` kürzt sich
+  // exakt hierauf: die `> now`- und `<= now`-Hälften decken zusammen jeden gesetzten Wert ab.) Dass die
+  // Sperre JETZT zu Ende ist — durch Rückzug oder Ablauf — sichert der `!trackerIntentActive(after)`-Guard.
+  const trackerHadLock = !!before?.trackerSimpleLock || !!before?.trackerLockUntil;
   return (
-    trackerIntentActive(before, now) &&
+    trackerHadLock &&
     !trackerIntentActive(after, now) &&
     deviceLocked &&
     !boxLocked(after, now) &&

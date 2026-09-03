@@ -254,12 +254,13 @@ export async function POST(req: NextRequest) {
   ]);
   policy = policyAfterTracker;
 
-  // Rückzug der Tracker-Sperre: der autoritative Pfad hält die Box zu (eigener simpleLock), statt sie
-  // von selbst öffnen zu lassen. VOR pushBoxStatus, damit der Tracker sofort den korrigierten Zustand
-  // sieht. Dieselbe Regel wie der Instant-Push in tracker/notify (shouldHoldClosedOnTrackerEnd).
+  // Tracker-Sperre gerade zu Ende (Rückzug ODER natürlicher Ablauf): der autoritative Pfad hält die
+  // Box zu (eigener simpleLock), statt sie von selbst öffnen zu lassen — der Sub öffnet über einen
+  // OEFFNEN-Eintrag. VOR pushBoxStatus, damit der Tracker sofort den korrigierten Zustand sieht.
+  // Dieselbe Regel wie der Instant-Push in tracker/notify (shouldHoldClosedOnTrackerEnd).
   //
   // `state.locked` (die FRISCHE Meldung dieses Syncs), NICHT `device.locked` (letzter DB-Stand): hat
-  // die Box gerade selbst geöffnet, während die KH zurückzog, meldet sie hier `false` — dann NICHT
+  // die Box gerade selbst geöffnet, während die Sperre endete, meldet sie hier `false` — dann NICHT
   // zufahren (offene Box, open-loop Stepper). Der veraltete `device.locked` würde sie fälschlich
   // gegen den Anschlag treiben.
   if (policy && shouldHoldClosedOnTrackerEnd(policyBeforeTracker, policy, state.locked, now)) {

@@ -95,8 +95,8 @@ export async function POST(req: NextRequest) {
       //     nächste legitime Öffnung genau der Vollzug dieses Kommandos.
       policy = await applyTrackerCommand(device.id, body.command, policy, now);
     } else if (shouldHoldClosedOnTrackerEnd(device.policy, policy, device.locked, now)) {
-      // (3) Sperrzeit-RÜCKZUG ohne Kommando: die Tracker-Sperre ist weg, die Box aber physisch noch
-      //     zu → in einen eigenen Simple-Lock überführen. Dann zeigt die Anzeige "GESCHLOSSEN, ohne
+      // (3) Sperrzeit zu Ende ohne Kommando (Rückzug ODER Ablauf): die Tracker-Sperre ist weg, die Box
+      //     aber physisch noch zu → in einen eigenen Simple-Lock überführen. Dann zeigt die Anzeige "GESCHLOSSEN, ohne
       //     Zeitlimit" statt fälschlich "WIRD GEÖFFNET", und die Box öffnet nicht von selbst (der Sub
       //     öffnet über einen Eintrag). Dieselbe Regel wie im autoritativen box/sync-Pfad; hier nur
       //     der Instant-Weg für die live Box. Gilt für live UND schlafende Box.
