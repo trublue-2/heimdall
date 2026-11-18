@@ -84,6 +84,7 @@ model Device {
   users        User[]        @relation("DeviceAccess")
   wifiNetworks WifiNetwork[]
   logs         DeviceLog[]
+  takeoverTickets TakeoverTicket[]
 }
 
 // Eine chastitytracker.ch-Deployment, die dieser Heimdall-Server anspricht. Reine
@@ -163,4 +164,19 @@ model DeviceEvent {
   createdAt DateTime @default(now())
 
   @@index([deviceId, timestamp])
+}
+
+// Einmal-Adresse für die Übernahme einer LockMeBox mit Werks-Firmware (`lib/takeover.ts`). Die
+// Werks-Firmware lädt ihr Update nur über unverschlüsseltes HTTP und ohne Anmeldung — die Adresse
+// trägt deshalb ein Zufalls-Token und läuft nach kurzer Zeit ab. Gespeichert ist nur dessen sha256.
+model TakeoverTicket {
+  id           String    @id @default(cuid())
+  device       Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  deviceId     String
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  downloadedAt DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([deviceId])
 }

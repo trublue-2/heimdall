@@ -39,6 +39,8 @@ export function SetupQrModal({
       if (!res.ok) throw new Error(await res.text());
       const { token } = await res.json();
 
+      // Derselbe Aufbau steht im Tracker (`heimdallProvisionLink`, lockmeboxProtocol.ts) für die
+      // Übernahme einer LockMeBox — ändert sich das Format, beide nachziehen.
       // Passwort Base64-kodieren (enc=b64) — nicht versehentlich als Klartext
       // im Link/Verlauf lesbar. UTF-8-sicher.
       const passB64 = btoa(unescape(encodeURIComponent(pass)));

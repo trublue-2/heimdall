@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import type { LockPolicy } from "@prisma/client";
-import { extractBearerToken, boxLocked, deviceLockView, shouldHoldClosedOnTrackerEnd } from "@/lib/device-auth";
+import { boxLocked, deviceLockView, shouldHoldClosedOnTrackerEnd } from "@/lib/device-auth";
+import { authenticateTrackerInstance } from "@/lib/trackerAuth";
 import { applyTrackerCommand, isTrackerCommand, type TrackerCommand } from "@/lib/boxCommand";
 import { publishCommand, deviceOnline } from "@/lib/mqttBridge";
 import { notifyDeviceChange } from "@/lib/events";
@@ -19,7 +20,7 @@ export const dynamic = "force-dynamic";
 // pushen es einer LIVE Box per MQTT. Fallback bleibt der pendingCommand-/Config-Pull beim nächsten
 // Box-Sync — der dasselbe applyTrackerCommand fährt, also nie abweicht.
 //
-// Auth = TrackerInstance.apiKey als Bearer — derselbe Shared-Secret-Kanal wie outbound, nur rückwärts.
+// Auth = TrackerInstance.apiKey als Bearer (`authenticateTrackerInstance`).
 const schema = z.object({
   username: z.string().min(1),
   command: z.enum(["lock", "open"]).optional(),
@@ -51,9 +52,7 @@ function publishIfLive(
 }
 
 export async function POST(req: NextRequest) {
-  const token = extractBearerToken(req.headers.get("authorization"));
-  if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const instance = await prisma.trackerInstance.findUnique({ where: { apiKey: token } });
+  const instance = await authenticateTrackerInstance(req);
   if (!instance) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: z.infer<typeof schema>;

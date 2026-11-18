@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { requireAdminApi } from "@/lib/authGuards";
 import { readFirmware, firmwareDownloadName, isOtaSlot } from "@/lib/firmware";
+import { firmwareResponse } from "@/lib/firmwareResponse";
 
 export const runtime = "nodejs";
 
@@ -15,16 +16,6 @@ export async function GET(req: NextRequest) {
   const requested = req.nextUrl.searchParams.get("slot");
   const slot = isOtaSlot(requested) ? requested : "heimdall";
 
-  const bin = await readFirmware(slot);
-  if (!bin) return NextResponse.json({ error: "Keine Firmware hinterlegt" }, { status: 404 });
-
-  const filename = await firmwareDownloadName(slot);
-  return new NextResponse(new Uint8Array(bin), {
-    headers: {
-      "Content-Type": "application/octet-stream",
-      "Content-Length": String(bin.length),
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      "Cache-Control": "no-store", // sonst könnte ein Proxy eine alte Bin ausliefern
-    },
-  });
+  const [bin, filename] = await Promise.all([readFirmware(slot), firmwareDownloadName(slot)]);
+  return firmwareResponse(bin, { "Content-Disposition": `attachment; filename="${filename}"` });
 }

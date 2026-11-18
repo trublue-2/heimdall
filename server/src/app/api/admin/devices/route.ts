@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/authGuards";
 import { prisma } from "@/lib/prisma";
+import { createDevice } from "@/lib/devices";
 import { generateProvisioningToken, hashProvisioningToken, DEFAULT_OFFLINE_OPEN_HOURS } from "@/lib/utils";
 
 export async function GET() {
@@ -33,11 +34,7 @@ export async function POST(req: NextRequest) {
   const rawToken = generateProvisioningToken();
   const tokenHash = await hashProvisioningToken(rawToken);
 
-  const device = await prisma.device.create({
-    data: { name, tokenHash },
-  });
-
-  await prisma.lockPolicy.create({ data: { deviceId: device.id } });
+  const device = await createDevice(prisma, { name, tokenHash });
 
   return NextResponse.json({ deviceId: device.id, token: rawToken }, { status: 201 });
 }

@@ -30,6 +30,12 @@ services:
       - "traefik.http.routers.heimdall-mqtt-deny.service=heimdall"
       - "traefik.http.routers.heimdall-mqtt-deny.middlewares=heimdall-mqtt-deny"
       - "traefik.http.middlewares.heimdall-mqtt-deny.ipallowlist.sourcerange=127.0.0.1/32"
+      # Einmal-Download für die Übernahme einer LockMeBox (lib/takeover.ts): deren Werks-Firmware
+      # lädt nur über HTTP und folgt keiner Umleitung. Nur dieser Pfad, höher prior als der Redirect.
+      - "traefik.http.routers.heimdall-takeover.rule=Host(`heimdall.trublue.ch`) && PathPrefix(`/api/box/takeover/`)"
+      - "traefik.http.routers.heimdall-takeover.entrypoints=web"
+      - "traefik.http.routers.heimdall-takeover.priority=200"
+      - "traefik.http.routers.heimdall-takeover.service=heimdall"
       # HTTP → HTTPS redirect
       - "traefik.http.routers.heimdall-http.rule=Host(`heimdall.trublue.ch`)"
       - "traefik.http.routers.heimdall-http.entrypoints=web"
